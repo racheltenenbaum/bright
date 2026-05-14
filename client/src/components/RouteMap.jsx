@@ -1,10 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { GoogleMap, useLoadScript, Marker } from "@react-google-maps/api";
+import { GoogleMap, useLoadScript, Marker, Autocomplete } from "@react-google-maps/api";
 import axios from "axios";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const MAP_STYLE = { height: "500px", width: "100%" };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+// Defined outside component so the array reference is stable across renders
+const LIBRARIES = ["places"];
 
 function getSegmentBearing(a, b) {
   const lat1 = (a[0] * Math.PI) / 180;
@@ -41,18 +44,27 @@ function clearPolylines(ref) {
 }
 
 export default function RouteMap() {
-  const { isLoaded } = useLoadScript({ googleMapsApiKey: API_KEY });
+  const { isLoaded } = useLoadScript({ googleMapsApiKey: API_KEY, libraries: LIBRARIES });
 
   const mapRef = useRef(null);
   const polylinesRef = useRef([]);
+  const startAutocompleteRef = useRef(null);
+  const endAutocompleteRef = useRef(null);
 
   const [preference, setPreference] = useState("sun");
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
+  const [startAddress, setStartAddress] = useState("");
+  const [endAddress, setEndAddress] = useState("");
   const [sunData, setSunData] = useState(null);
   const [error, setError] = useState(null);
 
-  // Draw polylines imperatively whenever route+sunData change
+  async function reverseGeocode(lat, lng) {
+    const geocoder = new window.google.maps.Geocoder();
+    const result = await geocoder.geocode({ location: { lat, lng } });
+    return result.results[0]?.formatted_address || "";
+  }
+
   useEffect(() => {
     clearPolylines(polylinesRef);
   }, []);
@@ -85,12 +97,38 @@ export default function RouteMap() {
     setSunData(null);
   }
 
-  const handleMapClick = useCallback((e) => {
+  function handlePlaceSelected(type) {
+    const autocomplete = type === "start" ? startAutocompleteRef.current : endAutocompleteRef.current;
+    const place = autocomplete.getPlace();
+    if (!place.geometry) return;
+
+    const coords = {
+      lat: place.geometry.location.lat(),
+      lng: place.geometry.location.lng(),
+    };
+    const address = place.formatted_address || place.name || "";
+
+    if (type === "start") {
+      setStart(coords);
+      setStartAddress(address);
+      clearPolylines(polylinesRef);
+      setSunData(null);
+    } else {
+      setEnd(coords);
+      setEndAddress(address);
+    }
+    mapRef.current?.panTo(coords);
+  }
+
+  const handleMapClick = useCallback(async (e) => {
     const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    const address = await reverseGeocode(coords.lat, coords.lng);
     if (!start) {
       setStart(coords);
+      setStartAddress(address);
     } else if (!end) {
       setEnd(coords);
+      setEndAddress(address);
     }
   }, [start, end]);
 
@@ -137,21 +175,18 @@ export default function RouteMap() {
   function reset() {
     setStart(null);
     setEnd(null);
+    setStartAddress("");
+    setEndAddress("");
     setSunData(null);
     setError(null);
     clearPolylines(polylinesRef);
   }
 
-  const instruction = !start
-    ? "Click on the map to set your start point"
-    : !end
-    ? "Now click to set your end point"
-    : "Ready — click Plan Route";
-
   if (!isLoaded) return <p>Loading map...</p>;
 
   return (
     <div>
+      {/* Sun / Shade toggle */}
       <div style={{ marginBottom: "10px", display: "flex", alignItems: "center", gap: "10px" }}>
         <span>☀️ Sun</span>
         <div
@@ -180,7 +215,38 @@ export default function RouteMap() {
         <span>🌥 Shade</span>
       </div>
 
-      <p>{instruction}</p>
+      {/* Address inputs */}
+      <div style={{ marginBottom: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+        <Autocomplete
+          onLoad={(a) => { startAutocompleteRef.current = a; }}
+          onPlaceChanged={() => handlePlaceSelected("start")}
+        >
+          <input
+            type="text"
+            value={startAddress}
+            onChange={(e) => {
+              setStartAddress(e.target.value);
+              setStart(null);
+              clearPolylines(polylinesRef);
+              setSunData(null);
+            }}
+            placeholder="Start address (or click map)"
+            style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
+          />
+        </Autocomplete>
+        <Autocomplete
+          onLoad={(a) => { endAutocompleteRef.current = a; }}
+          onPlaceChanged={() => handlePlaceSelected("end")}
+        >
+          <input
+            type="text"
+            value={endAddress}
+            onChange={(e) => setEndAddress(e.target.value)}
+            placeholder="End address (or click map)"
+            style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
+          />
+        </Autocomplete>
+      </div>
 
       <GoogleMap
         zoom={13}
