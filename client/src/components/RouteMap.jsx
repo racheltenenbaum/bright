@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import axios from "axios";
 
@@ -40,6 +41,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude) {
 
 export default function RouteMap() {
   const { isLoaded } = useLoadScript({ googleMapsApiKey: API_KEY, libraries: LIBRARIES });
+  const location = useLocation();
 
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -48,6 +50,7 @@ export default function RouteMap() {
   const endMarkerRef = useRef(null);
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
+  const autoCalculateRef = useRef(false);
 
   // Refs for use inside map click listener (avoids stale closures)
   const startRef = useRef(null);
@@ -67,6 +70,27 @@ export default function RouteMap() {
 
   startRef.current = start;
   endRef.current = end;
+
+  // Pre-populate from a saved route navigated from My Routes
+  useEffect(() => {
+    const saved = location.state?.route;
+    if (!saved) return;
+    setStart({ lat: saved.start_lat, lng: saved.start_lng });
+    setEnd({ lat: saved.end_lat, lng: saved.end_lng });
+    setStartAddress(saved.start_address || "");
+    setEndAddress(saved.end_address || "");
+    setSavedRouteName(saved.name);
+    setRouteSaved(true);
+    autoCalculateRef.current = true;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-calculate once start, end, and map are all ready
+  useEffect(() => {
+    if (autoCalculateRef.current && start && end && isLoaded && mapRef.current) {
+      autoCalculateRef.current = false;
+      planRoute();
+    }
+  }, [start, end, isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Create the map once the API is loaded — mapId goes into the constructor
   useEffect(() => {
@@ -156,9 +180,13 @@ export default function RouteMap() {
       setStartAddress(address);
       clearPolylines(polylinesRef);
       setSunData(null);
+      setSavedRouteName(null);
+      setRouteSaved(false);
     } else {
       setEnd(coords);
       setEndAddress(address);
+      setSavedRouteName(null);
+      setRouteSaved(false);
     }
     mapRef.current?.panTo(coords);
   }
@@ -166,7 +194,6 @@ export default function RouteMap() {
   async function planRoute() {
     setError(null);
     setSunData(null);
-    setRouteSaved(false);
     clearPolylines(polylinesRef);
     try {
       const directionsService = new window.google.maps.DirectionsService();
@@ -233,6 +260,8 @@ export default function RouteMap() {
           description: saveForm.description?.trim() || null,
           start_lat: start.lat, start_lng: start.lng,
           end_lat: end.lat, end_lng: end.lng,
+          start_address: startAddress.split(",")[0].trim() || null,
+          end_address: endAddress.split(",")[0].trim() || null,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -306,6 +335,8 @@ export default function RouteMap() {
                 setStart(null);
                 clearPolylines(polylinesRef);
                 setSunData(null);
+                setSavedRouteName(null);
+                setRouteSaved(false);
               }}
               placeholder="Start address (or click map)"
               style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
@@ -318,7 +349,7 @@ export default function RouteMap() {
             <input
               type="text"
               value={endAddress}
-              onChange={(e) => setEndAddress(e.target.value)}
+              onChange={(e) => { setEndAddress(e.target.value); setSavedRouteName(null); setRouteSaved(false); }}
               placeholder="End address (or click map)"
               style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
             />
