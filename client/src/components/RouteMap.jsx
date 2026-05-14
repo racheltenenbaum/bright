@@ -6,41 +6,42 @@ const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const MAP_STYLE = { height: "500px", width: "100%" };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-// Defined outside component so the array reference is stable across renders
 const LIBRARIES = ["places"];
-
-function getSegmentBearing(a, b) {
-  const lat1 = (a[0] * Math.PI) / 180;
-  const lat2 = (b[0] * Math.PI) / 180;
-  const dLng = ((b[1] - a[1]) * Math.PI) / 180;
-  const x = Math.sin(dLng) * Math.cos(lat2);
-  const y = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  return ((Math.atan2(x, y) * 180) / Math.PI + 360) % 360;
-}
-
-function getSunExposure(segmentBearing, sunAzimuth) {
-  const diff = ((sunAzimuth - segmentBearing) * Math.PI) / 180;
-  return Math.abs(Math.cos(diff));
-}
-
-function getSegmentColor(sunAltitude, exposure) {
-  if (sunAltitude <= 0) return "#888888";
-  if (exposure > 0.5) return "#FFD700";
-  if (exposure >= 0.2) return "#FFA500";
-  return "#6B8FA3";
-}
-
-function scoreRoute(coords, sunAzimuth) {
-  let total = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
-    total += getSunExposure(getSegmentBearing(coords[i], coords[i + 1]), sunAzimuth);
-  }
-  return total / (coords.length - 1);
-}
 
 function clearPolylines(ref) {
   ref.current.forEach((p) => p.setMap(null));
   ref.current = [];
+}
+
+function scoreRouteFromShadow(segments, preference) {
+  const shadedCount = segments.filter((s) => s.shaded).length;
+  return preference === "shade" ? shadedCount : segments.length - shadedCount;
+}
+
+function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude) {
+  clearPolylines(polylinesRef);
+  if (!mapInstance || !coords || !segments) return;
+
+  coords.slice(0, -1).forEach((point, i) => {
+    const seg = segments[i] ?? segments[segments.length - 1];
+    let color;
+    if (sunAltitude <= 0) {
+      color = "#888888";
+    } else {
+      color = seg.shaded ? "#888888" : "#FFD700";
+    }
+
+    const polyline = new window.google.maps.Polyline({
+      path: [
+        { lat: point[0], lng: point[1] },
+        { lat: coords[i + 1][0], lng: coords[i + 1][1] },
+      ],
+      strokeColor: color,
+      strokeWeight: 4,
+      map: mapInstance,
+    });
+    polylinesRef.current.push(polyline);
+  });
 }
 
 export default function RouteMap() {
@@ -58,6 +59,7 @@ export default function RouteMap() {
   const [endAddress, setEndAddress] = useState("");
   const [sunData, setSunData] = useState(null);
   const [error, setError] = useState(null);
+  const [is3D, setIs3D] = useState(false);
 
   async function reverseGeocode(lat, lng) {
     const geocoder = new window.google.maps.Geocoder();
@@ -68,28 +70,6 @@ export default function RouteMap() {
   useEffect(() => {
     clearPolylines(polylinesRef);
   }, []);
-
-  function drawRoute(coords, sun) {
-    clearPolylines(polylinesRef);
-    if (!mapRef.current || !coords || !sun) return;
-
-    coords.slice(0, -1).forEach((point, i) => {
-      const bearing = getSegmentBearing(point, coords[i + 1]);
-      const exposure = getSunExposure(bearing, sun.sun_azimuth);
-      const color = getSegmentColor(sun.sun_altitude, exposure);
-
-      const polyline = new window.google.maps.Polyline({
-        path: [
-          { lat: point[0], lng: point[1] },
-          { lat: coords[i + 1][0], lng: coords[i + 1][1] },
-        ],
-        strokeColor: color,
-        strokeWeight: 4,
-        map: mapRef.current,
-      });
-      polylinesRef.current.push(polyline);
-    });
-  }
 
   function togglePreference() {
     setPreference((p) => (p === "sun" ? "shade" : "sun"));
@@ -146,29 +126,44 @@ export default function RouteMap() {
       });
 
       const token = localStorage.getItem("token");
-      const sunRes = await axios.post(
-        "http://localhost:8000/sun/analyze",
-        {
-          coordinates: [[start.lat, start.lng], [end.lat, end.lng]],
-          datetime: new Date().toISOString(),
-        },
+      const datetime = new Date().toISOString();
+      const allCoords = result.routes.map((r) => r.overview_path.map((p) => [p.lat(), p.lng()]));
+
+      const batchRes = await axios.post(
+        "http://localhost:8000/sun/shadow-analyze-batch",
+        { routes: allCoords, datetime },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      const sun = sunRes.data;
-      setSunData(sun);
+      const { sun_altitude, sun_azimuth, date, routes: routeResults } = batchRes.data;
 
-      const scored = result.routes.map((r) => {
-        const coords = r.overview_path.map((p) => [p.lat(), p.lng()]);
-        return { coords, score: scoreRoute(coords, sun.sun_azimuth) };
+      let bestCoords = null;
+      let bestSegments = null;
+      let bestScore = -1;
+
+      allCoords.forEach((coords, i) => {
+        const score = scoreRouteFromShadow(routeResults[i].segments, preference);
+        if (score > bestScore) {
+          bestScore = score;
+          bestCoords = coords;
+          bestSegments = routeResults[i].segments;
+        }
       });
 
-      const best = preference === "sun"
-        ? scored.reduce((a, b) => (a.score > b.score ? a : b))
-        : scored.reduce((a, b) => (a.score < b.score ? a : b));
-
-      drawRoute(best.coords, sun);
+      if (bestCoords) {
+        setSunData({ sun_altitude, sun_azimuth, date });
+        drawRoute(mapRef.current, polylinesRef, bestCoords, bestSegments, sun_altitude);
+      }
     } catch {
       setError("Could not fetch route. Please try again.");
+    }
+  }
+
+  function toggle3D() {
+    const next = !is3D;
+    setIs3D(next);
+    if (mapRef.current) {
+      mapRef.current.setMapTypeId(next ? "hybrid" : "roadmap");
+      mapRef.current.setTilt(next ? 45 : 0);
     }
   }
 
@@ -262,6 +257,7 @@ export default function RouteMap() {
       <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
         {start && end && <button onClick={planRoute}>Plan Route</button>}
         {start && <button onClick={reset}>Reset</button>}
+        <button onClick={toggle3D}>{is3D ? "2D" : "3D Buildings"}</button>
       </div>
 
       {sunData && (
@@ -271,11 +267,7 @@ export default function RouteMap() {
             Sunny
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <span style={{ width: 16, height: 4, background: "#FFA500", display: "inline-block" }} />
-            Partial
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <span style={{ width: 16, height: 4, background: "#6B8FA3", display: "inline-block" }} />
+            <span style={{ width: 16, height: 4, background: "#888888", display: "inline-block" }} />
             Shaded
           </span>
         </div>

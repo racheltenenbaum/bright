@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.routers import users, sun
+from src.routers import users, sun, shadow_analyze
 
 app = FastAPI(title="bright")
 
@@ -14,6 +14,7 @@ app.add_middleware(
 
 app.include_router(users.router)
 app.include_router(sun.router)
+app.include_router(shadow_analyze.router)
 
 
 @app.get("/")
