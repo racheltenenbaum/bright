@@ -1,10 +1,50 @@
-import RegisterForm from "./components/RegisterForm";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import PropTypes from "prop-types";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import Navbar from "./components/Navbar";
+import HomePage from "./pages/HomePage";
+import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import PlanRoutePage from "./pages/PlanRoutePage";
+
+function ProtectedRoute({ children }) {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? children : <Navigate to="/login" />;
+}
+
+ProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
+function Layout() {
+  const { isAuthenticated } = useAuth();
+  return (
+    <>
+      {isAuthenticated && <Navbar />}
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/plan"
+          element={
+            <ProtectedRoute>
+              <PlanRoutePage />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </>
+  );
+}
 
 function App() {
   return (
-    <div>
-      <RegisterForm />
-    </div>
+    <AuthProvider>
+      <BrowserRouter>
+        <Layout />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
