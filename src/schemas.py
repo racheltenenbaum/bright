@@ -26,3 +26,25 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+class RouteCreate(BaseModel):
+    name: str
+    description: str | None = None
+    start_lat: float
+    start_lng: float
+    end_lat: float
+    end_lng: float
+
+
+class RouteResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    start_lat: float
+    start_lng: float
+    end_lat: float
+    end_lng: float
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

@@ -6,6 +6,7 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import PlanRoutePage from "./pages/PlanRoutePage";
+import MyRoutesPage from "./pages/MyRoutesPage";
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -30,6 +31,14 @@ function Layout() {
           element={
             <ProtectedRoute>
               <PlanRoutePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-routes"
+          element={
+            <ProtectedRoute>
+              <MyRoutesPage />
             </ProtectedRoute>
           }
         />

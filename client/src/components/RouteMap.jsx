@@ -1,9 +1,8 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import { GoogleMap, useLoadScript, Marker, Autocomplete } from "@react-google-maps/api";
+import { useState, useEffect, useRef } from "react";
+import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import axios from "axios";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
-const MAP_STYLE = { height: "500px", width: "100%" };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const LIBRARIES = ["places"];
@@ -24,12 +23,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude) {
 
   coords.slice(0, -1).forEach((point, i) => {
     const seg = segments[i] ?? segments[segments.length - 1];
-    let color;
-    if (sunAltitude <= 0) {
-      color = "#888888";
-    } else {
-      color = seg.shaded ? "#888888" : "#FFD700";
-    }
+    const color = sunAltitude <= 0 ? "#888888" : seg.shaded ? "#888888" : "#FFD700";
 
     const polyline = new window.google.maps.Polyline({
       path: [
@@ -47,10 +41,17 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude) {
 export default function RouteMap() {
   const { isLoaded } = useLoadScript({ googleMapsApiKey: API_KEY, libraries: LIBRARIES });
 
+  const containerRef = useRef(null);
   const mapRef = useRef(null);
   const polylinesRef = useRef([]);
+  const startMarkerRef = useRef(null);
+  const endMarkerRef = useRef(null);
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
+
+  // Refs for use inside map click listener (avoids stale closures)
+  const startRef = useRef(null);
+  const endRef = useRef(null);
 
   const [preference, setPreference] = useState("sun");
   const [start, setStart] = useState(null);
@@ -59,17 +60,79 @@ export default function RouteMap() {
   const [endAddress, setEndAddress] = useState("");
   const [sunData, setSunData] = useState(null);
   const [error, setError] = useState(null);
-  const [is3D, setIs3D] = useState(false);
+  const [saveForm, setSaveForm] = useState(null); // null = hidden, {} = open
+  const [saveError, setSaveError] = useState(null);
+  const [routeSaved, setRouteSaved] = useState(false);
+  const [savedRouteName, setSavedRouteName] = useState(null);
 
-  async function reverseGeocode(lat, lng) {
-    const geocoder = new window.google.maps.Geocoder();
-    const result = await geocoder.geocode({ location: { lat, lng } });
-    return result.results[0]?.formatted_address || "";
-  }
+  startRef.current = start;
+  endRef.current = end;
 
+  // Create the map once the API is loaded — mapId goes into the constructor
   useEffect(() => {
-    clearPolylines(polylinesRef);
-  }, []);
+    if (!isLoaded || !containerRef.current || mapRef.current) return;
+
+    mapRef.current = new window.google.maps.Map(containerRef.current, {
+      center: MAP_CENTER,
+      zoom: 13,
+    });
+  }, [isLoaded]);
+
+  // Re-register click listener whenever start/end change
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+    window.google.maps.event.clearListeners(map, "click");
+
+    map.addListener("click", async (e) => {
+      const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      const geocoder = new window.google.maps.Geocoder();
+      const result = await geocoder.geocode({ location: coords });
+      const address = result.results[0]?.formatted_address || "";
+
+      if (!startRef.current) {
+        setStart(coords);
+        setStartAddress(address);
+      } else if (!endRef.current) {
+        setEnd(coords);
+        setEndAddress(address);
+      }
+    });
+  }, [isLoaded]);
+
+  // Sync start marker
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (startMarkerRef.current) { startMarkerRef.current.setMap(null); startMarkerRef.current = null; }
+    if (start) {
+      startMarkerRef.current = new window.google.maps.Marker({
+        position: start,
+        map: mapRef.current,
+        icon: {
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#7bc67e" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
+          scaledSize: new window.google.maps.Size(24, 36),
+          anchor: new window.google.maps.Point(12, 36),
+        },
+      });
+    }
+  }, [start]);
+
+  // Sync end marker
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (endMarkerRef.current) { endMarkerRef.current.setMap(null); endMarkerRef.current = null; }
+    if (end) {
+      endMarkerRef.current = new window.google.maps.Marker({
+        position: end,
+        map: mapRef.current,
+        icon: {
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#1a6b1a" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
+          scaledSize: new window.google.maps.Size(24, 36),
+          anchor: new window.google.maps.Point(12, 36),
+        },
+      });
+    }
+  }, [end]);
 
   function togglePreference() {
     setPreference((p) => (p === "sun" ? "shade" : "sun"));
@@ -100,21 +163,10 @@ export default function RouteMap() {
     mapRef.current?.panTo(coords);
   }
 
-  const handleMapClick = useCallback(async (e) => {
-    const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-    const address = await reverseGeocode(coords.lat, coords.lng);
-    if (!start) {
-      setStart(coords);
-      setStartAddress(address);
-    } else if (!end) {
-      setEnd(coords);
-      setEndAddress(address);
-    }
-  }, [start, end]);
-
   async function planRoute() {
     setError(null);
     setSunData(null);
+    setRouteSaved(false);
     clearPolylines(polylinesRef);
     try {
       const directionsService = new window.google.maps.DirectionsService();
@@ -126,7 +178,16 @@ export default function RouteMap() {
       });
 
       const token = localStorage.getItem("token");
-      const datetime = new Date().toISOString();
+
+      // Resolve local time at the route's location, not the user's device timezone
+      const midLat = (start.lat + end.lat) / 2;
+      const midLng = (start.lng + end.lng) / 2;
+      const tzRes = await axios.get("https://maps.googleapis.com/maps/api/timezone/json", {
+        params: { location: `${midLat},${midLng}`, timestamp: Math.floor(Date.now() / 1000), key: API_KEY },
+      });
+      const timeZoneId = tzRes.data.timeZoneId || "UTC";
+      // sv-SE gives "YYYY-MM-DD HH:MM:SS" — replace space with T for ISO format
+      const datetime = new Date().toLocaleString("sv-SE", { timeZone: timeZoneId }).replace(" ", "T");
       const allCoords = result.routes.map((r) => r.overview_path.map((p) => [p.lat(), p.lng()]));
 
       const batchRes = await axios.post(
@@ -158,12 +219,28 @@ export default function RouteMap() {
     }
   }
 
-  function toggle3D() {
-    const next = !is3D;
-    setIs3D(next);
-    if (mapRef.current) {
-      mapRef.current.setMapTypeId(next ? "hybrid" : "roadmap");
-      mapRef.current.setTilt(next ? 45 : 0);
+
+
+  async function saveRoute() {
+    if (!saveForm?.name?.trim()) { setSaveError("Name is required."); return; }
+    setSaveError(null);
+    try {
+      const token = localStorage.getItem("token");
+      await axios.post(
+        "http://localhost:8000/routes",
+        {
+          name: saveForm.name.trim(),
+          description: saveForm.description?.trim() || null,
+          start_lat: start.lat, start_lng: start.lng,
+          end_lat: end.lat, end_lng: end.lng,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSavedRouteName(saveForm.name.trim());
+      setSaveForm(null);
+      setRouteSaved(true);
+    } catch {
+      setSaveError("Could not save route. Please try again.");
     }
   }
 
@@ -174,15 +251,19 @@ export default function RouteMap() {
     setEndAddress("");
     setSunData(null);
     setError(null);
+    setSaveForm(null);
+    setSaveError(null);
+    setRouteSaved(false);
+    setSavedRouteName(null);
     clearPolylines(polylinesRef);
   }
 
   if (!isLoaded) return <p>Loading map...</p>;
 
   return (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Sun / Shade toggle */}
-      <div style={{ marginBottom: "10px", display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
         <span>☀️ Sun</span>
         <div
           onClick={togglePreference}
@@ -210,70 +291,107 @@ export default function RouteMap() {
         <span>🌥 Shade</span>
       </div>
 
-      {/* Address inputs */}
-      <div style={{ marginBottom: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
-        <Autocomplete
-          onLoad={(a) => { startAutocompleteRef.current = a; }}
-          onPlaceChanged={() => handlePlaceSelected("start")}
-        >
-          <input
-            type="text"
-            value={startAddress}
-            onChange={(e) => {
-              setStartAddress(e.target.value);
-              setStart(null);
-              clearPolylines(polylinesRef);
-              setSunData(null);
-            }}
-            placeholder="Start address (or click map)"
-            style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
-          />
-        </Autocomplete>
-        <Autocomplete
-          onLoad={(a) => { endAutocompleteRef.current = a; }}
-          onPlaceChanged={() => handlePlaceSelected("end")}
-        >
-          <input
-            type="text"
-            value={endAddress}
-            onChange={(e) => setEndAddress(e.target.value)}
-            placeholder="End address (or click map)"
-            style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
-          />
-        </Autocomplete>
-      </div>
-
-      <GoogleMap
-        zoom={13}
-        center={MAP_CENTER}
-        mapContainerStyle={MAP_STYLE}
-        onClick={handleMapClick}
-        onLoad={(map) => { mapRef.current = map; }}
-      >
-        {start && <Marker position={start} />}
-        {end && <Marker position={end} />}
-      </GoogleMap>
-
-      <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
-        {start && end && <button onClick={planRoute}>Plan Route</button>}
-        {start && <button onClick={reset}>Reset</button>}
-        <button onClick={toggle3D}>{is3D ? "2D" : "3D Buildings"}</button>
-      </div>
-
-      {sunData && (
-        <div style={{ marginTop: "8px", display: "flex", gap: "16px", fontSize: "14px" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <span style={{ width: 16, height: 4, background: "#FFD700", display: "inline-block" }} />
-            Sunny
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <span style={{ width: 16, height: 4, background: "#888888", display: "inline-block" }} />
-            Shaded
-          </span>
+      {/* Address inputs + action buttons (3 columns) */}
+      <div style={{ marginBottom: "8px", display: "flex", gap: "10px", alignItems: "flex-start" }}>
+        <div style={{ flex: "0 0 50%", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <Autocomplete
+            onLoad={(a) => { startAutocompleteRef.current = a; }}
+            onPlaceChanged={() => handlePlaceSelected("start")}
+          >
+            <input
+              type="text"
+              value={startAddress}
+              onChange={(e) => {
+                setStartAddress(e.target.value);
+                setStart(null);
+                clearPolylines(polylinesRef);
+                setSunData(null);
+              }}
+              placeholder="Start address (or click map)"
+              style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
+            />
+          </Autocomplete>
+          <Autocomplete
+            onLoad={(a) => { endAutocompleteRef.current = a; }}
+            onPlaceChanged={() => handlePlaceSelected("end")}
+          >
+            <input
+              type="text"
+              value={endAddress}
+              onChange={(e) => setEndAddress(e.target.value)}
+              placeholder="End address (or click map)"
+              style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
+            />
+          </Autocomplete>
         </div>
+        {/* Column 2: Plan Route + Reset */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {start && end && <button onClick={planRoute}>Plan Route</button>}
+          {start && <button onClick={reset}>Reset</button>}
+        </div>
+        {/* Column 3: Save Route button or save form */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {sunData && !saveForm && !routeSaved && (
+            <button onClick={() => setSaveForm({ name: "", description: "" })}>Save Route</button>
+          )}
+          {saveForm && (
+            <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
+              {/* fields */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <input
+                  type="text"
+                  placeholder="Route name *"
+                  value={saveForm.name}
+                  onChange={(e) => setSaveForm({ ...saveForm, name: e.target.value })}
+                  style={{ padding: "6px 10px", boxSizing: "border-box" }}
+                />
+                <input
+                  type="text"
+                  placeholder="Description (optional)"
+                  value={saveForm.description}
+                  onChange={(e) => setSaveForm({ ...saveForm, description: e.target.value })}
+                  style={{ padding: "6px 10px", boxSizing: "border-box" }}
+                />
+                {saveError && <p style={{ color: "red", margin: 0, fontSize: "13px" }}>{saveError}</p>}
+              </div>
+              {/* col 4: Save + Cancel */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <button onClick={saveRoute}>Save</button>
+                <button onClick={() => { setSaveForm(null); setSaveError(null); }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {savedRouteName && (
+        <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#3d7a3d", fontWeight: 500 }}>
+          ♥ {savedRouteName}
+        </p>
       )}
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {/* Map — fills remaining height */}
+      <div className="map-wrapper">
+        <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+        {sunData && (
+          <div style={{
+            position: "absolute", bottom: "10px", left: "10px",
+            background: "rgba(255,255,255,0.9)", padding: "5px 10px",
+            borderRadius: "6px", display: "flex", gap: "14px", fontSize: "13px",
+          }}>
+            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <span style={{ width: 14, height: 4, background: "#FFD700", display: "inline-block", borderRadius: 2 }} />
+              Sunny
+            </span>
+            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <span style={{ width: 14, height: 4, background: "#888888", display: "inline-block", borderRadius: 2 }} />
+              Shaded
+            </span>
+          </div>
+        )}
+      </div>
+
+      {error && <p style={{ color: "red", margin: "6px 0 0" }}>{error}</p>}
     </div>
   );
 }

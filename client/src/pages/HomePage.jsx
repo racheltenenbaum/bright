@@ -6,7 +6,7 @@ export default function HomePage() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <div>
+    <div className="page-container">
       <h1>bright</h1>
       <p>Find routes in the sunshine — or the shade.</p>
 

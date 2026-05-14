@@ -1,4 +1,7 @@
+import json
 import os
+import sqlite3
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -17,7 +20,52 @@ GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 GOOGLE_ELEVATION_URL = "https://maps.googleapis.com/maps/api/elevation/json"
 
+# L1: in-memory cache (fast, lost on restart)
 _overpass_cache: dict[str, list] = {}
+
+# L2: SQLite cache (persists across restarts)
+_CACHE_DB = os.path.join(os.path.dirname(__file__), "../../overpass_cache.db")
+_SQLITE_LOCK = threading.Lock()
+
+
+def _init_db():
+    with _SQLITE_LOCK:
+        conn = sqlite3.connect(_CACHE_DB)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS building_cache "
+            "(bbox_key TEXT PRIMARY KEY, buildings_json TEXT)"
+        )
+        conn.commit()
+        conn.close()
+
+
+_init_db()
+
+
+def _sqlite_get(key: str) -> list | None:
+    try:
+        conn = sqlite3.connect(_CACHE_DB, check_same_thread=False)
+        row = conn.execute(
+            "SELECT buildings_json FROM building_cache WHERE bbox_key=?", (key,)
+        ).fetchone()
+        conn.close()
+        return json.loads(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def _sqlite_set(key: str, buildings: list) -> None:
+    try:
+        with _SQLITE_LOCK:
+            conn = sqlite3.connect(_CACHE_DB, check_same_thread=False)
+            conn.execute(
+                "INSERT OR REPLACE INTO building_cache VALUES (?, ?)",
+                (key, json.dumps(buildings)),
+            )
+            conn.commit()
+            conn.close()
+    except Exception:
+        pass
 
 
 class SegmentResult(BaseModel):
@@ -43,8 +91,14 @@ def _bbox_key(s: float, w: float, n: float, e: float) -> str:
 
 def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list:
     key = _bbox_key(s, w, n, e)
+
     if key in _overpass_cache:
         return _overpass_cache[key]
+
+    cached = _sqlite_get(key)
+    if cached is not None:
+        _overpass_cache[key] = cached
+        return cached
 
     query = f"[out:json][timeout:25];(way[\"building\"]({s},{w},{n},{e}););out body;>;out skel qt;"
     try:
@@ -57,6 +111,7 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list:
         if resp.status_code == 200:
             buildings = extract_buildings_from_overpass(resp.json())
             _overpass_cache[key] = buildings
+            _sqlite_set(key, buildings)
             return buildings
     except Exception:
         pass
@@ -64,7 +119,7 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list:
     return []
 
 
-def _route_bbox(coords: list[list[float]], padding_m: float = 150) -> tuple[float, float, float, float]:
+def _route_bbox(coords: list[list[float]], padding_m: float = 50) -> tuple[float, float, float, float]:
     lats = [c[0] for c in coords]
     lngs = [c[1] for c in coords]
     delta = padding_m / 111_000
@@ -170,6 +225,7 @@ class ShadowBatchResponse(BaseModel):
     sun_altitude: float
     sun_azimuth: float
     date: str
+    time: str
     routes: list[ShadowBatchRouteResult]
 
 
@@ -203,13 +259,21 @@ def shadow_analyze_batch(
     date_str = dt.strftime("%Y-%m-%d")
     time_str = dt.strftime("%H:%M:%S")
 
-    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1], date_str, time_str)
+    s, w, north, e = _route_bbox(all_coords)
+
+    # Astronomy and Overpass are independent — run them in parallel
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        sun_future = pool.submit(get_sun_position, mid[0], mid[1], date_str, time_str)
+        buildings_future = pool.submit(_fetch_buildings_for_bbox, s, w, north, e)
+        sun_altitude, sun_azimuth = sun_future.result()
+        buildings = buildings_future.result()
 
     if sun_altitude <= 0:
         return ShadowBatchResponse(
             sun_altitude=sun_altitude,
             sun_azimuth=sun_azimuth,
             date=date_str,
+            time=time_str,
             routes=[
                 ShadowBatchRouteResult(
                     segments=[SegmentResult(index=i, shaded=True) for i in range(len(route))]
@@ -217,9 +281,6 @@ def shadow_analyze_batch(
                 for route in body.routes
             ],
         )
-
-    s, w, north, e = _route_bbox(all_coords)
-    buildings = _fetch_buildings_for_bbox(s, w, north, e)
 
     with ThreadPoolExecutor(max_workers=len(body.routes)) as pool:
         route_results = list(pool.map(
@@ -231,5 +292,6 @@ def shadow_analyze_batch(
         sun_altitude=sun_altitude,
         sun_azimuth=sun_azimuth,
         date=date_str,
+        time=time_str,
         routes=route_results,
     )
