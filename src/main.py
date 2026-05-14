@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.routers import users
+from src.routers import users, sun
 
 app = FastAPI(title="bright")
 
@@ -13,6 +13,7 @@ app.add_middleware(
 )
 
 app.include_router(users.router)
+app.include_router(sun.router)
 
 
 @app.get("/")
