@@ -4,6 +4,16 @@ import axios from "axios";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function staticMapUrl(route) {
   const start = `${route.start_lat},${route.start_lng}`;
   const end = `${route.end_lat},${route.end_lng}`;
@@ -118,7 +128,11 @@ export default function MyRoutesPage() {
                   {route.end_address || resolvedAddresses[route.id]?.end || `${route.end_lat.toFixed(4)}, ${route.end_lng.toFixed(4)}`}
                 </p>
                 <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#bbb" }}>
-                  {new Date(route.created_at).toLocaleDateString()}
+                  {(() => {
+                    const km = distanceKm(route.start_lat, route.start_lng, route.end_lat, route.end_lng);
+                    const mins = Math.round(km / 5 * 60);
+                    return `Approx. ${km.toFixed(1)} km · ${mins} min walk`;
+                  })()}
                 </p>
               </div>
               <button

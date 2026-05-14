@@ -67,6 +67,7 @@ export default function RouteMap() {
   const [saveError, setSaveError] = useState(null);
   const [routeSaved, setRouteSaved] = useState(false);
   const [savedRouteName, setSavedRouteName] = useState(null);
+  const [routeStats, setRouteStats] = useState(null);
 
   startRef.current = start;
   endRef.current = end;
@@ -84,9 +85,9 @@ export default function RouteMap() {
     autoCalculateRef.current = true;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-calculate once start, end, and map are all ready
+  // Auto-calculate once start, end and API are ready
   useEffect(() => {
-    if (autoCalculateRef.current && start && end && isLoaded && mapRef.current) {
+    if (autoCalculateRef.current && start && end && isLoaded) {
       autoCalculateRef.current = false;
       planRoute();
     }
@@ -227,6 +228,7 @@ export default function RouteMap() {
       let bestCoords = null;
       let bestSegments = null;
       let bestScore = -1;
+      let bestIndex = 0;
 
       allCoords.forEach((coords, i) => {
         const score = scoreRouteFromShadow(routeResults[i].segments, preference);
@@ -234,10 +236,13 @@ export default function RouteMap() {
           bestScore = score;
           bestCoords = coords;
           bestSegments = routeResults[i].segments;
+          bestIndex = i;
         }
       });
 
       if (bestCoords) {
+        const leg = result.routes[bestIndex].legs[0];
+        setRouteStats({ distance: leg.distance.text, duration: leg.duration.text });
         setSunData({ sun_altitude, sun_azimuth, date });
         drawRoute(mapRef.current, polylinesRef, bestCoords, bestSegments, sun_altitude);
       }
@@ -284,6 +289,7 @@ export default function RouteMap() {
     setSaveError(null);
     setRouteSaved(false);
     setSavedRouteName(null);
+    setRouteStats(null);
     clearPolylines(polylinesRef);
   }
 
@@ -395,10 +401,17 @@ export default function RouteMap() {
         </div>
       </div>
 
-      {savedRouteName && (
-        <p style={{ margin: "0 0 6px", fontSize: "14px", color: "#3d7a3d", fontWeight: 500 }}>
-          ♥ {savedRouteName}
-        </p>
+      {(savedRouteName || routeStats) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 6px" }}>
+          {savedRouteName
+            ? <span style={{ fontSize: "14px", color: "#3d7a3d", fontWeight: 500 }}>♥ {savedRouteName}</span>
+            : <span />}
+          {routeStats && (
+            <span style={{ fontSize: "13px", color: "#555" }}>
+              Approx. {routeStats.distance} · {routeStats.duration} walk
+            </span>
+          )}
+        </div>
       )}
 
       {/* Map — fills remaining height */}
