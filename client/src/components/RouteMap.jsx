@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { GoogleMap, useLoadScript, Marker, Polyline } from "@react-google-maps/api";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { GoogleMap, useLoadScript, Marker } from "@react-google-maps/api";
 import axios from "axios";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
@@ -27,14 +27,63 @@ function getSegmentColor(sunAltitude, exposure) {
   return "#6B8FA3";
 }
 
+function scoreRoute(coords, sunAzimuth) {
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    total += getSunExposure(getSegmentBearing(coords[i], coords[i + 1]), sunAzimuth);
+  }
+  return total / (coords.length - 1);
+}
+
+function clearPolylines(ref) {
+  ref.current.forEach((p) => p.setMap(null));
+  ref.current = [];
+}
+
 export default function RouteMap() {
   const { isLoaded } = useLoadScript({ googleMapsApiKey: API_KEY });
 
+  const mapRef = useRef(null);
+  const polylinesRef = useRef([]);
+
+  const [preference, setPreference] = useState("sun");
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
-  const [route, setRoute] = useState(null);
   const [sunData, setSunData] = useState(null);
   const [error, setError] = useState(null);
+
+  // Draw polylines imperatively whenever route+sunData change
+  useEffect(() => {
+    clearPolylines(polylinesRef);
+  }, []);
+
+  function drawRoute(coords, sun) {
+    clearPolylines(polylinesRef);
+    if (!mapRef.current || !coords || !sun) return;
+
+    coords.slice(0, -1).forEach((point, i) => {
+      const bearing = getSegmentBearing(point, coords[i + 1]);
+      const exposure = getSunExposure(bearing, sun.sun_azimuth);
+      const color = getSegmentColor(sun.sun_altitude, exposure);
+
+      const polyline = new window.google.maps.Polyline({
+        path: [
+          { lat: point[0], lng: point[1] },
+          { lat: coords[i + 1][0], lng: coords[i + 1][1] },
+        ],
+        strokeColor: color,
+        strokeWeight: 4,
+        map: mapRef.current,
+      });
+      polylinesRef.current.push(polyline);
+    });
+  }
+
+  function togglePreference() {
+    setPreference((p) => (p === "sun" ? "shade" : "sun"));
+    clearPolylines(polylinesRef);
+    setSunData(null);
+  }
 
   const handleMapClick = useCallback((e) => {
     const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
@@ -48,24 +97,38 @@ export default function RouteMap() {
   async function planRoute() {
     setError(null);
     setSunData(null);
+    clearPolylines(polylinesRef);
     try {
       const directionsService = new window.google.maps.DirectionsService();
       const result = await directionsService.route({
         origin: start,
         destination: end,
         travelMode: window.google.maps.TravelMode.WALKING,
+        provideRouteAlternatives: true,
       });
-
-      const coords = result.routes[0].overview_path.map((p) => [p.lat(), p.lng()]);
-      setRoute(coords);
 
       const token = localStorage.getItem("token");
       const sunRes = await axios.post(
         "http://localhost:8000/sun/analyze",
-        { coordinates: coords, datetime: new Date().toISOString() },
+        {
+          coordinates: [[start.lat, start.lng], [end.lat, end.lng]],
+          datetime: new Date().toISOString(),
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSunData(sunRes.data);
+      const sun = sunRes.data;
+      setSunData(sun);
+
+      const scored = result.routes.map((r) => {
+        const coords = r.overview_path.map((p) => [p.lat(), p.lng()]);
+        return { coords, score: scoreRoute(coords, sun.sun_azimuth) };
+      });
+
+      const best = preference === "sun"
+        ? scored.reduce((a, b) => (a.score > b.score ? a : b))
+        : scored.reduce((a, b) => (a.score < b.score ? a : b));
+
+      drawRoute(best.coords, sun);
     } catch {
       setError("Could not fetch route. Please try again.");
     }
@@ -74,9 +137,9 @@ export default function RouteMap() {
   function reset() {
     setStart(null);
     setEnd(null);
-    setRoute(null);
     setSunData(null);
     setError(null);
+    clearPolylines(polylinesRef);
   }
 
   const instruction = !start
@@ -89,6 +152,34 @@ export default function RouteMap() {
 
   return (
     <div>
+      <div style={{ marginBottom: "10px", display: "flex", alignItems: "center", gap: "10px" }}>
+        <span>☀️ Sun</span>
+        <div
+          onClick={togglePreference}
+          style={{
+            width: "48px",
+            height: "26px",
+            borderRadius: "13px",
+            background: preference === "sun" ? "#FFD700" : "#6B8FA3",
+            position: "relative",
+            cursor: "pointer",
+            transition: "background 0.2s",
+          }}
+        >
+          <div style={{
+            width: "20px",
+            height: "20px",
+            borderRadius: "50%",
+            background: "white",
+            position: "absolute",
+            top: "3px",
+            left: preference === "sun" ? "3px" : "25px",
+            transition: "left 0.2s",
+          }} />
+        </div>
+        <span>🌥 Shade</span>
+      </div>
+
       <p>{instruction}</p>
 
       <GoogleMap
@@ -96,36 +187,10 @@ export default function RouteMap() {
         center={MAP_CENTER}
         mapContainerStyle={MAP_STYLE}
         onClick={handleMapClick}
+        onLoad={(map) => { mapRef.current = map; }}
       >
         {start && <Marker position={start} />}
         {end && <Marker position={end} />}
-
-        {/* Blue fallback while sun data is loading */}
-        {route && !sunData && (
-          <Polyline
-            path={route.map(([lat, lng]) => ({ lat, lng }))}
-            options={{ strokeColor: "blue", strokeWeight: 4 }}
-          />
-        )}
-
-        {/* Colored segments once sun data is available */}
-        {route && sunData &&
-          route.slice(0, -1).map((point, i) => {
-            const bearing = getSegmentBearing(point, route[i + 1]);
-            const exposure = getSunExposure(bearing, sunData.sun_azimuth);
-            const color = getSegmentColor(sunData.sun_altitude, exposure);
-            return (
-              <Polyline
-                key={i}
-                path={[
-                  { lat: point[0], lng: point[1] },
-                  { lat: route[i + 1][0], lng: route[i + 1][1] },
-                ]}
-                options={{ strokeColor: color, strokeWeight: 4 }}
-              />
-            );
-          })
-        }
       </GoogleMap>
 
       <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
