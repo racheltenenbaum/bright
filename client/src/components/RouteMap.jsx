@@ -1,19 +1,10 @@
-import { useState } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, useMapEvents } from "react-leaflet";
-import L from "leaflet";
+import { useState, useCallback } from "react";
+import { GoogleMap, useLoadScript, Marker, Polyline } from "@react-google-maps/api";
 import axios from "axios";
-import "leaflet/dist/leaflet.css";
 
-// Vite doesn't bundle Leaflet's marker images automatically — this fixes broken marker icons
-import markerIconUrl from "leaflet/dist/images/marker-icon.png";
-import markerShadowUrl from "leaflet/dist/images/marker-shadow.png";
-
-const defaultIcon = L.icon({
-  iconUrl: markerIconUrl,
-  shadowUrl: markerShadowUrl,
-  iconAnchor: [12, 41],
-});
-L.Marker.prototype.options.icon = defaultIcon;
+const MAP_CENTER = { lat: 51.505, lng: -0.09 };
+const MAP_STYLE = { height: "500px", width: "100%" };
+const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 function getSegmentBearing(a, b) {
   const lat1 = (a[0] * Math.PI) / 180;
@@ -36,38 +27,36 @@ function getSegmentColor(sunAltitude, exposure) {
   return "#6B8FA3";
 }
 
-function ClickHandler({ onMapClick }) {
-  useMapEvents({
-    click(e) {
-      onMapClick(e.latlng);
-    },
-  });
-  return null;
-}
-
 export default function RouteMap() {
+  const { isLoaded } = useLoadScript({ googleMapsApiKey: API_KEY });
+
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
   const [route, setRoute] = useState(null);
   const [sunData, setSunData] = useState(null);
   const [error, setError] = useState(null);
 
-  function handleMapClick(latlng) {
+  const handleMapClick = useCallback((e) => {
+    const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
     if (!start) {
-      setStart(latlng);
+      setStart(coords);
     } else if (!end) {
-      setEnd(latlng);
+      setEnd(coords);
     }
-  }
+  }, [start, end]);
 
   async function planRoute() {
     setError(null);
     setSunData(null);
     try {
-      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-      const res = await fetch(osrmUrl);
-      const data = await res.json();
-      const coords = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      const directionsService = new window.google.maps.DirectionsService();
+      const result = await directionsService.route({
+        origin: start,
+        destination: end,
+        travelMode: window.google.maps.TravelMode.WALKING,
+      });
+
+      const coords = result.routes[0].overview_path.map((p) => [p.lat(), p.lng()]);
       setRoute(coords);
 
       const token = localStorage.getItem("token");
@@ -96,21 +85,28 @@ export default function RouteMap() {
     ? "Now click to set your end point"
     : "Ready — click Plan Route";
 
+  if (!isLoaded) return <p>Loading map...</p>;
+
   return (
     <div>
       <p>{instruction}</p>
 
-      <MapContainer center={[51.505, -0.09]} zoom={13} style={{ height: "500px", width: "100%" }}>
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        />
-        <ClickHandler onMapClick={handleMapClick} />
+      <GoogleMap
+        zoom={13}
+        center={MAP_CENTER}
+        mapContainerStyle={MAP_STYLE}
+        onClick={handleMapClick}
+      >
         {start && <Marker position={start} />}
         {end && <Marker position={end} />}
 
         {/* Blue fallback while sun data is loading */}
-        {route && !sunData && <Polyline positions={route} color="blue" weight={4} />}
+        {route && !sunData && (
+          <Polyline
+            path={route.map(([lat, lng]) => ({ lat, lng }))}
+            options={{ strokeColor: "blue", strokeWeight: 4 }}
+          />
+        )}
 
         {/* Colored segments once sun data is available */}
         {route && sunData &&
@@ -119,11 +115,18 @@ export default function RouteMap() {
             const exposure = getSunExposure(bearing, sunData.sun_azimuth);
             const color = getSegmentColor(sunData.sun_altitude, exposure);
             return (
-              <Polyline key={i} positions={[point, route[i + 1]]} color={color} weight={4} />
+              <Polyline
+                key={i}
+                path={[
+                  { lat: point[0], lng: point[1] },
+                  { lat: route[i + 1][0], lng: route[i + 1][1] },
+                ]}
+                options={{ strokeColor: color, strokeWeight: 4 }}
+              />
             );
           })
         }
-      </MapContainer>
+      </GoogleMap>
 
       <div style={{ marginTop: "10px", display: "flex", gap: "10px" }}>
         {start && end && <button onClick={planRoute}>Plan Route</button>}

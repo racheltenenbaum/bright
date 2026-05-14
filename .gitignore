@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 venv/
 .env
+client/.env
 dist/
 build/
 .pytest_cache/
