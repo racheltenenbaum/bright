@@ -26,21 +26,30 @@ export default function LoginPage() {
   }
 
   return (
-    <div>
-      <h2>Log in</h2>
-      <form onSubmit={handleSubmit}>
-        <div>
-          <label>Email</label>
-          <input name="email" type="email" value={form.email} onChange={handleChange} required />
+    <div className="page-container" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
+      <div className="auth-card">
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
+          <div style={{ fontSize: "40px", marginBottom: "6px" }}>☀️</div>
+          <h2 style={{ margin: 0, fontSize: "1.5em" }}>Welcome back</h2>
         </div>
-        <div>
-          <label>Password</label>
-          <input name="password" type="password" value={form.password} onChange={handleChange} required />
-        </div>
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit">Log in</button>
-      </form>
-      <p>Don't have an account? <Link to="/register">Register</Link></p>
+        <form onSubmit={handleSubmit}>
+          <div className="field">
+            <label>Email</label>
+            <input name="email" type="email" value={form.email} onChange={handleChange} required />
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input name="password" type="password" value={form.password} onChange={handleChange} required />
+          </div>
+          {error && <p style={{ color: "#C0392B", margin: "0 0 12px", fontSize: "0.85em" }}>{error}</p>}
+          <button type="submit" style={{ width: "100%", padding: "0.65em", fontSize: "0.95em", marginTop: "6px" }}>
+            Log in
+          </button>
+        </form>
+        <p style={{ margin: "18px 0 0", textAlign: "center", fontSize: "0.88em", color: "#7B5800" }}>
+          Don't have an account? <Link to="/register">Register</Link>
+        </p>
+      </div>
     </div>
   );
 }

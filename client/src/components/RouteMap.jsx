@@ -299,17 +299,18 @@ export default function RouteMap() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Sun / Shade toggle */}
       <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-        <span>☀️ Sun</span>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? "#3D2C00" : "#A0A0A0" }}>☀️ Sun</span>
         <div
           onClick={togglePreference}
           style={{
             width: "48px",
             height: "26px",
             borderRadius: "13px",
-            background: preference === "sun" ? "#FFD700" : "#6B8FA3",
+            background: preference === "sun" ? "#FFD600" : "#A8C4CC",
             position: "relative",
             cursor: "pointer",
-            transition: "background 0.2s",
+            transition: "background 0.25s",
+            boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
           }}
         >
           <div style={{
@@ -320,10 +321,11 @@ export default function RouteMap() {
             position: "absolute",
             top: "3px",
             left: preference === "sun" ? "3px" : "25px",
-            transition: "left 0.2s",
+            transition: "left 0.25s",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
           }} />
         </div>
-        <span>🌥 Shade</span>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? "#3D2C00" : "#A0A0A0" }}>🌥 Shade</span>
       </div>
 
       {/* Address inputs + action buttons (3 columns) */}
@@ -345,7 +347,6 @@ export default function RouteMap() {
                 setRouteSaved(false);
               }}
               placeholder="Start address (or click map)"
-              style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
             />
           </Autocomplete>
           <Autocomplete
@@ -357,7 +358,6 @@ export default function RouteMap() {
               value={endAddress}
               onChange={(e) => { setEndAddress(e.target.value); setSavedRouteName(null); setRouteSaved(false); }}
               placeholder="End address (or click map)"
-              style={{ width: "100%", padding: "6px 10px", boxSizing: "border-box" }}
             />
           </Autocomplete>
         </div>
@@ -380,16 +380,14 @@ export default function RouteMap() {
                   placeholder="Route name *"
                   value={saveForm.name}
                   onChange={(e) => setSaveForm({ ...saveForm, name: e.target.value })}
-                  style={{ padding: "6px 10px", boxSizing: "border-box" }}
                 />
                 <input
                   type="text"
                   placeholder="Description (optional)"
                   value={saveForm.description}
                   onChange={(e) => setSaveForm({ ...saveForm, description: e.target.value })}
-                  style={{ padding: "6px 10px", boxSizing: "border-box" }}
                 />
-                {saveError && <p style={{ color: "red", margin: 0, fontSize: "13px" }}>{saveError}</p>}
+                {saveError && <p style={{ color: "#FF5A3C", margin: 0, fontSize: "0.82em", fontWeight: 700 }}>{saveError}</p>}
               </div>
               {/* col 4: Save + Cancel */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -404,10 +402,10 @@ export default function RouteMap() {
       {(savedRouteName || routeStats) && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 6px" }}>
           {savedRouteName
-            ? <span style={{ fontSize: "14px", color: "#3d7a3d", fontWeight: 500 }}>♥ {savedRouteName}</span>
+            ? <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}>♥ {savedRouteName}</span>
             : <span />}
           {routeStats && (
-            <span style={{ fontSize: "13px", color: "#555" }}>
+            <span style={{ fontSize: "12px", color: "#A87500", fontWeight: 500 }}>
               Approx. {routeStats.distance} · {routeStats.duration} walk
             </span>
           )}
@@ -420,8 +418,10 @@ export default function RouteMap() {
         {sunData && (
           <div style={{
             position: "absolute", bottom: "10px", left: "10px",
-            background: "rgba(255,255,255,0.9)", padding: "5px 10px",
-            borderRadius: "6px", display: "flex", gap: "14px", fontSize: "13px",
+            background: "rgba(255, 253, 240, 0.95)", padding: "5px 12px",
+            borderRadius: "20px", display: "flex", gap: "14px", fontSize: "12px",
+            border: "1.5px solid #FFE082", boxShadow: "0 2px 8px rgba(255,193,7,0.15)",
+            fontWeight: 500, color: "#3D2C00",
           }}>
             <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
               <span style={{ width: 14, height: 4, background: "#FFD700", display: "inline-block", borderRadius: 2 }} />
@@ -435,7 +435,7 @@ export default function RouteMap() {
         )}
       </div>
 
-      {error && <p style={{ color: "red", margin: "6px 0 0" }}>{error}</p>}
+      {error && <p style={{ color: "#C0392B", margin: "6px 0 0", fontSize: "0.85em" }}>{error}</p>}
     </div>
   );
 }

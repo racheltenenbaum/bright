@@ -90,10 +90,12 @@ export default function MyRoutesPage() {
 
   return (
     <div className="page-container" style={{ maxWidth: "600px" }}>
-      <h2>My Routes</h2>
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      {routes.length === 0 && !error && <p style={{ color: "#666" }}>No saved routes yet.</p>}
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <h2>My Routes ☀️</h2>
+      {error && <p style={{ color: "#C0392B", fontSize: "0.88em" }}>{error}</p>}
+      {routes.length === 0 && !error && (
+        <p style={{ color: "#A87500", fontSize: "0.92em" }}>No saved routes yet. Plan one!</p>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         {routes.map((route) => (
           <div
             key={route.id}
@@ -103,12 +105,23 @@ export default function MyRoutesPage() {
               end_address: route.end_address || resolvedAddresses[route.id]?.end || "",
             } } })}
             style={{
-              border: "1px solid #ddd",
-              borderRadius: "8px",
+              border: "2.5px solid #ffffff",
+              borderRadius: "16px",
               overflow: "hidden",
               display: "flex",
               alignItems: "stretch",
               cursor: "pointer",
+              background: "#FFFDF5",
+              boxShadow: "4px 4px 0 #E8C000",
+              transition: "transform 0.1s, box-shadow 0.1s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translate(-2px, -2px)";
+              e.currentTarget.style.boxShadow = "6px 6px 0 #E8C000";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translate(0, 0)";
+              e.currentTarget.style.boxShadow = "4px 4px 0 #E8C000";
             }}
           >
             <div style={{ width: "100px", flexShrink: 0, alignSelf: "stretch" }}>
@@ -118,16 +131,18 @@ export default function MyRoutesPage() {
                 style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               />
             </div>
-            <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flex: 1 }}>
+            <div style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flex: 1 }}>
               <div>
-                <strong>{route.name}</strong>
-                {route.description && <p style={{ margin: "4px 0 0", color: "#555", fontSize: "14px" }}>{route.description}</p>}
-                <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#999" }}>
+                <strong style={{ color: "#3D2C00", fontSize: "0.97em" }}>{route.name}</strong>
+                {route.description && (
+                  <p style={{ margin: "3px 0 0", color: "#7B5800", fontSize: "0.82em" }}>{route.description}</p>
+                )}
+                <p style={{ margin: "6px 0 0", fontSize: "0.78em", color: "#A87500" }}>
                   {route.start_address || resolvedAddresses[route.id]?.start || `${route.start_lat.toFixed(4)}, ${route.start_lng.toFixed(4)}`}
                   {" → "}
                   {route.end_address || resolvedAddresses[route.id]?.end || `${route.end_lat.toFixed(4)}, ${route.end_lng.toFixed(4)}`}
                 </p>
-                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#bbb" }}>
+                <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "#C8A84B", fontWeight: 500 }}>
                   {(() => {
                     const km = distanceKm(route.start_lat, route.start_lng, route.end_lat, route.end_lng);
                     const mins = Math.round(km / 5 * 60);
@@ -137,7 +152,14 @@ export default function MyRoutesPage() {
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: route.id, name: route.name }); }}
-                style={{ color: "#aaa", background: "none", border: "none", cursor: "pointer", fontSize: "18px", lineHeight: 1 }}
+                style={{
+                  color: "#C8A84B", background: "none", border: "none",
+                  cursor: "pointer", fontSize: "20px", lineHeight: 1,
+                  padding: "2px 4px", boxShadow: "none",
+                  transition: "color 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "#C0392B"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "#C8A84B"; }}
                 title="Delete"
               >
                 ×
@@ -150,33 +172,30 @@ export default function MyRoutesPage() {
       {pendingDelete && (
         <div style={{
           position: "fixed", inset: 0,
-          background: "rgba(0,0,0,0.35)",
+          background: "rgba(61, 44, 0, 0.25)",
+          backdropFilter: "blur(2px)",
           display: "flex", alignItems: "center", justifyContent: "center",
           zIndex: 1000,
         }}>
           <div style={{
-            background: "#fff",
-            borderRadius: "12px",
-            padding: "28px 32px",
-            maxWidth: "360px",
+            background: "#FFFDF5",
+            border: "2.5px solid #ffffff",
+            borderRadius: "24px",
+            padding: "32px",
+            maxWidth: "340px",
             width: "90%",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+            boxShadow: "6px 6px 0 #E8C000",
             display: "flex",
             flexDirection: "column",
             gap: "12px",
           }}>
-            <h3 style={{ margin: 0 }}>Delete route?</h3>
-            <p style={{ margin: 0, color: "#555" }}>
+            <h3 style={{ margin: 0, fontSize: "1.1em" }}>Delete route?</h3>
+            <p style={{ margin: 0, color: "#7B5800", fontSize: "0.9em" }}>
               <strong>{pendingDelete.name}</strong> will be permanently deleted.
             </p>
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
-              <button onClick={() => setPendingDelete(null)}>Cancel</button>
-              <button
-                onClick={confirmDelete}
-                style={{ background: "#c0392b", color: "#fff", border: "none" }}
-              >
-                Delete
-              </button>
+              <button className="btn-outline" onClick={() => setPendingDelete(null)}>Cancel</button>
+              <button className="btn-danger" onClick={confirmDelete}>Delete</button>
             </div>
           </div>
         </div>
