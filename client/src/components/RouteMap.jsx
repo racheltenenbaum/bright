@@ -68,6 +68,7 @@ export default function RouteMap() {
   const [routeSaved, setRouteSaved] = useState(false);
   const [savedRouteName, setSavedRouteName] = useState(null);
   const [routeStats, setRouteStats] = useState(null);
+  const [planning, setPlanning] = useState(false);
 
   startRef.current = start;
   endRef.current = end;
@@ -195,6 +196,7 @@ export default function RouteMap() {
   async function planRoute() {
     setError(null);
     setSunData(null);
+    setPlanning(true);
     clearPolylines(polylinesRef);
     try {
       const directionsService = new window.google.maps.DirectionsService();
@@ -248,6 +250,8 @@ export default function RouteMap() {
       }
     } catch {
       setError("Could not fetch route. Please try again.");
+    } finally {
+      setPlanning(false);
     }
   }
 
@@ -363,17 +367,19 @@ export default function RouteMap() {
         </div>
         {/* Column 2: Plan Route + Reset */}
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-          {start && end && <button onClick={planRoute}>Plan Route</button>}
-          {start && <button onClick={reset}>Reset</button>}
+          {planning
+            ? <div className="planning-dots"><span className="planning-label">planning</span><span>•</span><span>•</span><span>•</span></div>
+            : start && end && <button onClick={planRoute}>Plan Route</button>
+          }
+          {start && !planning && <button onClick={reset}>Reset</button>}
         </div>
-        {/* Column 3: Save Route button or save form */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {/* Save Route button / form — right-aligned, same row as Reset */}
+        <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
           {sunData && !saveForm && !routeSaved && (
             <button onClick={() => setSaveForm({ name: "", description: "" })}>Save Route</button>
           )}
           {saveForm && (
             <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
-              {/* fields */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <input
                   type="text"
@@ -389,7 +395,6 @@ export default function RouteMap() {
                 />
                 {saveError && <p style={{ color: "#FF5A3C", margin: 0, fontSize: "0.82em", fontWeight: 700 }}>{saveError}</p>}
               </div>
-              {/* col 4: Save + Cancel */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <button onClick={saveRoute}>Save</button>
                 <button onClick={() => { setSaveForm(null); setSaveError(null); }}>Cancel</button>
