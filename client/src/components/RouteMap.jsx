@@ -207,6 +207,12 @@ export default function RouteMap() {
         provideRouteAlternatives: true,
       });
 
+      const shortestDistance = Math.min(...result.routes.map((r) => r.legs[0].distance.value));
+      if (shortestDistance > 5000) {
+        setError("Route is over 5 km — please choose a shorter journey.");
+        return;
+      }
+
       const token = localStorage.getItem("token");
 
       // Resolve local time at the route's location, not the user's device timezone
@@ -417,6 +423,17 @@ export default function RouteMap() {
         </div>
       )}
 
+      {error && (
+        <div style={{
+          marginBottom: "8px", padding: "10px 14px", borderRadius: "12px",
+          background: "#FFF0ED", border: "2px solid #FF5A3C",
+          boxShadow: "3px 3px 0 #FF5A3C", display: "flex", alignItems: "center", gap: "8px",
+        }}>
+          <span style={{ fontSize: "1.1em" }}>⚠️</span>
+          <span style={{ color: "#C0392B", fontWeight: 700, fontSize: "0.88em" }}>{error}</span>
+        </div>
+      )}
+
       {/* Map — fills remaining height */}
       <div className="map-wrapper">
         <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
@@ -440,7 +457,6 @@ export default function RouteMap() {
         )}
       </div>
 
-      {error && <p style={{ color: "#C0392B", margin: "6px 0 0", fontSize: "0.85em" }}>{error}</p>}
     </div>
   );
 }
