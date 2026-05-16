@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSun } from "@fortawesome/free-solid-svg-icons";
@@ -19,7 +19,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     try {
-      const res = await axios.post("http://localhost:8000/users/login", form);
+      const res = await api.post("/users/login", form);
       login(res.data.user, res.data.access_token);
       navigate("/");
     } catch (err) {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import api from "../api";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -28,7 +28,7 @@ export default function RegisterForm() {
     }
     setError(null);
     try {
-      await axios.post("http://localhost:8000/users/register", form);
+      await api.post("/users/register", form);
       setSuccess(true);
     } catch (err) {
       setError(err.response?.data?.detail || "Something went wrong");

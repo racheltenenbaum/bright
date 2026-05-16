@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
-import axios from "axios";
+import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSun,
@@ -302,8 +302,8 @@ export default function RouteMap() {
   async function fetchWeather(lat, lng) {
     const token = localStorage.getItem("token");
     try {
-      const r = await axios.post(
-        "http://localhost:8000/weather/current",
+      const r = await api.post(
+        "/weather/current",
         { lat, lng },
         { headers: { Authorization: `Bearer ${token}` } },
       );
@@ -339,7 +339,7 @@ export default function RouteMap() {
       // Resolve local time at the route's location, not the user's device timezone
       const midLat = (start.lat + end.lat) / 2;
       const midLng = (start.lng + end.lng) / 2;
-      const tzRes = await axios.get(
+      const tzRes = await api.get(
         "https://maps.googleapis.com/maps/api/timezone/json",
         {
           params: {
@@ -358,8 +358,8 @@ export default function RouteMap() {
         r.overview_path.map((p) => [p.lat(), p.lng()]),
       );
 
-      const batchRes = await axios.post(
-        "http://localhost:8000/sun/shadow-analyze-batch",
+      const batchRes = await api.post(
+        "/sun/shadow-analyze-batch",
         { routes: allCoords, datetime },
         { headers: { Authorization: `Bearer ${token}` } },
       );
@@ -429,8 +429,8 @@ export default function RouteMap() {
     setSaveError(null);
     try {
       const token = localStorage.getItem("token");
-      await axios.post(
-        "http://localhost:8000/routes",
+      await api.post(
+        "/routes",
         {
           name: saveForm.name.trim(),
           description: saveForm.description?.trim() || null,

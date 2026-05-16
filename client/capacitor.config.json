@@ -1,0 +1,8 @@
+{
+  "appId": "com.racheltenenbaum.bright",
+  "appName": "bright",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

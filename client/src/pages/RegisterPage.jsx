@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSun } from "@fortawesome/free-solid-svg-icons";
 
@@ -31,7 +31,7 @@ export default function RegisterPage() {
     }
     setError(null);
     try {
-      await axios.post("http://localhost:8000/users/register", form);
+      await api.post("/users/register", form);
       navigate("/");
     } catch (err) {
       setError(err.response?.data?.detail || "Something went wrong");

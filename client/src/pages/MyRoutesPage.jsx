@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSun, faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
 
@@ -67,7 +67,7 @@ export default function MyRoutesPage() {
   async function fetchRoutes() {
     try {
       const token = localStorage.getItem("token");
-      const res = await axios.get("http://localhost:8000/routes", {
+      const res = await api.get("/routes", {
         headers: { Authorization: `Bearer ${token}` },
       });
       setRoutes(res.data);
@@ -79,7 +79,7 @@ export default function MyRoutesPage() {
   async function confirmDelete() {
     try {
       const token = localStorage.getItem("token");
-      await axios.delete(`http://localhost:8000/routes/${pendingDelete.id}`, {
+      await api.delete(`/routes/${pendingDelete.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setRoutes((prev) => prev.filter((r) => r.id !== pendingDelete.id));
