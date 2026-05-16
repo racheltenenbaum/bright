@@ -534,18 +534,17 @@ export default function RouteMap() {
         </span>
       </div>
 
-      {/* Address inputs + action buttons (3 columns) */}
+      {/* Address inputs + action buttons */}
       <div
         style={{
           marginBottom: "8px",
           display: "flex",
-          gap: "10px",
-          alignItems: "flex-start",
+          flexDirection: "column",
+          gap: "8px",
         }}
       >
         <div
           style={{
-            flex: "0 0 50%",
             display: "flex",
             flexDirection: "column",
             gap: "6px",
@@ -613,8 +612,8 @@ export default function RouteMap() {
             />
           </Autocomplete>
         </div>
-        {/* Column 2: Plan Route + Reset */}
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        {/* Plan Route + Reset + Save row */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           {planning ? (
             <div className="planning-dots">
               <span className="planning-label">planning</span>
@@ -626,74 +625,39 @@ export default function RouteMap() {
             start && end && <button onClick={planRoute} style={{ fontSize: "1em", padding: "0.55em 1.6em", fontWeight: 800 }}>Plan Route</button>
           )}
           {start && !planning && <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>}
-        </div>
-        {/* Save Route button / form + routeStats — right-aligned */}
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: "6px",
-            alignItems: "flex-end",
-          }}
-        >
           {sunData && !saveForm && !routeSaved && (
-            <button onClick={() => setSaveForm({ name: "", description: "" })}>
+            <button onClick={() => setSaveForm({ name: "", description: "" })} style={{ marginLeft: "auto" }}>
               Save Route
             </button>
           )}
-          {saveForm && (
-            <div
-              style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}
-            >
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-              >
-                <input
-                  type="text"
-                  placeholder="Route name *"
-                  value={saveForm.name}
-                  onChange={(e) =>
-                    setSaveForm({ ...saveForm, name: e.target.value })
-                  }
-                />
-                <input
-                  type="text"
-                  placeholder="Description (optional)"
-                  value={saveForm.description}
-                  onChange={(e) =>
-                    setSaveForm({ ...saveForm, description: e.target.value })
-                  }
-                />
-                {saveError && (
-                  <p
-                    style={{
-                      color: "#FF5A3C",
-                      margin: 0,
-                      fontSize: "0.82em",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {saveError}
-                  </p>
-                )}
-              </div>
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-              >
-                <button onClick={saveRoute}>Save</button>
-                <button
-                  onClick={() => {
-                    setSaveForm(null);
-                    setSaveError(null);
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
         </div>
+        {saveForm && (
+          <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
+              <input
+                type="text"
+                placeholder="Route name *"
+                value={saveForm.name}
+                onChange={(e) => setSaveForm({ ...saveForm, name: e.target.value })}
+              />
+              <input
+                type="text"
+                placeholder="Description (optional)"
+                value={saveForm.description}
+                onChange={(e) => setSaveForm({ ...saveForm, description: e.target.value })}
+              />
+              {saveError && (
+                <p style={{ color: "#FF5A3C", margin: 0, fontSize: "0.82em", fontWeight: 700 }}>
+                  {saveError}
+                </p>
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <button onClick={saveRoute}>Save</button>
+              <button onClick={() => { setSaveForm(null); setSaveError(null); }}>Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {savedRouteName && (

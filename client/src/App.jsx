@@ -22,7 +22,7 @@ function Layout() {
   return (
     <>
       {isAuthenticated && <Navbar />}
-      <div style={{ width: "70%", margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ width: "100%", maxWidth: "700px", margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
