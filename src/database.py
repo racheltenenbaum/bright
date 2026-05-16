@@ -5,9 +5,12 @@ import os
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-engine = create_engine(DATABASE_URL)
+# Railway provides mysql:// but SQLAlchemy needs mysql+pymysql:// to use PyMySQL
+_db_url = DATABASE_URL.replace("mysql://", "mysql+pymysql://", 1)
+
+engine = create_engine(_db_url)
 
 # Each request gets its own DB session, which is closed when the request ends.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
