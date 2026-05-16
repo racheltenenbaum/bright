@@ -52,6 +52,7 @@ export default function RouteMap() {
   const endMarkerRef = useRef(null);
   const currentLocationMarkerRef = useRef(null);
   const watchIdRef = useRef(null);
+  const weatherLocationRef = useRef(null);
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
   const autoCalculateRef = useRef(false);
@@ -75,6 +76,7 @@ export default function RouteMap() {
   const [routeStats, setRouteStats] = useState(null);
   const [planning, setPlanning] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [weather, setWeather] = useState(null);
 
   startRef.current = start;
   endRef.current = end;
@@ -107,7 +109,8 @@ export default function RouteMap() {
 
     mapRef.current = new window.google.maps.Map(containerRef.current, {
       center: MAP_CENTER,
-      zoom: 13,
+      zoom: 15,
+      fullscreenControl: false,
     });
   }, [isLoaded]);
 
@@ -117,8 +120,8 @@ export default function RouteMap() {
 
     const blueDotSvg = encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">' +
-      '<circle cx="11" cy="11" r="11" fill="rgba(66,133,244,0.18)"/>' +
-      '<circle cx="11" cy="11" r="6" fill="#4285F4" stroke="white" stroke-width="2"/>' +
+      '<circle cx="11" cy="11" r="11" fill="rgba(255,214,0,0.25)"/>' +
+      '<circle cx="11" cy="11" r="6" fill="#FFD600" stroke="white" stroke-width="2"/>' +
       '</svg>'
     );
 
@@ -131,6 +134,7 @@ export default function RouteMap() {
         if (!initialPanDone && !autoCalculateRef.current) {
           mapRef.current.panTo({ lat, lng });
           initialPanDone = true;
+          fetchWeather(lat, lng);
         }
         if (currentLocationMarkerRef.current) {
           currentLocationMarkerRef.current.setPosition({ lat, lng });
@@ -191,7 +195,7 @@ export default function RouteMap() {
         position: start,
         map: mapRef.current,
         icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#7bc67e" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#FFD600" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
           scaledSize: new window.google.maps.Size(24, 36),
           anchor: new window.google.maps.Point(12, 36),
         },
@@ -208,7 +212,7 @@ export default function RouteMap() {
         position: end,
         map: mapRef.current,
         icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#1a6b1a" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#f5ae0a" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
           scaledSize: new window.google.maps.Size(24, 36),
           anchor: new window.google.maps.Point(12, 36),
         },
@@ -247,6 +251,25 @@ export default function RouteMap() {
       setRouteSaved(false);
     }
     mapRef.current?.panTo(coords);
+  }
+
+  function roughDistanceKm(a, b) {
+    const dLat = (a.lat - b.lat) * 111;
+    const dLng = (a.lng - b.lng) * 111 * Math.cos((a.lat * Math.PI) / 180);
+    return Math.sqrt(dLat * dLat + dLng * dLng);
+  }
+
+  async function fetchWeather(lat, lng) {
+    const token = localStorage.getItem("token");
+    try {
+      const r = await axios.post(
+        "http://localhost:8000/weather/current",
+        { lat, lng },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setWeather(r.data);
+      weatherLocationRef.current = { lat, lng };
+    } catch {}
   }
 
   async function planRoute() {
@@ -309,6 +332,11 @@ export default function RouteMap() {
         setRouteStats({ distance: leg.distance.text, duration: leg.duration.text });
         setSunData({ sun_altitude, sun_azimuth, date });
         drawRoute(mapRef.current, polylinesRef, bestCoords, bestSegments, sun_altitude);
+
+        const midpoint = { lat: midLat, lng: midLng };
+        if (!weatherLocationRef.current || roughDistanceKm(midpoint, weatherLocationRef.current) > 20) {
+          fetchWeather(midLat, midLng);
+        }
       }
     } catch (err) {
       console.error("planRoute error:", err);
@@ -358,6 +386,7 @@ export default function RouteMap() {
     setSavedRouteName(null);
     setRouteStats(null);
     clearPolylines(polylinesRef);
+    if (weatherLocationRef.current) fetchWeather(weatherLocationRef.current.lat, weatherLocationRef.current.lng);
   }
 
   if (!isLoaded) return <p>Loading map...</p>;
@@ -517,19 +546,39 @@ export default function RouteMap() {
         {sunData && (
           <div style={{
             position: "absolute", bottom: "10px", left: "10px",
-            background: "rgba(255, 253, 240, 0.95)", padding: "5px 12px",
-            borderRadius: "20px", display: "flex", gap: "14px", fontSize: "12px",
-            border: "1.5px solid #FFE082", boxShadow: "0 2px 8px rgba(255,193,7,0.15)",
-            fontWeight: 500, color: "#3D2C00",
+            display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-start",
           }}>
-            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-              <span style={{ width: 14, height: 4, background: "#FFD700", display: "inline-block", borderRadius: 2 }} />
-              Sunny
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-              <span style={{ width: 14, height: 4, background: "#888888", display: "inline-block", borderRadius: 2 }} />
-              Shaded
-            </span>
+            <div style={{
+              background: "rgba(255, 253, 240, 0.95)", padding: "5px 12px",
+              borderRadius: "20px", display: "flex", gap: "14px", fontSize: "12px",
+              border: "1.5px solid #FFE082", boxShadow: "0 2px 8px rgba(255,193,7,0.15)",
+              fontWeight: 500, color: "#3D2C00",
+            }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ width: 14, height: 4, background: "#FFD700", display: "inline-block", borderRadius: 2 }} />
+                Sunny
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ width: 14, height: 4, background: "#888888", display: "inline-block", borderRadius: 2 }} />
+                Shaded
+              </span>
+            </div>
+          </div>
+        )}
+        {weather && (
+          <div style={{
+            position: "absolute", top: "10px", right: "10px",
+            background: "rgba(255, 253, 240, 0.95)", padding: "6px 12px",
+            borderRadius: "20px", display: "flex", alignItems: "center", gap: "8px",
+            fontSize: "12px", fontWeight: 500, color: "#3D2C00",
+            border: "1.5px solid #FFE082", boxShadow: "0 2px 8px rgba(255,193,7,0.15)",
+          }}>
+            {weather.icon_url && <img src={weather.icon_url} alt={weather.condition || ""} style={{ width: 20, height: 20 }} />}
+            {weather.temperature != null && <span>{Math.round(weather.temperature)}°C</span>}
+            {weather.uv_index != null && <span style={{ color: "#A87500" }}>UV {weather.uv_index}</span>}
+            {weather.uv_index >= 6 && preference === "sun" && (
+              <span style={{ color: "#C0392B", fontWeight: 700 }}>sunscreen!</span>
+            )}
           </div>
         )}
         </div>
