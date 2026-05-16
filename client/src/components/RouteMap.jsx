@@ -613,8 +613,8 @@ export default function RouteMap() {
             />
           </Autocomplete>
         </div>
-        {/* Column 2: Plan Route + Go + Reset */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {/* Column 2: Plan Route + Reset */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           {planning ? (
             <div className="planning-dots">
               <span className="planning-label">planning</span>
@@ -623,9 +623,9 @@ export default function RouteMap() {
               <span>•</span>
             </div>
           ) : (
-            start && end && <button onClick={planRoute}>Plan Route</button>
+            start && end && <button onClick={planRoute} style={{ fontSize: "1em", padding: "0.55em 1.6em", fontWeight: 800 }}>Plan Route</button>
           )}
-          {start && !planning && <button onClick={reset}>Reset</button>}
+          {start && !planning && <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>}
         </div>
         {/* Save Route button / form + routeStats — right-aligned */}
         <div
