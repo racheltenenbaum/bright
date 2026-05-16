@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from src.auth import get_current_user
 from src.models import User
-from src.shadow import extract_buildings_from_overpass, is_point_shaded
+from src.shadow import extract_buildings_from_overpass, is_point_shaded, which_side_sunny
 from src.utils.astronomy import get_sun_position
 
 router = APIRouter(prefix="/sun", tags=["sun"])
@@ -71,6 +71,7 @@ def _sqlite_set(key: str, buildings: list) -> None:
 class SegmentResult(BaseModel):
     index: int
     shaded: bool
+    sunny_side: str | None = None  # "left", "right", "both", "neither"
 
 
 class ShadowAnalyzeRequest(BaseModel):
@@ -160,6 +161,13 @@ def _nearest_shaded(shaded_map: dict[int, bool], i: int) -> bool:
     return shaded_map[nearest]
 
 
+def _nearest_sunny_side(side_map: dict[int, str], i: int) -> str | None:
+    if not side_map:
+        return None
+    nearest = min(side_map.keys(), key=lambda k: abs(k - i))
+    return side_map[nearest]
+
+
 @router.post("/shadow-analyze", response_model=ShadowAnalyzeResponse)
 def shadow_analyze(
     body: ShadowAnalyzeRequest,
@@ -233,12 +241,17 @@ def _analyze_route(route: list[list[float]], buildings: list, sun_altitude: floa
     samples = _sample_coords(route, target=25)
     elevations = _fetch_elevations([(lat, lng) for _, lat, lng in samples])
     shaded_map: dict[int, bool] = {}
+    side_map: dict[int, str] = {}
     for (idx, lat, lng), elevation in zip(samples, elevations):
         shaded_map[idx] = is_point_shaded(lat, lng, buildings, sun_altitude, sun_azimuth, elevation)
+        next_idx = min(idx + 1, len(route) - 1)
+        lat2, lng2 = route[next_idx][0], route[next_idx][1]
+        side_map[idx] = which_side_sunny(lat, lng, lat2, lng2, buildings, sun_altitude, sun_azimuth, elevation)
     segments = [
         SegmentResult(
             index=i,
             shaded=shaded_map[i] if i in shaded_map else _nearest_shaded(shaded_map, i),
+            sunny_side=side_map[i] if i in side_map else _nearest_sunny_side(side_map, i),
         )
         for i in range(len(route))
     ]

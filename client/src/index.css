@@ -160,6 +160,20 @@ button.btn-danger:active {
   box-shadow: 4px 4px 0 #E8C000;
 }
 
+/* ── Google Maps controls ────────────────────────── */
+
+/* Zoom + pegman bundle (bottom right) */
+.map-wrapper .gm-bundled-control {
+  transform: scale(0.75);
+  transform-origin: bottom right;
+}
+
+/* Map / Satellite toggle (top left) */
+.map-wrapper .gm-style-mtc,
+.map-wrapper .gm-style-mtc-bb {
+  zoom: 0.75;
+}
+
 /* ── Auth card ────────────────────────────────────── */
 
 .auth-card {

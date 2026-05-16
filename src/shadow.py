@@ -1,4 +1,4 @@
-from math import radians, tan, sin, cos, degrees
+from math import radians, tan, sin, cos, degrees, atan2
 from shapely.geometry import Polygon, Point
 
 EARTH_RADIUS_M = 6_371_000.0
@@ -73,6 +73,48 @@ def is_point_shaded(
         if poly is not None and poly.buffer(BUFFER_DEG).contains(pt):
             return True
     return False
+
+
+def _bearing(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Forward bearing in degrees from point 1 to point 2."""
+    lat1, lng1, lat2, lng2 = map(radians, [lat1, lng1, lat2, lng2])
+    dlng = lng2 - lng1
+    x = sin(dlng) * cos(lat2)
+    y = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dlng)
+    return degrees(atan2(x, y)) % 360
+
+
+def which_side_sunny(
+    lat1: float, lng1: float,
+    lat2: float, lng2: float,
+    buildings: list[dict],
+    sun_altitude: float,
+    sun_azimuth: float,
+    elevation: float = 0.0,
+) -> str:
+    """
+    Returns 'left', 'right', 'both', or 'neither' — which sidewalk is in sun
+    for the segment running from (lat1,lng1) to (lat2,lng2).
+    Left/right are relative to the direction of travel.
+    """
+    if sun_altitude <= 0:
+        return "neither"
+
+    bearing = _bearing(lat1, lng1, lat2, lng2)
+    mid_lat = (lat1 + lat2) / 2
+    mid_lng = (lng1 + lng2) / 2
+
+    left_lat, left_lng = _offset_point(mid_lat, mid_lng, (bearing - 90) % 360, 4.0)
+    right_lat, right_lng = _offset_point(mid_lat, mid_lng, (bearing + 90) % 360, 4.0)
+
+    left_shaded = is_point_shaded(left_lat, left_lng, buildings, sun_altitude, sun_azimuth, elevation)
+    right_shaded = is_point_shaded(right_lat, right_lng, buildings, sun_altitude, sun_azimuth, elevation)
+
+    if not left_shaded and not right_shaded:
+        return "both"
+    if left_shaded and right_shaded:
+        return "neither"
+    return "right" if left_shaded else "left"
 
 
 def extract_buildings_from_overpass(overpass_data: dict) -> list[dict]:
