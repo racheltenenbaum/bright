@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import axios from "axios";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faSun, faCloudSun, faHeart, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -254,7 +256,8 @@ export default function RouteMap() {
         setSunData({ sun_altitude, sun_azimuth, date });
         drawRoute(mapRef.current, polylinesRef, bestCoords, bestSegments, sun_altitude);
       }
-    } catch {
+    } catch (err) {
+      console.error("planRoute error:", err);
       setError("Could not fetch route. Please try again.");
     } finally {
       setPlanning(false);
@@ -309,7 +312,7 @@ export default function RouteMap() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Sun / Shade toggle */}
       <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? "#3D2C00" : "#A0A0A0" }}>☀️ Sun</span>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? "#3D2C00" : "#A0A0A0" }}><FontAwesomeIcon icon={faSun} /> Sun</span>
         <div
           onClick={togglePreference}
           style={{
@@ -335,7 +338,7 @@ export default function RouteMap() {
             boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
           }} />
         </div>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? "#3D2C00" : "#A0A0A0" }}>🌥 Shade</span>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? "#3D2C00" : "#A0A0A0" }}><FontAwesomeIcon icon={faCloudSun} /> Shade</span>
       </div>
 
       {/* Address inputs + action buttons (3 columns) */}
@@ -413,7 +416,7 @@ export default function RouteMap() {
       {(savedRouteName || routeStats) && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 6px" }}>
           {savedRouteName
-            ? <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}>♥ {savedRouteName}</span>
+            ? <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}><FontAwesomeIcon icon={faHeart} /> {savedRouteName}</span>
             : <span />}
           {routeStats && (
             <span style={{ fontSize: "12px", color: "#A87500", fontWeight: 500 }}>
@@ -429,7 +432,7 @@ export default function RouteMap() {
           background: "#FFF0ED", border: "2px solid #FF5A3C",
           boxShadow: "3px 3px 0 #FF5A3C", display: "flex", alignItems: "center", gap: "8px",
         }}>
-          <span style={{ fontSize: "1.1em" }}>⚠️</span>
+          <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#FF5A3C", fontSize: "1.1em" }} />
           <span style={{ color: "#C0392B", fontWeight: 700, fontSize: "0.88em" }}>{error}</span>
         </div>
       )}

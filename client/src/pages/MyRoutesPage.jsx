@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faSun, faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -90,7 +92,7 @@ export default function MyRoutesPage() {
 
   return (
     <div className="page-container" style={{ maxWidth: "600px" }}>
-      <h2>My Routes ☀️</h2>
+      <h2>My Routes <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600", fontSize: "0.85em" }} /></h2>
       {error && <p style={{ color: "#C0392B", fontSize: "0.88em" }}>{error}</p>}
       {routes.length === 0 && !error && (
         <p style={{ color: "#A87500", fontSize: "0.92em" }}>No saved routes yet. Plan one!</p>
@@ -139,7 +141,7 @@ export default function MyRoutesPage() {
                 )}
                 <p style={{ margin: "6px 0 0", fontSize: "0.78em", color: "#A87500" }}>
                   {route.start_address || resolvedAddresses[route.id]?.start || `${route.start_lat.toFixed(4)}, ${route.start_lng.toFixed(4)}`}
-                  {" → "}
+                  {" "}<FontAwesomeIcon icon={faArrowRight} style={{ fontSize: "0.75em", color: "#C8A84B" }} />{" "}
                   {route.end_address || resolvedAddresses[route.id]?.end || `${route.end_lat.toFixed(4)}, ${route.end_lng.toFixed(4)}`}
                 </p>
                 <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "#C8A84B", fontWeight: 500 }}>
@@ -162,7 +164,7 @@ export default function MyRoutesPage() {
                 onMouseLeave={(e) => { e.currentTarget.style.color = "#C8A84B"; }}
                 title="Delete"
               >
-                ×
+                <FontAwesomeIcon icon={faTrash} />
               </button>
             </div>
           </div>

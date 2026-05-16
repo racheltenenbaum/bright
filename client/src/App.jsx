@@ -22,27 +22,29 @@ function Layout() {
   return (
     <>
       {isAuthenticated && <Navbar />}
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route
-          path="/plan"
-          element={
-            <ProtectedRoute>
-              <PlanRoutePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/my-routes"
-          element={
-            <ProtectedRoute>
-              <MyRoutesPage />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <div style={{ width: "70%", margin: "0 auto", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/plan"
+            element={
+              <ProtectedRoute>
+                <PlanRoutePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-routes"
+            element={
+              <ProtectedRoute>
+                <MyRoutesPage />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </div>
     </>
   );
 }
