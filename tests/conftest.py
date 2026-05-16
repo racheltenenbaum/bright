@@ -4,6 +4,10 @@ import os
 os.environ["SECRET_KEY"] = "test-secret-key-bright"
 os.environ.setdefault("GOOGLE_MAPS_API_KEY", "test-google-key")
 os.environ.setdefault("ASTRONOMY_API_KEY", "test-astro-key")
+# Low limits so rate-limit tests only need 3+1 requests
+os.environ["RATE_LIMIT_LOGIN"] = "3/minute"
+os.environ["RATE_LIMIT_WEATHER"] = "3/minute"
+os.environ["RATE_LIMIT_SHADOW"] = "3/minute"
 
 import pytest
 import bcrypt
@@ -36,6 +40,13 @@ app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture(autouse=True)
 def clean_tables():
+    # Reset rate limiter storage before each test so limits don't bleed across tests
+    from src.limiter import limiter
+    storage = limiter._storage
+    for attr in ("storage", "_events", "_data"):
+        if hasattr(storage, attr):
+            getattr(storage, attr).clear()
+            break
     yield
     db = TestingSessionLocal()
     for table in reversed(Base.metadata.sorted_tables):

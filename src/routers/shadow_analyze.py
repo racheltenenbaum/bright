@@ -6,10 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from src.auth import get_current_user
+from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.shadow import extract_buildings_from_overpass, is_point_shaded, which_side_sunny
 from src.utils.astronomy import get_sun_position
@@ -169,7 +170,9 @@ def _nearest_sunny_side(side_map: dict[int, str], i: int) -> str | None:
 
 
 @router.post("/shadow-analyze", response_model=ShadowAnalyzeResponse)
+@limiter.limit(RATE_LIMIT_SHADOW)
 def shadow_analyze(
+    request: Request,
     body: ShadowAnalyzeRequest,
     current_user: User = Depends(get_current_user),
 ):
@@ -259,7 +262,9 @@ def _analyze_route(route: list[list[float]], buildings: list, sun_altitude: floa
 
 
 @router.post("/shadow-analyze-batch", response_model=ShadowBatchResponse)
+@limiter.limit(RATE_LIMIT_SHADOW)
 def shadow_analyze_batch(
+    request: Request,
     body: ShadowBatchRequest,
     current_user: User = Depends(get_current_user),
 ):

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import bcrypt
 
 from src.database import get_db
+from src.limiter import limiter, RATE_LIMIT_LOGIN
 from src.models import User
 from src.schemas import UserCreate, UserResponse, LoginRequest, TokenResponse
 from src.auth import create_access_token
@@ -28,7 +29,8 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(credentials: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit(RATE_LIMIT_LOGIN)
+def login(request: Request, credentials: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == credentials.email).first()
     if not user or not bcrypt.checkpw(credentials.password.encode(), user.hashed_password.encode()):
         raise HTTPException(status_code=401, detail="Invalid email or password")
