@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import axios from "axios";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSun, faCloudSun, faHeart, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { faSun, faCloudSun, faHeart, faTriangleExclamation, faLocationCrosshairs } from "@fortawesome/free-solid-svg-icons";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -50,6 +50,8 @@ export default function RouteMap() {
   const polylinesRef = useRef([]);
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
+  const currentLocationMarkerRef = useRef(null);
+  const watchIdRef = useRef(null);
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
   const autoCalculateRef = useRef(false);
@@ -57,6 +59,7 @@ export default function RouteMap() {
   // Refs for use inside map click listener (avoids stale closures)
   const startRef = useRef(null);
   const endRef = useRef(null);
+  const sunDataRef = useRef(null);
 
   const [preference, setPreference] = useState("sun");
   const [start, setStart] = useState(null);
@@ -71,9 +74,11 @@ export default function RouteMap() {
   const [savedRouteName, setSavedRouteName] = useState(null);
   const [routeStats, setRouteStats] = useState(null);
   const [planning, setPlanning] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
 
   startRef.current = start;
   endRef.current = end;
+  sunDataRef.current = sunData;
 
   // Pre-populate from a saved route navigated from My Routes
   useEffect(() => {
@@ -106,6 +111,53 @@ export default function RouteMap() {
     });
   }, [isLoaded]);
 
+  // Show current location blue dot
+  useEffect(() => {
+    if (!isLoaded || !navigator.geolocation) return;
+
+    const blueDotSvg = encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">' +
+      '<circle cx="11" cy="11" r="11" fill="rgba(66,133,244,0.18)"/>' +
+      '<circle cx="11" cy="11" r="6" fill="#4285F4" stroke="white" stroke-width="2"/>' +
+      '</svg>'
+    );
+
+    let initialPanDone = false;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      ({ coords: { latitude: lat, longitude: lng } }) => {
+        if (!mapRef.current) return;
+        setCurrentLocation({ lat, lng });
+        if (!initialPanDone && !autoCalculateRef.current) {
+          mapRef.current.panTo({ lat, lng });
+          initialPanDone = true;
+        }
+        if (currentLocationMarkerRef.current) {
+          currentLocationMarkerRef.current.setPosition({ lat, lng });
+        } else {
+          currentLocationMarkerRef.current = new window.google.maps.Marker({
+            position: { lat, lng },
+            map: mapRef.current,
+            icon: {
+              url: `data:image/svg+xml;charset=UTF-8,${blueDotSvg}`,
+              scaledSize: new window.google.maps.Size(22, 22),
+              anchor: new window.google.maps.Point(11, 11),
+            },
+            zIndex: 1,
+            title: "Your location",
+          });
+        }
+      },
+      null,
+      { enableHighAccuracy: true, maximumAge: 10000 }
+    );
+
+    return () => {
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+      if (currentLocationMarkerRef.current) { currentLocationMarkerRef.current.setMap(null); currentLocationMarkerRef.current = null; }
+    };
+  }, [isLoaded]);
+
   // Re-register click listener whenever start/end change
   useEffect(() => {
     if (!mapRef.current) return;
@@ -121,9 +173,11 @@ export default function RouteMap() {
       if (!startRef.current) {
         setStart(coords);
         setStartAddress(address);
-      } else if (!endRef.current) {
+      } else if (!endRef.current || !sunDataRef.current) {
         setEnd(coords);
         setEndAddress(address);
+        setSavedRouteName(null);
+        setRouteSaved(false);
       }
     });
   }, [isLoaded]);
@@ -362,6 +416,24 @@ export default function RouteMap() {
               placeholder="Start address (or click map)"
             />
           </Autocomplete>
+          {currentLocation && !start && (
+            <button
+              onClick={async () => {
+                const geocoder = new window.google.maps.Geocoder();
+                const result = await geocoder.geocode({ location: currentLocation });
+                const address = result.results[0]?.formatted_address || "My location";
+                setStart(currentLocation);
+                setStartAddress(address);
+                clearPolylines(polylinesRef);
+                setSunData(null);
+                setSavedRouteName(null);
+                setRouteSaved(false);
+              }}
+              style={{ fontSize: "11px", padding: "2px 8px", width: "fit-content", display: "flex", alignItems: "center", gap: "5px" }}
+            >
+              <FontAwesomeIcon icon={faLocationCrosshairs} /> Use my location
+            </button>
+          )}
           <Autocomplete
             onLoad={(a) => { endAutocompleteRef.current = a; }}
             onPlaceChanged={() => handlePlaceSelected("end")}
@@ -382,8 +454,8 @@ export default function RouteMap() {
           }
           {start && !planning && <button onClick={reset}>Reset</button>}
         </div>
-        {/* Save Route button / form — right-aligned, same row as Reset */}
-        <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+        {/* Save Route button / form + routeStats — right-aligned */}
+        <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-end" }}>
           {sunData && !saveForm && !routeSaved && (
             <button onClick={() => setSaveForm({ name: "", description: "" })}>Save Route</button>
           )}
@@ -413,16 +485,9 @@ export default function RouteMap() {
         </div>
       </div>
 
-      {(savedRouteName || routeStats) && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 6px" }}>
-          {savedRouteName
-            ? <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}><FontAwesomeIcon icon={faHeart} /> {savedRouteName}</span>
-            : <span />}
-          {routeStats && (
-            <span style={{ fontSize: "12px", color: "#A87500", fontWeight: 500 }}>
-              Approx. {routeStats.distance} · {routeStats.duration} walk
-            </span>
-          )}
+      {savedRouteName && (
+        <div style={{ margin: "0 0 6px" }}>
+          <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}><FontAwesomeIcon icon={faHeart} /> {savedRouteName}</span>
         </div>
       )}
 
@@ -438,7 +503,16 @@ export default function RouteMap() {
       )}
 
       {/* Map — fills remaining height */}
-      <div className="map-wrapper">
+      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+        {routeStats && (
+          <span style={{
+            position: "absolute", top: "-22px", right: 0,
+            fontSize: "12px", color: "#A87500", fontWeight: 500, whiteSpace: "nowrap",
+          }}>
+            Approx. {routeStats.distance} · {routeStats.duration} walk
+          </span>
+        )}
+        <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
         <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
         {sunData && (
           <div style={{
@@ -458,6 +532,7 @@ export default function RouteMap() {
             </span>
           </div>
         )}
+        </div>
       </div>
 
     </div>
