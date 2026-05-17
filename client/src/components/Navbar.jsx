@@ -26,16 +26,18 @@ export default function Navbar() {
   }
 
   return (
-    <nav style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: "10px 24px",
-      flexShrink: 0,
-    }}>
+    <nav style={{ flexShrink: 0 }}>
+      <div style={{
+        maxWidth: "700px",
+        margin: "0 auto",
+        padding: "10px 16px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}>
       <img src="/logo.gif" alt="bright" style={{ height: "40px" }} />
 
-      <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "8px" }}>
+      <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "0px" }}>
         <span style={{ color: "#A87500", fontSize: "0.88em", fontWeight: 700 }}>
           Hi, {user.first_name}! <FontAwesomeIcon icon={faHand} />
         </span>
@@ -43,7 +45,7 @@ export default function Navbar() {
           onClick={() => setOpen(o => !o)}
           style={{
             background: "none", border: "none", boxShadow: "none",
-            padding: "4px 8px", fontSize: "1.1em", color: "#A87500",
+            padding: "4px 0 4px 4px", fontSize: "1.1em", color: "#A87500",
           }}
         >
           <FontAwesomeIcon icon={faEllipsisVertical} />
@@ -91,6 +93,7 @@ export default function Navbar() {
             </button>
           </div>
         )}
+      </div>
       </div>
     </nav>
   );

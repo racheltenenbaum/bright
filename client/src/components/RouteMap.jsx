@@ -67,7 +67,6 @@ export default function RouteMap() {
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
   const autoCalculateRef = useRef(false);
-  const locationControlDivRef = useRef(null);
   const currentLocationRef = useRef(null);
 
   // Refs for use inside map click listener (avoids stale closures)
@@ -100,6 +99,22 @@ export default function RouteMap() {
   sunDataRef.current = sunData;
   currentLocationRef.current = currentLocation;
 
+  const colors = preference === "shade" ? {
+    accent:      "#5E8FAD",
+    accentFaint: "#B0CCDE",
+    accentGlow:  "rgba(94,143,173,0.15)",
+    text:        "#263748",
+    subtext:     "#4A7090",
+    surface:     "rgba(226,234,240,0.95)",
+  } : {
+    accent:      "#FFD600",
+    accentFaint: "#FFE082",
+    accentGlow:  "rgba(255,193,7,0.15)",
+    text:        "#3D2C00",
+    subtext:     "#A87500",
+    surface:     "rgba(255,253,240,0.95)",
+  };
+
   // Pre-populate from a saved route navigated from My Routes
   useEffect(() => {
     const saved = location.state?.route;
@@ -112,6 +127,12 @@ export default function RouteMap() {
     setRouteSaved(true);
     autoCalculateRef.current = true;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync body theme class with preference
+  useEffect(() => {
+    document.body.classList.toggle("shade-mode", preference === "shade");
+    return () => document.body.classList.remove("shade-mode");
+  }, [preference]);
 
   // Auto-calculate once start, end and API are ready
   useEffect(() => {
@@ -128,8 +149,9 @@ export default function RouteMap() {
     mapRef.current = new window.google.maps.Map(containerRef.current, {
       center: MAP_CENTER,
       zoom: 15,
-      fullscreenControl: false,
-      zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
+      disableDefaultUI: true,
+      mapTypeControl: true,
+      streetViewControl: true,
       streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
     });
   }, [isLoaded]);
@@ -142,45 +164,6 @@ export default function RouteMap() {
     bounds.extend(end);
     mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
   }, [start, end, isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Inject custom location button into Google's RIGHT_BOTTOM control group
-  useEffect(() => {
-    if (!isLoaded || !mapRef.current) return;
-
-    const div = document.createElement('div');
-    div.style.cssText = 'display:none;margin:5px;';
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.title = 'Recenter to my location';
-    btn.style.cssText = [
-      'background:rgba(255,253,240,0.95)',
-      'border:1.5px solid #FFE082',
-      'border-radius:50%',
-      'box-shadow:0 2px 8px rgba(255,193,7,0.15)',
-      'cursor:pointer',
-      'display:flex',
-      'align-items:center',
-      'justify-content:center',
-      'height:40px',
-      'width:40px',
-      'padding:0',
-    ].join(';');
-    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="18" height="18" fill="#A87500"><path d="M256 0c17.7 0 32 14.3 32 32V66.7C368.4 80.1 431.9 143.6 445.3 224H480c17.7 0 32 14.3 32 32s-14.3 32-32 32H445.3C431.9 368.4 368.4 431.9 288 445.3V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V445.3C143.6 431.9 80.1 368.4 66.7 288H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H66.7C80.1 143.6 143.6 80.1 224 66.7V32c0-17.7 14.3-32 32-32zM128 256a128 128 0 1 0 256 0A128 128 0 1 0 128 256zm128 80a80 80 0 1 1 0-160 80 80 0 1 1 0 160z"/></svg>';
-    btn.addEventListener('click', () => {
-      if (currentLocationRef.current) mapRef.current?.panTo(currentLocationRef.current);
-    });
-
-    div.appendChild(btn);
-    mapRef.current.controls[window.google.maps.ControlPosition.RIGHT_BOTTOM].push(div);
-    locationControlDivRef.current = div;
-  }, [isLoaded]);
-
-  // Show/hide location button when currentLocation becomes available
-  useEffect(() => {
-    if (!locationControlDivRef.current) return;
-    locationControlDivRef.current.style.display = currentLocation ? 'block' : 'none';
-  }, [currentLocation]);
 
   // Show current location dot
   useEffect(() => {
@@ -382,7 +365,7 @@ export default function RouteMap() {
       );
       setWeather(r.data);
       weatherLocationRef.current = { lat, lng };
-    } catch {}
+    } catch (_) { /* weather is non-critical */ }
   }
 
   async function planRoute() {
@@ -568,7 +551,7 @@ export default function RouteMap() {
           style={{
             fontSize: "0.88em",
             fontWeight: 600,
-            color: preference === "sun" ? "#3D2C00" : "#A0A0A0",
+            color: preference === "sun" ? colors.text : "#A0A0A0",
           }}
         >
           <FontAwesomeIcon icon={faSun} /> Sun
@@ -579,7 +562,7 @@ export default function RouteMap() {
             width: "48px",
             height: "26px",
             borderRadius: "13px",
-            background: preference === "sun" ? "#FFD600" : "#A8C4CC",
+            background: preference === "sun" ? "#FFD600" : colors.accent,
             position: "relative",
             cursor: "pointer",
             transition: "background 0.25s",
@@ -604,7 +587,7 @@ export default function RouteMap() {
           style={{
             fontSize: "0.88em",
             fontWeight: 600,
-            color: preference === "shade" ? "#3D2C00" : "#A0A0A0",
+            color: preference === "shade" ? colors.text : "#A0A0A0",
           }}
         >
           <FontAwesomeIcon icon={faCloudSun} /> Shade
@@ -666,8 +649,8 @@ export default function RouteMap() {
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
                   fontSize: "10px", padding: "2px 7px", display: "flex", alignItems: "center",
-                  gap: "4px", background: "rgba(255,214,0,0.15)", border: "1.5px solid #FFD600",
-                  color: "#A87500", fontWeight: 700, whiteSpace: "nowrap",
+                  gap: "4px", background: colors.accentGlow, border: `1.5px solid ${colors.accent}`,
+                  color: colors.subtext, fontWeight: 700, whiteSpace: "nowrap",
                 }}
               >
                 <FontAwesomeIcon icon={faLocationCrosshairs} /> Use my location
@@ -711,7 +694,7 @@ export default function RouteMap() {
           )}
         </div>
         {routeStats && (
-          <span style={{ display: "block", textAlign: "right", fontSize: "12px", color: "#A87500", fontWeight: 500, whiteSpace: "nowrap" }}>
+          <span style={{ display: "block", textAlign: "right", fontSize: "12px", color: colors.subtext, fontWeight: 500, whiteSpace: "nowrap" }}>
             Approx. {routeStats.distance} · {routeStats.duration} walk
           </span>
         )}
@@ -782,6 +765,23 @@ export default function RouteMap() {
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+          {currentLocation && (
+            <button
+              onClick={() => mapRef.current?.panTo(currentLocation)}
+              title="Recenter to my location"
+              style={{
+                position: "absolute", bottom: "10px", right: "10px", zIndex: 10,
+                width: "40px", height: "40px", borderRadius: "50%",
+                background: colors.surface,
+                border: `1.5px solid ${colors.accentFaint}`,
+                boxShadow: `0 2px 8px ${colors.accentGlow}`,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                padding: 0,
+              }}
+            >
+              <FontAwesomeIcon icon={faLocationCrosshairs} style={{ color: colors.subtext, fontSize: "18px" }} />
+            </button>
+          )}
           {sunData && (
             <div
               style={{
@@ -796,16 +796,16 @@ export default function RouteMap() {
             >
               <div
                 style={{
-                  background: "rgba(255, 253, 240, 0.95)",
+                  background: colors.surface,
                   padding: "5px 12px",
                   borderRadius: "20px",
                   display: "flex",
                   gap: "14px",
                   fontSize: "12px",
-                  border: "1.5px solid #FFE082",
-                  boxShadow: "0 2px 8px rgba(255,193,7,0.15)",
+                  border: `1.5px solid ${colors.accentFaint}`,
+                  boxShadow: `0 2px 8px ${colors.accentGlow}`,
                   fontWeight: 500,
-                  color: "#3D2C00",
+                  color: colors.text,
                 }}
               >
                 <span
@@ -845,10 +845,10 @@ export default function RouteMap() {
               style={{
                 position: "absolute", top: "52px", right: "10px", zIndex: 10,
                 width: "64px", height: "64px", borderRadius: "50%",
-                background: goMode ? "#FF5A3C" : "#FFD600",
+                background: goMode ? "#FF5A3C" : colors.accent,
                 border: "3px solid white",
                 boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
-                fontSize: "0.85em", fontWeight: 800, color: goMode ? "white" : "#3D2C00",
+                fontSize: "0.85em", fontWeight: 800, color: goMode ? "white" : colors.text,
                 cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
               }}
             >
@@ -867,8 +867,8 @@ export default function RouteMap() {
             return (
               <div style={{
                 position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
-                background: "rgba(255,253,240,0.97)", padding: "14px 28px", borderRadius: "20px",
-                border: "2px solid #FFD600", boxShadow: "0 4px 20px rgba(255,193,7,0.3)",
+                background: colors.surface, padding: "14px 28px", borderRadius: "20px",
+                border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
                 textAlign: "center", whiteSpace: "nowrap", zIndex: 10,
               }}>
                 <div style={{ fontSize: "1.25em", fontWeight: 800, color: inst.color }}>
@@ -883,7 +883,7 @@ export default function RouteMap() {
                 position: "absolute",
                 top: "10px",
                 right: "10px",
-                background: "rgba(255, 253, 240, 0.95)",
+                background: colors.surface,
                 padding: "6px 12px",
                 borderRadius: "20px",
                 display: "flex",
@@ -891,9 +891,9 @@ export default function RouteMap() {
                 gap: "8px",
                 fontSize: "12px",
                 fontWeight: 500,
-                color: "#3D2C00",
-                border: "1.5px solid #FFE082",
-                boxShadow: "0 2px 8px rgba(255,193,7,0.15)",
+                color: colors.text,
+                border: `1.5px solid ${colors.accentFaint}`,
+                boxShadow: `0 2px 8px ${colors.accentGlow}`,
               }}
             >
               {weather.icon_url && (
@@ -907,7 +907,7 @@ export default function RouteMap() {
                 <span>{Math.round(weather.temperature)}°C</span>
               )}
               {weather.uv_index != null && (
-                <span style={{ color: "#A87500" }}>UV {weather.uv_index}</span>
+                <span style={{ color: colors.subtext }}>UV {weather.uv_index}</span>
               )}
               {weather.uv_index >= 6 && preference === "sun" && (
                 <span style={{ color: "#C0392B", fontWeight: 700 }}>
