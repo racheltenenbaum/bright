@@ -2,8 +2,6 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSun } from "@fortawesome/free-solid-svg-icons";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -31,9 +29,7 @@ export default function LoginPage() {
     <div className="page-container" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
       <div className="auth-card">
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <div style={{ fontSize: "40px", marginBottom: "6px" }}>
-            <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600" }} />
-          </div>
+          <img src="/logo.gif" alt="bright" style={{ height: "60px", marginBottom: "8px" }} />
           <h2 style={{ margin: 0, fontSize: "1.5em" }}>Welcome back</h2>
         </div>
         <form onSubmit={handleSubmit}>

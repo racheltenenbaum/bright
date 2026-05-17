@@ -1,7 +1,7 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSun, faStar } from "@fortawesome/free-solid-svg-icons";
+import { faStar } from "@fortawesome/free-solid-svg-icons";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -15,10 +15,7 @@ export default function HomePage() {
       justifyContent: "center",
       textAlign: "center",
     }}>
-      <div style={{ fontSize: "80px", lineHeight: 1, marginBottom: "8px" }}>
-        <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600" }} />
-      </div>
-      <h1 style={{ fontSize: "4em", marginBottom: "6px" }}>bright</h1>
+      <img src="/logo.gif" alt="bright" style={{ height: "120px", marginBottom: "16px" }} />
       <p style={{
         fontSize: "1.05em",
         color: "#7B5800",

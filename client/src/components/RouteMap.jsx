@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Geolocation } from "@capacitor/geolocation";
 import { useLocation } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import api from "../api";
@@ -128,9 +129,9 @@ export default function RouteMap() {
     });
   }, [isLoaded]);
 
-  // Show current location blue dot
+  // Show current location dot
   useEffect(() => {
-    if (!isLoaded || !navigator.geolocation) return;
+    if (!isLoaded) return;
 
     const blueDotSvg = encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">' +
@@ -140,39 +141,58 @@ export default function RouteMap() {
     );
 
     let initialPanDone = false;
+    let cancelled = false;
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      ({ coords: { latitude: lat, longitude: lng } }) => {
-        if (!mapRef.current) return;
-        setCurrentLocation({ lat, lng });
-        if (!initialPanDone && !autoCalculateRef.current) {
-          mapRef.current.panTo({ lat, lng });
-          initialPanDone = true;
-          fetchWeather(lat, lng);
-        }
-        if (currentLocationMarkerRef.current) {
-          currentLocationMarkerRef.current.setPosition({ lat, lng });
-        } else {
-          currentLocationMarkerRef.current = new window.google.maps.Marker({
-            position: { lat, lng },
-            map: mapRef.current,
-            icon: {
-              url: `data:image/svg+xml;charset=UTF-8,${blueDotSvg}`,
-              scaledSize: new window.google.maps.Size(22, 22),
-              anchor: new window.google.maps.Point(11, 11),
-            },
-            zIndex: 1,
-            title: "Your location",
-          });
-        }
-      },
-      null,
-      { enableHighAccuracy: true, maximumAge: 10000 },
-    );
+    function handlePosition(lat, lng) {
+      if (cancelled || !mapRef.current) return;
+      setCurrentLocation({ lat, lng });
+      if (!initialPanDone && !autoCalculateRef.current) {
+        mapRef.current.panTo({ lat, lng });
+        initialPanDone = true;
+        fetchWeather(lat, lng);
+      }
+      if (currentLocationMarkerRef.current) {
+        currentLocationMarkerRef.current.setPosition({ lat, lng });
+      } else {
+        currentLocationMarkerRef.current = new window.google.maps.Marker({
+          position: { lat, lng },
+          map: mapRef.current,
+          icon: {
+            url: `data:image/svg+xml;charset=UTF-8,${blueDotSvg}`,
+            scaledSize: new window.google.maps.Size(22, 22),
+            anchor: new window.google.maps.Point(11, 11),
+          },
+          zIndex: 1,
+          title: "Your location",
+        });
+      }
+    }
+
+    Geolocation.requestPermissions().then(() => {
+      Geolocation.watchPosition(
+        { enableHighAccuracy: true, maximumAge: 10000 },
+        (pos, err) => {
+          if (err || !pos) return;
+          handlePosition(pos.coords.latitude, pos.coords.longitude);
+        },
+      ).then((id) => { watchIdRef.current = id; });
+    }).catch(() => {
+      // fall back to browser geolocation on web
+      if (!navigator.geolocation) return;
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        ({ coords: { latitude: lat, longitude: lng } }) => handlePosition(lat, lng),
+        null,
+        { enableHighAccuracy: true, maximumAge: 10000 },
+      );
+    });
 
     return () => {
-      if (watchIdRef.current !== null)
-        navigator.geolocation.clearWatch(watchIdRef.current);
+      cancelled = true;
+      if (watchIdRef.current !== null) {
+        Geolocation.clearWatch({ id: watchIdRef.current }).catch(() => {
+          navigator.geolocation?.clearWatch(watchIdRef.current);
+        });
+      }
       if (currentLocationMarkerRef.current) {
         currentLocationMarkerRef.current.setMap(null);
         currentLocationMarkerRef.current = null;
@@ -478,7 +498,7 @@ export default function RouteMap() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Sun / Shade toggle */}
+      {/* Sun / Shade toggle + Reset */}
       <div
         style={{
           marginBottom: "8px",
@@ -532,6 +552,9 @@ export default function RouteMap() {
         >
           <FontAwesomeIcon icon={faCloudSun} /> Shade
         </span>
+        {start && !planning && (
+          <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
+        )}
       </div>
 
       {/* Address inputs + action buttons */}
@@ -612,8 +635,8 @@ export default function RouteMap() {
             />
           </Autocomplete>
         </div>
-        {/* Plan Route + Reset + Save row */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+        {/* Plan Route + Save row — below inputs, right-aligned */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
           {planning ? (
             <div className="planning-dots">
               <span className="planning-label">planning</span>
@@ -622,15 +645,19 @@ export default function RouteMap() {
               <span>•</span>
             </div>
           ) : (
-            start && end && <button onClick={planRoute} style={{ fontSize: "1em", padding: "0.55em 1.6em", fontWeight: 800 }}>Plan Route</button>
+            start && end && !sunData && <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800, marginLeft: "auto" }}>Plan Route</button>
           )}
-          {start && !planning && <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>}
           {sunData && !saveForm && !routeSaved && (
-            <button onClick={() => setSaveForm({ name: "", description: "" })} style={{ marginLeft: "auto" }}>
+            <button onClick={() => setSaveForm({ name: "", description: "" })} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}>
               Save Route
             </button>
           )}
         </div>
+        {routeStats && (
+          <span style={{ display: "block", textAlign: "right", fontSize: "12px", color: "#A87500", fontWeight: 500, whiteSpace: "nowrap" }}>
+            Approx. {routeStats.distance} · {routeStats.duration} walk
+          </span>
+        )}
         {saveForm && (
           <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
@@ -696,12 +723,6 @@ export default function RouteMap() {
 
       {/* Map — fills remaining height */}
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-        {routeStats && (
-          <span style={{ position: "absolute", top: "-22px", right: 0,
-            fontSize: "12px", color: "#A87500", fontWeight: 500, whiteSpace: "nowrap" }}>
-            Approx. {routeStats.distance} · {routeStats.duration} walk
-          </span>
-        )}
         <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
           {sunData && (

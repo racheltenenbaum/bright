@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSun, faHand, faEllipsisVertical } from "@fortawesome/free-solid-svg-icons";
+import { faHand, faEllipsisVertical } from "@fortawesome/free-solid-svg-icons";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -33,15 +33,7 @@ export default function Navbar() {
       padding: "10px 24px",
       flexShrink: 0,
     }}>
-      <span style={{
-        fontFamily: "'Fredoka', sans-serif",
-        fontWeight: 700,
-        fontSize: "1.5em",
-        color: "#3D2C00",
-        letterSpacing: "0.5px",
-      }}>
-        bright <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600", fontSize: "0.85em" }} />
-      </span>
+      <img src="/logo.gif" alt="bright" style={{ height: "40px" }} />
 
       <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ color: "#A87500", fontSize: "0.88em", fontWeight: 700 }}>
