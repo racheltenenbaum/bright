@@ -282,17 +282,18 @@ export default function RouteMap() {
       startMarkerRef.current = null;
     }
     if (start) {
+      const pinColor = preference === "shade" ? "#7AB3CF" : "#FFD600";
       startMarkerRef.current = new window.google.maps.Marker({
         position: start,
         map: mapRef.current,
         icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#FFD600" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>`)}`,
           scaledSize: new window.google.maps.Size(24, 36),
           anchor: new window.google.maps.Point(12, 36),
         },
       });
     }
-  }, [start, isLoaded]);
+  }, [start, isLoaded, preference]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync end marker
   useEffect(() => {
@@ -302,17 +303,18 @@ export default function RouteMap() {
       endMarkerRef.current = null;
     }
     if (end) {
+      const pinColor = preference === "shade" ? "#4A7090" : "#f5ae0a";
       endMarkerRef.current = new window.google.maps.Marker({
         position: end,
         map: mapRef.current,
         icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="#f5ae0a" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>')}`,
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>`)}`,
           scaledSize: new window.google.maps.Size(24, 36),
           anchor: new window.google.maps.Point(12, 36),
         },
       });
     }
-  }, [end, isLoaded]);
+  }, [end, isLoaded, preference]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function togglePreference() {
     setPreference((p) => (p === "sun" ? "shade" : "sun"));

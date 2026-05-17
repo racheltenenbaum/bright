@@ -11,7 +11,7 @@ from src.auth import create_access_token, get_current_user
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=201)
+@router.post("/register", response_model=TokenResponse, status_code=201)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -25,7 +25,8 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return new_user
+    token = create_access_token(new_user.id)
+    return {"access_token": token, "token_type": "bearer", "user": new_user}
 
 
 @router.post("/login", response_model=TokenResponse)

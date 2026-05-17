@@ -4,9 +4,10 @@ def test_register_success(client):
     })
     assert response.status_code == 201
     data = response.json()
-    assert data["email"] == "alice@example.com"
-    assert data["first_name"] == "Alice"
-    assert "id" in data
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+    assert data["user"]["email"] == "alice@example.com"
+    assert data["user"]["first_name"] == "Alice"
 
 
 def test_register_duplicate_email(client, test_user):

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api";
+import { useAuth } from "../context/AuthContext";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [form, setForm] = useState({ first_name: "", email: "", password: "" });
   const [emailError, setEmailError] = useState(null);
   const [error, setError] = useState(null);
@@ -29,8 +31,9 @@ export default function RegisterPage() {
     }
     setError(null);
     try {
-      await api.post("/users/register", form);
-      navigate("/");
+      const res = await api.post("/users/register", form);
+      login(res.data.user, res.data.access_token);
+      navigate("/plan");
     } catch (err) {
       setError(err.response?.data?.detail || "Something went wrong");
     }
