@@ -5,8 +5,8 @@ import bcrypt
 from src.database import get_db
 from src.limiter import limiter, RATE_LIMIT_LOGIN
 from src.models import User
-from src.schemas import UserCreate, UserResponse, LoginRequest, TokenResponse
-from src.auth import create_access_token
+from src.schemas import UserCreate, UserResponse, LoginRequest, TokenResponse, UpdateUserRequest
+from src.auth import create_access_token, get_current_user
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -37,3 +37,15 @@ def login(request: Request, credentials: LoginRequest, db: Session = Depends(get
 
     token = create_access_token(user.id)
     return {"access_token": token, "token_type": "bearer", "user": user}
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_me(
+    body: UpdateUserRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_user.first_name = body.first_name
+    db.commit()
+    db.refresh(current_user)
+    return current_user

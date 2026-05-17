@@ -46,7 +46,7 @@ export default function RegisterPage() {
         <form onSubmit={handleSubmit}>
           <div className="field">
             <label>First name</label>
-            <input name="first_name" value={form.first_name} onChange={handleChange} required />
+            <input type="text" name="first_name" value={form.first_name} onChange={handleChange} required />
           </div>
           <div className="field">
             <label>Email</label>

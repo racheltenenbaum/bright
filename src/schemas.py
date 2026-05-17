@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime
 
 
@@ -20,6 +20,17 @@ class UserResponse(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class UpdateUserRequest(BaseModel):
+    first_name: str
+
+    @field_validator("first_name")
+    @classmethod
+    def not_blank(cls, v):
+        if not v.strip():
+            raise ValueError("first_name cannot be blank")
+        return v.strip()
 
 
 class TokenResponse(BaseModel):

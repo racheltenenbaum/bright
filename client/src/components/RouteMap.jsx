@@ -679,15 +679,8 @@ export default function RouteMap() {
         </div>
         {/* Plan Route + Save row — below inputs, right-aligned */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
-          {planning ? (
-            <div className="planning-dots">
-              <span className="planning-label">planning</span>
-              <span>•</span>
-              <span>•</span>
-              <span>•</span>
-            </div>
-          ) : (
-            start && end && !sunData && <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800, marginLeft: "auto" }}>Plan Route</button>
+          {!planning && start && end && !sunData && (
+            <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800, marginLeft: "auto" }}>Plan Route</button>
           )}
           {sunData && !saveForm && !routeSaved && (
             <button onClick={() => setSaveForm({ name: "", description: "" })} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}>
@@ -695,11 +688,6 @@ export default function RouteMap() {
             </button>
           )}
         </div>
-        {routeStats && (
-          <span style={{ display: "block", textAlign: "right", fontSize: "12px", color: colors.subtext, fontWeight: 500, whiteSpace: "nowrap" }}>
-            Approx. {routeStats.distance} · {routeStats.duration} walk
-          </span>
-        )}
         {saveForm && (
           <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
@@ -729,11 +717,25 @@ export default function RouteMap() {
         )}
       </div>
 
-      {savedRouteName && (
-        <div style={{ margin: "0 0 6px" }}>
-          <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}>
-            <FontAwesomeIcon icon={faHeart} /> {savedRouteName}
-          </span>
+      {(savedRouteName || routeStats || planning) && (
+        <div style={{ margin: "0 0 6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {savedRouteName && (
+            <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}>
+              <FontAwesomeIcon icon={faHeart} /> {savedRouteName}
+            </span>
+          )}
+          {planning ? (
+            <div className="planning-dots" style={{ marginLeft: "auto" }}>
+              <span className="planning-label">planning</span>
+              <span>•</span>
+              <span>•</span>
+              <span>•</span>
+            </div>
+          ) : routeStats && (
+            <span style={{ fontSize: "12px", color: colors.subtext, fontWeight: 500, whiteSpace: "nowrap", marginLeft: "auto" }}>
+              Approx. {routeStats.distance} · {routeStats.duration} walk
+            </span>
+          )}
         </div>
       )}
 

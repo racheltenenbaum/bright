@@ -39,3 +39,19 @@ def test_login_unknown_email(client):
         "email": "ghost@example.com", "password": "password123"
     })
     assert response.status_code == 401
+
+
+def test_update_name_success(client, auth_headers):
+    response = client.patch("/users/me", json={"first_name": "Rachel"}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["first_name"] == "Rachel"
+
+
+def test_update_name_blank_rejected(client, auth_headers):
+    response = client.patch("/users/me", json={"first_name": "  "}, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_update_name_unauthenticated(client):
+    response = client.patch("/users/me", json={"first_name": "Rachel"})
+    assert response.status_code == 401

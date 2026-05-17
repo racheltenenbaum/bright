@@ -65,6 +65,7 @@ export default function Navbar() {
             {[
               { label: "Plan Route", path: "/plan" },
               { label: "My Routes", path: "/my-routes" },
+              { label: "My Account", path: "/my-account" },
             ].map(({ label, path }) => (
               <button
                 key={path}
