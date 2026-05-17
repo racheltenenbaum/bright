@@ -27,6 +27,7 @@ class Route(Base):
     end_lng = Column(Float, nullable=False)
     start_address = Column(String(512), nullable=True)
     end_address = Column(String(512), nullable=True)
+    preference = Column(String(10), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

@@ -8,6 +8,7 @@ ROUTE_PAYLOAD = {
     "end_lat": 51.51, "end_lng": -0.1,
     "start_address": "Start St",
     "end_address": "End St",
+    "preference": "sun",
 }
 
 
@@ -17,6 +18,21 @@ def test_create_route(client, auth_headers):
     data = response.json()
     assert data["name"] == "Morning Walk"
     assert data["start_lat"] == 51.5
+    assert data["preference"] == "sun"
+
+
+def test_create_route_shade_preference(client, auth_headers):
+    payload = {**ROUTE_PAYLOAD, "preference": "shade"}
+    response = client.post("/routes", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["preference"] == "shade"
+
+
+def test_create_route_no_preference(client, auth_headers):
+    payload = {k: v for k, v in ROUTE_PAYLOAD.items() if k != "preference"}
+    response = client.post("/routes", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["preference"] is None
 
 
 def test_create_route_unauthenticated(client):

@@ -125,6 +125,7 @@ export default function RouteMap() {
     setEndAddress(saved.end_address || "");
     setSavedRouteName(saved.name);
     setRouteSaved(true);
+    if (saved.preference) setPreference(saved.preference);
     autoCalculateRef.current = true;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -500,6 +501,7 @@ export default function RouteMap() {
           end_lng: end.lng,
           start_address: startAddress.split(",")[0].trim() || null,
           end_address: endAddress.split(",")[0].trim() || null,
+          preference,
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );

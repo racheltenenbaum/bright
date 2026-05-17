@@ -37,6 +37,7 @@ class RouteCreate(BaseModel):
     end_lng: float
     start_address: str | None = None
     end_address: str | None = None
+    preference: str | None = None
 
 
 class RouteResponse(BaseModel):
@@ -49,6 +50,7 @@ class RouteResponse(BaseModel):
     end_lng: float
     start_address: str | None
     end_address: str | None
+    preference: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
