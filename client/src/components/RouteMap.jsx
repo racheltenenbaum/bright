@@ -67,6 +67,8 @@ export default function RouteMap() {
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
   const autoCalculateRef = useRef(false);
+  const locationControlDivRef = useRef(null);
+  const currentLocationRef = useRef(null);
 
   // Refs for use inside map click listener (avoids stale closures)
   const startRef = useRef(null);
@@ -96,6 +98,7 @@ export default function RouteMap() {
   startRef.current = start;
   endRef.current = end;
   sunDataRef.current = sunData;
+  currentLocationRef.current = currentLocation;
 
   // Pre-populate from a saved route navigated from My Routes
   useEffect(() => {
@@ -126,8 +129,58 @@ export default function RouteMap() {
       center: MAP_CENTER,
       zoom: 15,
       fullscreenControl: false,
+      zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
+      streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
     });
   }, [isLoaded]);
+
+  // Pan to show both endpoints as soon as start, end and map are all ready
+  useEffect(() => {
+    if (!mapRef.current || !start || !end) return;
+    const bounds = new window.google.maps.LatLngBounds();
+    bounds.extend(start);
+    bounds.extend(end);
+    mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
+  }, [start, end, isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Inject custom location button into Google's RIGHT_BOTTOM control group
+  useEffect(() => {
+    if (!isLoaded || !mapRef.current) return;
+
+    const div = document.createElement('div');
+    div.style.cssText = 'display:none;margin:5px;';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = 'Recenter to my location';
+    btn.style.cssText = [
+      'background:rgba(255,253,240,0.95)',
+      'border:1.5px solid #FFE082',
+      'border-radius:50%',
+      'box-shadow:0 2px 8px rgba(255,193,7,0.15)',
+      'cursor:pointer',
+      'display:flex',
+      'align-items:center',
+      'justify-content:center',
+      'height:40px',
+      'width:40px',
+      'padding:0',
+    ].join(';');
+    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="18" height="18" fill="#A87500"><path d="M256 0c17.7 0 32 14.3 32 32V66.7C368.4 80.1 431.9 143.6 445.3 224H480c17.7 0 32 14.3 32 32s-14.3 32-32 32H445.3C431.9 368.4 368.4 431.9 288 445.3V480c0 17.7-14.3 32-32 32s-32-14.3-32-32V445.3C143.6 431.9 80.1 368.4 66.7 288H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H66.7C80.1 143.6 143.6 80.1 224 66.7V32c0-17.7 14.3-32 32-32zM128 256a128 128 0 1 0 256 0A128 128 0 1 0 128 256zm128 80a80 80 0 1 1 0-160 80 80 0 1 1 0 160z"/></svg>';
+    btn.addEventListener('click', () => {
+      if (currentLocationRef.current) mapRef.current?.panTo(currentLocationRef.current);
+    });
+
+    div.appendChild(btn);
+    mapRef.current.controls[window.google.maps.ControlPosition.RIGHT_BOTTOM].push(div);
+    locationControlDivRef.current = div;
+  }, [isLoaded]);
+
+  // Show/hide location button when currentLocation becomes available
+  useEffect(() => {
+    if (!locationControlDivRef.current) return;
+    locationControlDivRef.current.style.display = currentLocation ? 'block' : 'none';
+  }, [currentLocation]);
 
   // Show current location dot
   useEffect(() => {
@@ -146,7 +199,7 @@ export default function RouteMap() {
     function handlePosition(lat, lng) {
       if (cancelled || !mapRef.current) return;
       setCurrentLocation({ lat, lng });
-      if (!initialPanDone && !autoCalculateRef.current) {
+      if (!initialPanDone && !startRef.current) {
         mapRef.current.panTo({ lat, lng });
         initialPanDone = true;
         fetchWeather(lat, lng);
@@ -255,7 +308,7 @@ export default function RouteMap() {
         },
       });
     }
-  }, [start]);
+  }, [start, isLoaded]);
 
   // Sync end marker
   useEffect(() => {
@@ -275,7 +328,7 @@ export default function RouteMap() {
         },
       });
     }
-  }, [end]);
+  }, [end, isLoaded]);
 
   function togglePreference() {
     setPreference((p) => (p === "sun" ? "shade" : "sun"));
@@ -424,6 +477,10 @@ export default function RouteMap() {
           bestSegments,
           sun_altitude,
         );
+
+        const bounds = new window.google.maps.LatLngBounds();
+        bestCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+        mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
 
         const midpoint = { lat: midLat, lng: midLng };
         if (

@@ -22,8 +22,8 @@ function staticMapUrl(route) {
   return (
     `https://maps.googleapis.com/maps/api/staticmap` +
     `?size=100x100&scale=2` +
-    `&markers=color:0x7bc67e%7C${start}` +
-    `&markers=color:0x1a6b1a%7C${end}` +
+    `&markers=size:mid%7Ccolor:0x7bc67e%7C${start}` +
+    `&markers=size:mid%7Ccolor:0x1a6b1a%7C${end}` +
     `&path=color:0x3d7a3d80%7Cweight:3%7C${start}%7C${end}` +
     `&key=${MAP_KEY}`
   );
@@ -45,6 +45,7 @@ export default function MyRoutesPage() {
   const navigate = useNavigate();
   const [routes, setRoutes] = useState([]);
   const [resolvedAddresses, setResolvedAddresses] = useState({});
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null); // { id, name }
 
@@ -73,6 +74,8 @@ export default function MyRoutesPage() {
       setRoutes(res.data);
     } catch {
       setError("Could not load routes.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -94,7 +97,8 @@ export default function MyRoutesPage() {
     <div className="page-container" style={{ maxWidth: "600px" }}>
       <h2>My Routes <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600", fontSize: "0.85em" }} /></h2>
       {error && <p style={{ color: "#C0392B", fontSize: "0.88em" }}>{error}</p>}
-      {routes.length === 0 && !error && (
+      {loading && <p style={{ color: "#A87500", fontSize: "0.92em" }}>Loading routes...</p>}
+      {!loading && routes.length === 0 && !error && (
         <p style={{ color: "#A87500", fontSize: "0.92em" }}>No saved routes yet. Plan one!</p>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
