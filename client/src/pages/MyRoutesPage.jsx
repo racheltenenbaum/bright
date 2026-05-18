@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Share } from "@capacitor/share";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSun, faArrowRight, faTrash, faShareNodes } from "@fortawesome/free-solid-svg-icons";
@@ -87,9 +88,10 @@ export default function MyRoutesPage() {
       const res = await api.post(`/routes/${routeId}/share`, {}, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const url = `${window.location.origin}/share/${res.data.share_token}`;
-      if (navigator.share) {
-        await navigator.share({ title: "Check out this route on bright", url });
+      const url = `${import.meta.env.VITE_APP_URL || window.location.origin}/share/${res.data.share_token}`;
+      const canShare = (await Share.canShare()).value;
+      if (canShare) {
+        await Share.share({ title: "Check out this route on bright", url, dialogTitle: "Share route" });
       } else {
         await navigator.clipboard.writeText(url);
         setCopiedId(routeId);
