@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSun, faArrowRight, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faSun, faArrowRight, faTrash, faShareNodes } from "@fortawesome/free-solid-svg-icons";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -48,6 +48,7 @@ export default function MyRoutesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null); // { id, name }
+  const [copiedId, setCopiedId] = useState(null);
 
   useEffect(() => {
     fetchRoutes();
@@ -77,6 +78,24 @@ export default function MyRoutesPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function shareRoute(e, routeId) {
+    e.stopPropagation();
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.post(`/routes/${routeId}/share`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const url = `${window.location.origin}/share/${res.data.share_token}`;
+      if (navigator.share) {
+        await navigator.share({ title: "Check out this route on bright", url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setCopiedId(routeId);
+        setTimeout(() => setCopiedId(null), 2000);
+      }
+    } catch { /* ignore */ }
   }
 
   async function confirmDelete() {
@@ -156,20 +175,38 @@ export default function MyRoutesPage() {
                   })()}
                 </p>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: route.id, name: route.name }); }}
-                style={{
-                  color: "#C8A84B", background: "none", border: "none",
-                  cursor: "pointer", fontSize: "20px", lineHeight: 1,
-                  padding: "2px 4px", boxShadow: "none",
-                  transition: "color 0.15s",
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = "#C0392B"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = "#C8A84B"; }}
-                title="Delete"
-              >
-                <FontAwesomeIcon icon={faTrash} />
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                <button
+                  onClick={(e) => shareRoute(e, route.id)}
+                  style={{
+                    color: "#C8A84B", background: "none", border: "none",
+                    cursor: "pointer", fontSize: "18px", lineHeight: 1,
+                    padding: "2px 4px", boxShadow: "none",
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#3D7A3D"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "#C8A84B"; }}
+                  title={copiedId === route.id ? "Copied!" : "Share"}
+                >
+                  {copiedId === route.id
+                    ? <span style={{ fontSize: "0.65em", fontWeight: 700, color: "#3D7A3D" }}>Copied!</span>
+                    : <FontAwesomeIcon icon={faShareNodes} />}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setPendingDelete({ id: route.id, name: route.name }); }}
+                  style={{
+                    color: "#C8A84B", background: "none", border: "none",
+                    cursor: "pointer", fontSize: "18px", lineHeight: 1,
+                    padding: "2px 4px", boxShadow: "none",
+                    transition: "color 0.15s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#C0392B"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "#C8A84B"; }}
+                  title="Delete"
+                >
+                  <FontAwesomeIcon icon={faTrash} />
+                </button>
+              </div>
             </div>
           </div>
         ))}

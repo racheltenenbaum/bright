@@ -7,6 +7,7 @@ from slowapi.errors import RateLimitExceeded
 
 from src.limiter import limiter
 from src.routers import users, sun, shadow_analyze, routes, weather
+from src.routers.routes import share_router
 
 app = FastAPI(title="bright")
 app.state.limiter = limiter
@@ -25,6 +26,7 @@ app.include_router(users.router)
 app.include_router(sun.router)
 app.include_router(shadow_analyze.router)
 app.include_router(routes.router)
+app.include_router(share_router)
 app.include_router(weather.router)
 
 

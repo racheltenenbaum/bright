@@ -39,6 +39,24 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 
+class ShareTokenResponse(BaseModel):
+    share_token: str
+
+
+class SharedRouteResponse(BaseModel):
+    name: str
+    description: str | None
+    start_lat: float
+    start_lng: float
+    end_lat: float
+    end_lng: float
+    start_address: str | None
+    end_address: str | None
+    preference: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class RouteCreate(BaseModel):
     name: str
     description: str | None = None

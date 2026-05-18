@@ -10,6 +10,7 @@ const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const PlanRoutePage = lazy(() => import("./pages/PlanRoutePage"));
 const MyRoutesPage = lazy(() => import("./pages/MyRoutesPage"));
 const MyAccountPage = lazy(() => import("./pages/MyAccountPage"));
+const SharedRoutePage = lazy(() => import("./pages/SharedRoutePage"));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -29,6 +30,7 @@ function Layout() {
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/share/:token" element={<SharedRoutePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route
