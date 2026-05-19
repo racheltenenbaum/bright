@@ -10,7 +10,9 @@ import {
   faHeart,
   faTriangleExclamation,
   faLocationCrosshairs,
+  faShareNodes,
 } from "@fortawesome/free-solid-svg-icons";
+import { Share } from "@capacitor/share";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -85,6 +87,8 @@ export default function RouteMap() {
   const [saveError, setSaveError] = useState(null);
   const [routeSaved, setRouteSaved] = useState(false);
   const [savedRouteName, setSavedRouteName] = useState(null);
+  const [savedRouteId, setSavedRouteId] = useState(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [routeCoords, setRouteCoords] = useState(null);
   const [routeSegments, setRouteSegments] = useState(null);
@@ -492,7 +496,7 @@ export default function RouteMap() {
     setSaveError(null);
     try {
       const token = localStorage.getItem("token");
-      await api.post(
+      const res = await api.post(
         "/routes",
         {
           name: saveForm.name.trim(),
@@ -512,12 +516,31 @@ export default function RouteMap() {
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      setSavedRouteId(res.data.id);
       setSavedRouteName(saveForm.name.trim());
       setSaveForm(null);
       setRouteSaved(true);
     } catch {
       setSaveError("Could not save route. Please try again.");
     }
+  }
+
+  async function shareRoute() {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.post(`/routes/${savedRouteId}/share`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const url = `${import.meta.env.VITE_APP_URL || window.location.origin}/share/${res.data.share_token}`;
+      const canShare = (await Share.canShare()).value;
+      if (canShare) {
+        await Share.share({ title: "Check out this route on bright", url, dialogTitle: "Share route" });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      }
+    } catch { /* ignore */ }
   }
 
   function reset() {
@@ -727,8 +750,15 @@ export default function RouteMap() {
       {(savedRouteName || routeStats || planning) && (
         <div style={{ margin: "0 0 6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           {savedRouteName && (
-            <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600 }}>
+            <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
               <FontAwesomeIcon icon={faHeart} /> {savedRouteName}
+              <button
+                onClick={shareRoute}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "0 2px", boxShadow: "none", color: "#5A8F5A", fontSize: "13px" }}
+                title="Share"
+              >
+                {shareCopied ? <span style={{ fontSize: "0.75em", fontWeight: 700 }}>Copied!</span> : <FontAwesomeIcon icon={faShareNodes} />}
+              </button>
             </span>
           )}
           {planning ? (
