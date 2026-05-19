@@ -504,6 +504,11 @@ export default function RouteMap() {
           start_address: startAddress.split(",")[0].trim() || null,
           end_address: endAddress.split(",")[0].trim() || null,
           preference,
+          route_path: routeCoords
+            ? JSON.stringify(
+                routeCoords.filter((_, i) => i % Math.max(1, Math.floor(routeCoords.length / 60)) === 0)
+              )
+            : null,
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );

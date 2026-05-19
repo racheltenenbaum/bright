@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.database import Base
@@ -29,6 +29,7 @@ class Route(Base):
     end_address = Column(String(512), nullable=True)
     preference = Column(String(10), nullable=True)
     share_token = Column(String(36), nullable=True, unique=True, index=True)
+    route_path = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

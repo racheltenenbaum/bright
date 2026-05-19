@@ -2,6 +2,7 @@ import os
 
 # Must be set before any app imports so module-level reads pick them up
 os.environ["SECRET_KEY"] = "test-secret-key-bright"
+os.environ["DATABASE_URL"] = "sqlite:///./test_bright.db"
 os.environ.setdefault("GOOGLE_MAPS_API_KEY", "test-google-key")
 os.environ.setdefault("ASTRONOMY_API_KEY", "test-astro-key")
 # Low limits so rate-limit tests only need 3+1 requests

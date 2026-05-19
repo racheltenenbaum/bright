@@ -9,12 +9,20 @@ const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 function staticMapUrl(route) {
   const start = `${route.start_lat},${route.start_lng}`;
   const end = `${route.end_lat},${route.end_lng}`;
+  let pathParam = `&path=color:0xFFD60080%7Cweight:4%7C${start}%7C${end}`;
+  if (route.route_path) {
+    try {
+      const coords = JSON.parse(route.route_path);
+      const points = coords.map(([lat, lng]) => `${lat},${lng}`).join("%7C");
+      pathParam = `&path=color:0xFFD60080%7Cweight:4%7C${points}`;
+    } catch { /* fall back to straight line */ }
+  }
   return (
     `https://maps.googleapis.com/maps/api/staticmap` +
     `?size=600x300&scale=2` +
     `&markers=size:mid%7Ccolor:0xFFD600%7C${start}` +
     `&markers=size:mid%7Ccolor:0xf5ae0a%7C${end}` +
-    `&path=color:0xFFD60080%7Cweight:4%7C${start}%7C${end}` +
+    pathParam +
     `&key=${MAP_KEY}`
   );
 }

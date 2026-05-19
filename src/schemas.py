@@ -53,6 +53,7 @@ class SharedRouteResponse(BaseModel):
     start_address: str | None
     end_address: str | None
     preference: str | None
+    route_path: str | None
 
     model_config = {"from_attributes": True}
 
@@ -67,6 +68,7 @@ class RouteCreate(BaseModel):
     start_address: str | None = None
     end_address: str | None = None
     preference: str | None = None
+    route_path: str | None = None
 
 
 class RouteResponse(BaseModel):
@@ -80,6 +82,7 @@ class RouteResponse(BaseModel):
     start_address: str | None
     end_address: str | None
     preference: str | None
+    route_path: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
