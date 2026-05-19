@@ -29,14 +29,20 @@ function scoreRouteFromShadow(segments, preference) {
   return preference === "shade" ? shadedCount : segments.length - shadedCount;
 }
 
-function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude) {
+function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, preference) {
   clearPolylines(polylinesRef);
   if (!mapInstance || !coords || !segments) return;
 
   coords.slice(0, -1).forEach((point, i) => {
     const seg = segments[i] ?? segments[segments.length - 1];
-    const color =
-      sunAltitude <= 0 ? "#888888" : seg.shaded ? "#888888" : "#FFD700";
+    let color;
+    if (sunAltitude <= 0) {
+      color = "#888888";
+    } else if (preference === "shade") {
+      color = seg.shaded ? "#5E8FAD" : "#C8D8E4";
+    } else {
+      color = seg.shaded ? "#C8C8A0" : "#FFD700";
+    }
 
     const polyline = new window.google.maps.Polyline({
       path: [
@@ -466,6 +472,7 @@ export default function RouteMap() {
           bestCoords,
           bestSegments,
           sun_altitude,
+          preference,
         );
 
         const bounds = new window.google.maps.LatLngBounds();
@@ -856,12 +863,12 @@ export default function RouteMap() {
                     style={{
                       width: 14,
                       height: 4,
-                      background: "#FFD700",
+                      background: preference === "shade" ? "#5E8FAD" : "#FFD700",
                       display: "inline-block",
                       borderRadius: 2,
                     }}
                   />
-                  Sunny
+                  {preference === "shade" ? "Shaded" : "Sunny"}
                 </span>
                 <span
                   style={{ display: "flex", alignItems: "center", gap: "4px" }}
@@ -870,12 +877,12 @@ export default function RouteMap() {
                     style={{
                       width: 14,
                       height: 4,
-                      background: "#888888",
+                      background: preference === "shade" ? "#C8D8E4" : "#C8C8A0",
                       display: "inline-block",
                       borderRadius: 2,
                     }}
                   />
-                  Shaded
+                  {preference === "shade" ? "Sunny" : "Shaded"}
                 </span>
               </div>
             </div>

@@ -117,7 +117,6 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list:
             return buildings
     except Exception:
         pass
-    _overpass_cache[key] = []
     return []
 
 
