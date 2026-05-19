@@ -6,22 +6,28 @@ import { faArrowRight, faSun, faCloudSun } from "@fortawesome/free-solid-svg-ico
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+const COLORS = {
+  sun:   { startPin: "0xFFD600", endPin: "0xf5ae0a", path: "0xFFD60080" },
+  shade: { startPin: "0x7AB3CF", endPin: "0x4A7090", path: "0x4A709080" },
+};
+
 function staticMapUrl(route) {
   const start = `${route.start_lat},${route.start_lng}`;
   const end = `${route.end_lat},${route.end_lng}`;
-  let pathParam = `&path=color:0xFFD60080%7Cweight:4%7C${start}%7C${end}`;
+  const c = route.preference === "shade" ? COLORS.shade : COLORS.sun;
+  let pathParam = `&path=color:${c.path}%7Cweight:4%7C${start}%7C${end}`;
   if (route.route_path) {
     try {
       const coords = JSON.parse(route.route_path);
       const points = coords.map(([lat, lng]) => `${lat},${lng}`).join("%7C");
-      pathParam = `&path=color:0xFFD60080%7Cweight:4%7C${points}`;
+      pathParam = `&path=color:${c.path}%7Cweight:4%7C${points}`;
     } catch { /* fall back to straight line */ }
   }
   return (
     `https://maps.googleapis.com/maps/api/staticmap` +
     `?size=600x300&scale=2` +
-    `&markers=size:mid%7Ccolor:0xFFD600%7C${start}` +
-    `&markers=size:mid%7Ccolor:0xf5ae0a%7C${end}` +
+    `&markers=size:mid%7Ccolor:${c.startPin}%7C${start}` +
+    `&markers=size:mid%7Ccolor:${c.endPin}%7C${end}` +
     pathParam +
     `&key=${MAP_KEY}`
   );
@@ -82,8 +88,9 @@ export default function SharedRoutePage() {
             {route.preference && (
               <span style={{
                 fontSize: "0.78em", fontWeight: 700, padding: "3px 10px",
-                borderRadius: "999px", background: "var(--color-accent)",
-                color: "var(--color-text)",
+                borderRadius: "999px",
+                background: route.preference === "shade" ? "#7AB3CF" : "#FFD600",
+                color: route.preference === "shade" ? "#ffffff" : "#3D2C00",
               }}>
                 <FontAwesomeIcon icon={route.preference === "shade" ? faCloudSun : faSun} style={{ marginRight: "4px" }} />
                 {route.preference === "shade" ? "Shade" : "Sun"}
