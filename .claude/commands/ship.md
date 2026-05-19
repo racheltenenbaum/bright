@@ -9,4 +9,4 @@ Steps:
 6. Run `git push`.
 7. Run `cd /Users/racheltenenbaum/projects/bright/client && npm run build && npx cap sync ios`.
 8. Kill any running Vite dev server with `pkill -f "vite"` (ignore errors if none running), then run `cd /Users/racheltenenbaum/projects/bright/client && npm run dev` in the background.
-9. Tell the user the dev server is restarting and Railway will auto-redeploy from the push.
+9. Tell the user "Done!"
