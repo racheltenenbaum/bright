@@ -1,43 +1,51 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { Geolocation } from "@capacitor/geolocation";
+import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faHouse, faBriefcase, faDumbbell, faMugHot, faGraduationCap, faStar,
   faMapPin, faUtensils, faShoppingCart, faHeart, faBicycle, faMusic,
   faTree, faPlane, faTrain, faBus, faBed, faCamera, faBook, faSun,
-  faPlus, faTrash, faPen, faCheck, faXmark,
+  faPlus, faTrash, faPen, faCheck, faXmark, faLocationCrosshairs,
 } from "@fortawesome/free-solid-svg-icons";
 import api from "../api";
 
+const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const LIBRARIES = ["places"];
+
 export const SPOT_ICONS = [
-  { key: "faHouse",        icon: faHouse,        label: "Home" },
-  { key: "faBriefcase",    icon: faBriefcase,    label: "Work" },
-  { key: "faDumbbell",     icon: faDumbbell,     label: "Gym" },
-  { key: "faMugHot",       icon: faMugHot,       label: "Café" },
-  { key: "faUtensils",     icon: faUtensils,     label: "Restaurant" },
-  { key: "faGraduationCap",icon: faGraduationCap,label: "School" },
-  { key: "faShoppingCart", icon: faShoppingCart, label: "Shop" },
-  { key: "faHeart",        icon: faHeart,        label: "Favourite" },
-  { key: "faStar",         icon: faStar,         label: "Favourite" },
-  { key: "faMapPin",       icon: faMapPin,       label: "Place" },
-  { key: "faBicycle",      icon: faBicycle,      label: "Bike" },
-  { key: "faMusic",        icon: faMusic,        label: "Music" },
-  { key: "faTree",         icon: faTree,         label: "Park" },
-  { key: "faPlane",        icon: faPlane,        label: "Airport" },
-  { key: "faTrain",        icon: faTrain,        label: "Station" },
-  { key: "faBus",          icon: faBus,          label: "Bus stop" },
-  { key: "faBed",          icon: faBed,          label: "Hotel" },
-  { key: "faCamera",       icon: faCamera,       label: "Sightseeing" },
-  { key: "faBook",         icon: faBook,         label: "Library" },
-  { key: "faSun",          icon: faSun,          label: "Other" },
+  { key: "faHouse",         icon: faHouse,         label: "Home" },
+  { key: "faBriefcase",     icon: faBriefcase,     label: "Work" },
+  { key: "faDumbbell",      icon: faDumbbell,      label: "Gym" },
+  { key: "faMugHot",        icon: faMugHot,        label: "Café" },
+  { key: "faUtensils",      icon: faUtensils,      label: "Restaurant" },
+  { key: "faGraduationCap", icon: faGraduationCap, label: "School" },
+  { key: "faShoppingCart",  icon: faShoppingCart,  label: "Shop" },
+  { key: "faHeart",         icon: faHeart,         label: "Favourite" },
+  { key: "faStar",          icon: faStar,          label: "Favourite" },
+  { key: "faMapPin",        icon: faMapPin,        label: "Place" },
+  { key: "faBicycle",       icon: faBicycle,       label: "Bike" },
+  { key: "faMusic",         icon: faMusic,         label: "Music" },
+  { key: "faTree",          icon: faTree,          label: "Park" },
+  { key: "faPlane",         icon: faPlane,         label: "Airport" },
+  { key: "faTrain",         icon: faTrain,         label: "Station" },
+  { key: "faBus",           icon: faBus,           label: "Bus stop" },
+  { key: "faBed",           icon: faBed,           label: "Hotel" },
+  { key: "faCamera",        icon: faCamera,        label: "Sightseeing" },
+  { key: "faBook",          icon: faBook,          label: "Library" },
+  { key: "faSun",           icon: faSun,           label: "Other" },
 ];
 
 export function spotIcon(key) {
   return SPOT_ICONS.find((s) => s.key === key)?.icon ?? faMapPin;
 }
 
-const BLANK_FORM = { name: "", address: "", lat: "", lng: "", icon: "faHouse" };
+const BLANK_FORM = { name: "", address: "", lat: null, lng: null, icon: "faHouse" };
+const DEFAULT_CENTER = { lat: 51.505, lng: -0.09 };
 
 export default function MySpotsPage() {
+  const { isLoaded } = useLoadScript({ googleMapsApiKey: MAP_KEY, libraries: LIBRARIES });
+
   const [spots, setSpots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -46,8 +54,112 @@ export default function MySpotsPage() {
   const [editingId, setEditingId] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [locating, setLocating] = useState(false);
+
+  const mapContainerRef = useRef(null);
+  const formMapRef = useRef(null);
+  const formMarkerRef = useRef(null);
+  const autocompleteRef = useRef(null);
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => { fetchSpots(); }, []);
+
+  // Init mini-map when form opens
+  useEffect(() => {
+    if (!showForm || !isLoaded) return;
+    requestAnimationFrame(() => {
+      if (!mapContainerRef.current || formMapRef.current) return;
+      const center = formRef.current.lat && formRef.current.lng
+        ? { lat: formRef.current.lat, lng: formRef.current.lng }
+        : DEFAULT_CENTER;
+      formMapRef.current = new window.google.maps.Map(mapContainerRef.current, {
+        center,
+        zoom: 15,
+        disableDefaultUI: true,
+        zoomControl: true,
+      });
+      if (formRef.current.lat && formRef.current.lng) {
+        formMarkerRef.current = new window.google.maps.Marker({
+          position: center,
+          map: formMapRef.current,
+        });
+      }
+      formMapRef.current.addListener("click", async (e) => {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        const address = await reverseGeocode(lat, lng);
+        setForm((prev) => ({ ...prev, lat, lng, address: address || prev.address }));
+        placeMarker({ lat, lng });
+      });
+    });
+    return () => {
+      formMapRef.current = null;
+      formMarkerRef.current = null;
+    };
+  }, [showForm, isLoaded]);
+
+  // Update marker when lat/lng changes
+  useEffect(() => {
+    if (!formMapRef.current || !form.lat || !form.lng) return;
+    const pos = { lat: form.lat, lng: form.lng };
+    placeMarker(pos);
+    formMapRef.current.panTo(pos);
+  }, [form.lat, form.lng]);
+
+  function placeMarker(pos) {
+    if (!formMapRef.current) return;
+    if (formMarkerRef.current) {
+      formMarkerRef.current.setPosition(pos);
+    } else {
+      formMarkerRef.current = new window.google.maps.Marker({
+        position: pos,
+        map: formMapRef.current,
+      });
+    }
+  }
+
+  async function reverseGeocode(lat, lng) {
+    try {
+      const geocoder = new window.google.maps.Geocoder();
+      const result = await geocoder.geocode({ location: { lat, lng } });
+      return result.results[0]?.formatted_address || null;
+    } catch { return null; }
+  }
+
+  async function useCurrentLocation() {
+    setLocating(true);
+    try {
+      let lat, lng;
+      try {
+        await Geolocation.requestPermissions();
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      } catch {
+        const pos = await new Promise((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true })
+        );
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      }
+      const address = await reverseGeocode(lat, lng);
+      setForm((prev) => ({ ...prev, lat, lng, address: address || "" }));
+    } catch {
+      setSaveError("Could not get your location.");
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  function onPlaceChanged() {
+    const place = autocompleteRef.current?.getPlace();
+    if (!place?.geometry) return;
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
+    const address = place.formatted_address || place.name || "";
+    setForm((prev) => ({ ...prev, lat, lng, address }));
+  }
 
   async function fetchSpots() {
     try {
@@ -75,15 +187,19 @@ export default function MySpotsPage() {
     setShowForm(true);
   }
 
+  function closeForm() {
+    setShowForm(false);
+    formMapRef.current = null;
+    formMarkerRef.current = null;
+  }
+
   async function saveSpot() {
-    if (!form.name.trim() || !form.address.trim()) {
-      setSaveError("Name and address are required.");
-      return;
-    }
+    if (!form.name.trim()) { setSaveError("Name is required."); return; }
+    if (!form.lat || !form.lng) { setSaveError("Please pick a location on the map or search an address."); return; }
     setSaveError(null);
     try {
       const token = localStorage.getItem("token");
-      const payload = { ...form, name: form.name.trim(), address: form.address.trim(), lat: parseFloat(form.lat) || 0, lng: parseFloat(form.lng) || 0 };
+      const payload = { name: form.name.trim(), address: form.address, lat: form.lat, lng: form.lng, icon: form.icon };
       if (editingId) {
         const res = await api.patch(`/spots/${editingId}`, payload, { headers: { Authorization: `Bearer ${token}` } });
         setSpots((prev) => prev.map((s) => s.id === editingId ? res.data : s));
@@ -91,7 +207,7 @@ export default function MySpotsPage() {
         const res = await api.post("/spots", payload, { headers: { Authorization: `Bearer ${token}` } });
         setSpots((prev) => [...prev, res.data]);
       }
-      setShowForm(false);
+      closeForm();
     } catch {
       setSaveError("Could not save spot.");
     }
@@ -146,16 +262,10 @@ export default function MySpotsPage() {
               </p>
             </div>
             <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-              <button onClick={() => openEdit(spot)} style={{
-                background: "none", border: "none", cursor: "pointer",
-                color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none",
-              }}>
+              <button onClick={() => openEdit(spot)} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                 <FontAwesomeIcon icon={faPen} />
               </button>
-              <button onClick={() => setPendingDelete(spot)} style={{
-                background: "none", border: "none", cursor: "pointer",
-                color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none",
-              }}>
+              <button onClick={() => setPendingDelete(spot)} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                 <FontAwesomeIcon icon={faTrash} />
               </button>
             </div>
@@ -163,18 +273,19 @@ export default function MySpotsPage() {
         ))}
       </div>
 
-      {/* Add / Edit form modal */}
+      {/* Add / Edit modal */}
       {showForm && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(61,44,0,0.25)",
-          backdropFilter: "blur(2px)", display: "flex", alignItems: "center",
-          justifyContent: "center", zIndex: 1000,
+          backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-start",
+          justifyContent: "center", zIndex: 1000, overflowY: "auto", padding: "20px 0",
         }}>
           <div style={{
             background: "#FFFDF5", border: "2.5px solid #ffffff",
-            borderRadius: "24px", padding: "28px", maxWidth: "380px",
+            borderRadius: "24px", padding: "24px", maxWidth: "400px",
             width: "90%", boxShadow: "6px 6px 0 #E8C000",
             display: "flex", flexDirection: "column", gap: "14px",
+            margin: "auto",
           }}>
             <h3 style={{ margin: 0, fontSize: "1.05em" }}>{editingId ? "Edit spot" : "Add spot"}</h3>
 
@@ -183,11 +294,43 @@ export default function MySpotsPage() {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
-            <input
-              type="text" placeholder="Address *"
-              value={form.address}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-            />
+
+            {/* Address with autocomplete */}
+            {isLoaded ? (
+              <Autocomplete
+                onLoad={(a) => { autocompleteRef.current = a; }}
+                onPlaceChanged={onPlaceChanged}
+              >
+                <input
+                  type="text"
+                  placeholder="Search address *"
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value, lat: null, lng: null })}
+                />
+              </Autocomplete>
+            ) : (
+              <input type="text" placeholder="Search address *" disabled value="" />
+            )}
+
+            {/* Use current location */}
+            <button
+              onClick={useCurrentLocation}
+              disabled={locating}
+              style={{ fontSize: "0.78em", padding: "0.35em 0.9em", display: "flex", alignItems: "center", gap: "6px", alignSelf: "flex-start" }}
+            >
+              <FontAwesomeIcon icon={faLocationCrosshairs} />
+              {locating ? "Locating…" : "Use my location"}
+            </button>
+
+            {/* Mini map */}
+            <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid #E8C000", height: "200px" }}>
+              <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
+            </div>
+            {!form.lat && (
+              <p style={{ margin: "-8px 0 0", fontSize: "0.75em", color: "#A87500" }}>
+                Search an address, use your location, or tap the map to set a spot.
+              </p>
+            )}
 
             {/* Icon picker */}
             <div>
@@ -214,7 +357,7 @@ export default function MySpotsPage() {
             {saveError && <p style={{ margin: 0, color: "#C0392B", fontSize: "0.82em", fontWeight: 700 }}>{saveError}</p>}
 
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-              <button className="btn-outline" onClick={() => setShowForm(false)}>
+              <button className="btn-outline" onClick={closeForm}>
                 <FontAwesomeIcon icon={faXmark} /> Cancel
               </button>
               <button onClick={saveSpot}>
@@ -225,7 +368,7 @@ export default function MySpotsPage() {
         </div>
       )}
 
-      {/* Delete confirm modal */}
+      {/* Delete confirm */}
       {pendingDelete && (
         <div style={{
           position: "fixed", inset: 0, background: "rgba(61,44,0,0.25)",
