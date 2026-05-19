@@ -10,6 +10,7 @@ const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const PlanRoutePage = lazy(() => import("./pages/PlanRoutePage"));
 const MyRoutesPage = lazy(() => import("./pages/MyRoutesPage"));
 const MyAccountPage = lazy(() => import("./pages/MyAccountPage"));
+const MySpotsPage = lazy(() => import("./pages/MySpotsPage"));
 const SharedRoutePage = lazy(() => import("./pages/SharedRoutePage"));
 
 function ProtectedRoute({ children }) {
@@ -46,6 +47,14 @@ function Layout() {
               element={
                 <ProtectedRoute>
                   <MyRoutesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/my-spots"
+              element={
+                <ProtectedRoute>
+                  <MySpotsPage />
                 </ProtectedRoute>
               }
             />

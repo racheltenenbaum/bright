@@ -58,6 +58,25 @@ class SharedRouteResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SpotCreate(BaseModel):
+    name: str
+    address: str
+    lat: float
+    lng: float
+    icon: str
+
+
+class SpotResponse(BaseModel):
+    id: int
+    name: str
+    address: str
+    lat: float
+    lng: float
+    icon: str
+
+    model_config = {"from_attributes": True}
+
+
 class RouteCreate(BaseModel):
     name: str
     description: str | None = None

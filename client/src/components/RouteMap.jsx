@@ -13,6 +13,7 @@ import {
   faShareNodes,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
+import { spotIcon } from "../pages/MySpotsPage";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -103,6 +104,7 @@ export default function RouteMap() {
   const [planning, setPlanning] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [weather, setWeather] = useState(null);
+  const [spots, setSpots] = useState([]);
 
   startRef.current = start;
   endRef.current = end;
@@ -124,6 +126,15 @@ export default function RouteMap() {
     subtext:     "#A87500",
     surface:     "rgba(255,253,240,0.95)",
   };
+
+  // Fetch saved spots for quick-pick chips
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    api.get("/spots", { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => setSpots(res.data))
+      .catch(() => {});
+  }, []);
 
   // Pre-populate from a saved route navigated from My Routes
   useEffect(() => {
@@ -714,6 +725,43 @@ export default function RouteMap() {
             />
           </Autocomplete>
         </div>
+        {/* Spot chips — shown when start or end is empty */}
+        {spots.length > 0 && (!start || !end) && !sunData && (
+          <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px" }}>
+            {spots.map((spot) => (
+              <button
+                key={spot.id}
+                onClick={() => {
+                  const coords = { lat: spot.lat, lng: spot.lng };
+                  if (!start) {
+                    setStart(coords);
+                    setStartAddress(spot.address);
+                    clearPolylines(polylinesRef);
+                    setSunData(null);
+                    setSavedRouteName(null);
+                    setRouteSaved(false);
+                  } else {
+                    setEnd(coords);
+                    setEndAddress(spot.address);
+                    setSavedRouteName(null);
+                    setRouteSaved(false);
+                  }
+                  mapRef.current?.panTo(coords);
+                }}
+                style={{
+                  display: "flex", alignItems: "center", gap: "5px",
+                  padding: "4px 10px", borderRadius: "999px", whiteSpace: "nowrap",
+                  fontSize: "0.75em", fontWeight: 700,
+                  background: colors.accentGlow, border: `1.5px solid ${colors.accentFaint}`,
+                  color: colors.text, flexShrink: 0, boxShadow: "none",
+                }}
+              >
+                <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ fontSize: "11px" }} />
+                {spot.name}
+              </button>
+            ))}
+          </div>
+        )}
         {/* Plan Route + Save row — below inputs, right-aligned */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
           {!planning && start && end && !sunData && (
