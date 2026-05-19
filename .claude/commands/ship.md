@@ -1,4 +1,4 @@
-Stage all changes, commit, push, rebuild the frontend, sync to iOS, and start the dev server.
+Stage all changes, commit, push, rebuild the frontend, sync to iOS, and restart the dev server.
 
 Steps:
 1. Run `git status` to show what's being committed.
@@ -7,6 +7,6 @@ Steps:
 4. Run `git add -A` to stage everything.
 5. Run `git commit -m "<message>"` using the commit message from $ARGUMENTS or from the user's response.
 6. Run `git push`.
-7. Run `cd client && npm run build && npx cap sync ios`.
-8. Run `cd client && npm run dev`.
-9. Tell the user Railway will rebuild and restart both services (usually 1–3 minutes).
+7. Run `cd /Users/racheltenenbaum/projects/bright/client && npm run build && npx cap sync ios`.
+8. Kill any running Vite dev server with `pkill -f "vite"` (ignore errors if none running), then run `cd /Users/racheltenenbaum/projects/bright/client && npm run dev` in the background.
+9. Tell the user the dev server is restarting and Railway will auto-redeploy from the push.
