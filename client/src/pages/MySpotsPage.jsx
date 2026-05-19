@@ -295,32 +295,38 @@ export default function MySpotsPage() {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
 
-            {/* Address with autocomplete */}
-            {isLoaded ? (
-              <Autocomplete
-                onLoad={(a) => { autocompleteRef.current = a; }}
-                onPlaceChanged={onPlaceChanged}
+            {/* Address with autocomplete + inline location button */}
+            <div style={{ position: "relative" }}>
+              {isLoaded ? (
+                <Autocomplete
+                  onLoad={(a) => { autocompleteRef.current = a; }}
+                  onPlaceChanged={onPlaceChanged}
+                >
+                  <input
+                    type="text"
+                    placeholder="Search address *"
+                    value={form.address}
+                    onChange={(e) => setForm({ ...form, address: e.target.value, lat: null, lng: null })}
+                    style={{ paddingRight: "130px", width: "100%", boxSizing: "border-box" }}
+                  />
+                </Autocomplete>
+              ) : (
+                <input type="text" placeholder="Search address *" disabled value="" style={{ width: "100%", boxSizing: "border-box" }} />
+              )}
+              <button
+                onClick={useCurrentLocation}
+                disabled={locating}
+                style={{
+                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
+                  fontSize: "10px", padding: "2px 7px", display: "flex", alignItems: "center",
+                  gap: "4px", background: "rgba(255,193,7,0.15)", border: "1.5px solid #FFD600",
+                  color: "#A87500", fontWeight: 700, whiteSpace: "nowrap", boxShadow: "none",
+                }}
               >
-                <input
-                  type="text"
-                  placeholder="Search address *"
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value, lat: null, lng: null })}
-                />
-              </Autocomplete>
-            ) : (
-              <input type="text" placeholder="Search address *" disabled value="" />
-            )}
-
-            {/* Use current location */}
-            <button
-              onClick={useCurrentLocation}
-              disabled={locating}
-              style={{ fontSize: "0.78em", padding: "0.35em 0.9em", display: "flex", alignItems: "center", gap: "6px", alignSelf: "flex-start" }}
-            >
-              <FontAwesomeIcon icon={faLocationCrosshairs} />
-              {locating ? "Locating…" : "Use my location"}
-            </button>
+                <FontAwesomeIcon icon={faLocationCrosshairs} />
+                {locating ? "Locating…" : "Use my location"}
+              </button>
+            </div>
 
             {/* Mini map */}
             <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid #E8C000", height: "200px" }}>
