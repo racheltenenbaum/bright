@@ -8,5 +8,5 @@ Steps:
 5. Run `git commit -m "<message>"` using the commit message from $ARGUMENTS or from the user's response.
 6. Run `git push`.
 7. Run `cd /Users/racheltenenbaum/projects/bright/client && npm run build && npx cap sync ios`.
-8. Kill any running Vite dev server with `pkill -f "vite"` (ignore errors if none running), then run `cd /Users/racheltenenbaum/projects/bright/client && npm run dev` in the background.
+8. Kill any running Vite dev server with `pkill -f "vite"` (ignore errors if none running), then run `cd /Users/racheltenenbaum/projects/bright/client && npm run dev` in the background. Always use the full `cd ... && npm run dev` form — never bare `npm run dev`.
 9. Tell the user "Done!"

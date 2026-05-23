@@ -84,6 +84,7 @@ export default function RouteMap() {
   const sunDataRef = useRef(null);
   const modeRef = useRef("route");
   const placeMarkersRef = useRef([]);
+  const placeMarkersMapRef = useRef({});
   const touchStartYRef = useRef(null);
 
   const [preference, setPreference] = useState("sun");
@@ -604,9 +605,32 @@ export default function RouteMap() {
       .finally(() => setPlaceDetailsLoading(false));
   }, [selectedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Update pin size/colour when selection changes
+  useEffect(() => {
+    Object.values(placeMarkersMapRef.current).forEach(({ marker, place }) => {
+      const selected = selectedPlace?.place_id === place.place_id;
+      const color = selected
+        ? (place.is_sunny ? "#C8A000" : "#3D6E8C")
+        : (place.is_sunny ? "#FFD600" : "#5E8FAD");
+      const w = selected ? 34 : 28;
+      const h = selected ? 49 : 40;
+      marker.setIcon({
+        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 24 36">` +
+          `<path fill="${color}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>` +
+          `<circle cx="12" cy="12" r="5" fill="white"/></svg>`
+        )}`,
+        scaledSize: new window.google.maps.Size(w, h),
+        anchor: new window.google.maps.Point(w / 2, h),
+      });
+      marker.setZIndex(selected ? 3 : 2);
+    });
+  }, [selectedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function clearPlaceMarkers() {
     placeMarkersRef.current.forEach((m) => m.setMap(null));
     placeMarkersRef.current = [];
+    placeMarkersMapRef.current = {};
   }
 
   function renderPlaceMarkers(places) {
@@ -634,6 +658,7 @@ export default function RouteMap() {
         mapRef.current?.panTo({ lat: place.lat, lng: place.lng });
       });
       placeMarkersRef.current.push(marker);
+      placeMarkersMapRef.current[place.place_id] = { marker, place };
     });
   }
 
@@ -1207,7 +1232,7 @@ export default function RouteMap() {
                 background: colors.surface, borderRadius: "20px",
                 border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
                 zIndex: 10, width: "min(340px, 90vw)",
-                height: panelExpanded ? "calc(100% - 44px)" : "82px",
+                height: panelExpanded ? "calc(100% - 44px)" : "100px",
                 overflow: "hidden", display: "flex", flexDirection: "column",
                 transition: "height 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                 cursor: panelExpanded ? "default" : "pointer",
@@ -1249,9 +1274,11 @@ export default function RouteMap() {
                     {(placeDetails?.rating ?? selectedPlace.rating) != null && (
                       <span style={{ fontSize: "0.73em", color: colors.text, fontWeight: 600, flexShrink: 0 }}>
                         ★ {placeDetails?.rating ?? selectedPlace.rating}
+                        {placeDetails?.user_ratings_total != null &&
+                          <span style={{ fontWeight: 400, color: colors.subtext }}> ({placeDetails.user_ratings_total.toLocaleString()})</span>}
                       </span>
                     )}
-                    <span style={{ fontSize: "0.72em", fontWeight: 700, flexShrink: 0,
+                    <span style={{ fontSize: "0.72em", fontWeight: 700, flexShrink: 0, marginLeft: "auto",
                       color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
                       {selectedPlace.is_sunny ? "☀" : "☁"}
                     </span>
