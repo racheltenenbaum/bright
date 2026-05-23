@@ -245,18 +245,23 @@ def search_places(
     date_str, time_str = _get_local_datetime(body.lat, body.lng)
     sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng, date_str, time_str)
 
-    padding = body.radius / 111_000
-    s = body.lat - padding
-    w = body.lng - padding
-    n = body.lat + padding
-    e = body.lng + padding
+    is_nighttime = sun_altitude <= 0
 
-    # Fetch buildings and roads in parallel
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        buildings_future = pool.submit(_fetch_buildings_for_bbox, s, w, n, e)
-        roads_future = pool.submit(_fetch_roads_for_bbox, s, w, n, e)
-        buildings = buildings_future.result()
-        road_segments = roads_future.result()
+    if not is_nighttime:
+        padding = body.radius / 111_000
+        s = body.lat - padding
+        w = body.lng - padding
+        n = body.lat + padding
+        e = body.lng + padding
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            buildings_future = pool.submit(_fetch_buildings_for_bbox, s, w, n, e)
+            roads_future = pool.submit(_fetch_roads_for_bbox, s, w, n, e)
+            buildings = buildings_future.result()
+            road_segments = roads_future.result()
+    else:
+        buildings = []
+        road_segments = []
 
     # Collect places from Google for each requested type; deduplicate by place_id
     seen: dict[str, str] = {}  # place_id → type
@@ -274,9 +279,12 @@ def search_places(
         loc = raw["geometry"]["location"]
         plat = loc["lat"]
         plng = loc["lng"]
-        is_sunny = place_is_sunny(plat, plng, road_segments, buildings, sun_altitude, sun_azimuth)
-        if is_sunny != want_sunny:
-            continue
+        if is_nighttime:
+            is_sunny = False
+        else:
+            is_sunny = place_is_sunny(plat, plng, road_segments, buildings, sun_altitude, sun_azimuth)
+            if is_sunny != want_sunny:
+                continue
         photos = raw.get("photos", [])
         photo_reference = photos[0].get("photo_reference") if photos else None
         results.append(PlaceResult(

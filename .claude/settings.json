@@ -1,14 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git status)",
-      "Bash(git add -A)",
-      "Bash(git commit*)",
-      "Bash(git push)",
-      "Bash(cd /Users/racheltenenbaum/projects/bright/client && npm run build && npx cap sync ios)",
-      "Bash(pkill -f \"vite\")",
-      "Bash(cd /Users/racheltenenbaum/projects/bright/client && npm run dev)",
-      "Bash(npm run dev)"
+      "Bash(*)"
     ]
   }
 }

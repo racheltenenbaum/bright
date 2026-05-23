@@ -113,6 +113,7 @@ export default function RouteMap() {
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
   const [placesResults, setPlacesResults] = useState([]);
   const [placesSearching, setPlacesSearching] = useState(false);
+  const [placesSunAltitude, setPlacesSunAltitude] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [placeDetails, setPlaceDetails] = useState(null);
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState(false);
@@ -610,7 +611,7 @@ export default function RouteMap() {
     Object.values(placeMarkersMapRef.current).forEach(({ marker, place }) => {
       const selected = selectedPlace?.place_id === place.place_id;
       const color = selected
-        ? (place.is_sunny ? "#C8A000" : "#3D6E8C")
+        ? (place.is_sunny ? "#D4940A" : "#3D6E8C")
         : (place.is_sunny ? "#FFD600" : "#5E8FAD");
       const w = selected ? 34 : 28;
       const h = selected ? 49 : 40;
@@ -683,6 +684,7 @@ export default function RouteMap() {
     setError(null);
     setSelectedPlace(null);
     setPlacesSearching(true);
+    setPlacesSunAltitude(null);
     clearPlaceMarkers();
     setPlacesResults([]);
     try {
@@ -698,6 +700,7 @@ export default function RouteMap() {
         places = res.data.places;
       }
 
+      setPlacesSunAltitude(res.data.sun_altitude);
       setPlacesResults(places);
       renderPlaceMarkers(places);
       if (places.length > 0) {
@@ -747,6 +750,7 @@ export default function RouteMap() {
     } else {
       clearPlaceMarkers();
       setPlacesResults([]);
+      setPlacesSunAltitude(null);
       setSelectedPlace(null);
       setShowAllReviews(false);
       setPanelExpanded(false);
@@ -775,6 +779,7 @@ export default function RouteMap() {
     clearPolylines(polylinesRef);
     clearPlaceMarkers();
     setPlacesResults([]);
+    setPlacesSunAltitude(null);
     setSelectedPlace(null);
     setPlaceDetails(null);
     setShowAllReviews(false);
@@ -816,7 +821,7 @@ export default function RouteMap() {
       <div
         style={{
           marginBottom: "8px",
-          display: "flex",
+          display: mode === "places" && placesSunAltitude !== null && placesSunAltitude <= 0 ? "none" : "flex",
           alignItems: "center",
           gap: "10px",
         }}
@@ -1069,7 +1074,7 @@ export default function RouteMap() {
           {/* Result count */}
           {!placesSearching && placesResults.length > 0 && (
             <span style={{ fontSize: "0.78em", color: colors.subtext }}>
-              {placesResults.length} {preference === "sun" ? "sunny" : "shaded"} place{placesResults.length !== 1 ? "s" : ""} nearby
+              {placesResults.length} {placesSunAltitude !== null && placesSunAltitude <= 0 ? "" : (preference === "sun" ? "sunny " : "shaded ")}place{placesResults.length !== 1 ? "s" : ""} nearby
             </span>
           )}
         </div>
@@ -1232,7 +1237,7 @@ export default function RouteMap() {
                 background: colors.surface, borderRadius: "20px",
                 border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
                 zIndex: 10, width: "min(340px, 90vw)",
-                height: panelExpanded ? "calc(100% - 44px)" : "100px",
+                height: panelExpanded ? "calc(100% - 44px)" : "118px",
                 overflow: "hidden", display: "flex", flexDirection: "column",
                 transition: "height 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
                 cursor: panelExpanded ? "default" : "pointer",
@@ -1266,14 +1271,14 @@ export default function RouteMap() {
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {selectedPlace.name}
                   </strong>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "2px" }}>
+                  <div style={{ display: "flex", alignItems: "center", marginTop: "2px", gap: "6px" }}>
                     <span style={{ fontSize: "0.73em", color: colors.subtext,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "155px" }}>
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
                       {selectedPlace.address}{placeDetails?.postal_code ? `, ${placeDetails.postal_code}` : ""}
                     </span>
                     {(placeDetails?.rating ?? selectedPlace.rating) != null && (
-                      <span style={{ fontSize: "0.73em", color: colors.text, fontWeight: 600, flexShrink: 0 }}>
-                        ★{placeDetails?.rating ?? selectedPlace.rating}
+                      <span style={{ fontSize: "0.73em", color: colors.text, fontWeight: 600, flexShrink: 0, whiteSpace: "nowrap" }}>
+                        ★ {placeDetails?.rating ?? selectedPlace.rating}
                         {placeDetails?.user_ratings_total != null &&
                           <span style={{ fontWeight: 400, color: colors.subtext }}> ({placeDetails.user_ratings_total.toLocaleString()})</span>}
                       </span>
@@ -1283,7 +1288,7 @@ export default function RouteMap() {
                 <button
                   onClick={(e) => { e.stopPropagation(); setSelectedPlace(null); }}
                   style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
-                    color: colors.subtext, padding: "0 0 0 10px", boxShadow: "none", flexShrink: 0, lineHeight: 1 }}>
+                    color: colors.subtext, padding: "0 0 0 10px", boxShadow: "none", flexShrink: 0, lineHeight: 1, alignSelf: "flex-start" }}>
                   ×
                 </button>
               </div>
@@ -1326,10 +1331,12 @@ export default function RouteMap() {
                         {placeDetails.open_now ? "Open now" : "Closed"}
                       </span>
                     )}
-                    <span style={{ fontSize: "0.76em", fontWeight: 700,
-                      color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
-                      {selectedPlace.is_sunny ? "☀ Sunny now" : "☁ Shaded now"}
-                    </span>
+                    {(placesSunAltitude === null || placesSunAltitude > 0) && (
+                      <span style={{ fontSize: "0.76em", fontWeight: 700,
+                        color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
+                        {selectedPlace.is_sunny ? "☀ Sunny now" : "☁ Shaded now"}
+                      </span>
+                    )}
                   </div>
 
                   {/* Contact info */}
