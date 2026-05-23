@@ -30,6 +30,21 @@ VALID_TYPES = {"cafe", "restaurant", "bar", "park"}
 # Place types that pollute results when searching for cafes/restaurants
 _EXCLUDE_TYPES = {"gas_station", "convenience_store", "car_wash", "car_repair", "car_dealer"}
 
+_COUNTRY_CURRENCY: dict[str, str] = {
+    "GB": "£", "US": "$", "CA": "CA$", "AU": "A$", "NZ": "NZ$",
+    "JP": "¥", "CN": "¥", "KR": "₩", "IN": "₹", "TH": "฿",
+    "SG": "S$", "HK": "HK$", "TW": "NT$",
+    "BR": "R$", "MX": "$", "AR": "$", "CL": "$", "CO": "$",
+    "DE": "€", "FR": "€", "IT": "€", "ES": "€", "NL": "€",
+    "PT": "€", "BE": "€", "AT": "€", "IE": "€", "FI": "€",
+    "GR": "€", "LU": "€", "MT": "€", "CY": "€", "SK": "€",
+    "SI": "€", "EE": "€", "LV": "€", "LT": "€",
+    "SE": "kr", "NO": "kr", "DK": "kr",
+    "CH": "Fr", "PL": "zł", "CZ": "Kč", "HU": "Ft",
+    "RU": "₽", "TR": "₺", "ZA": "R",
+    "AE": "د.إ", "SA": "﷼", "IL": "₪",
+}
+
 # In-memory L1 cache for road data
 _road_cache: dict[str, list] = {}
 
@@ -197,6 +212,7 @@ class PlaceDetailsResponse(BaseModel):
     open_now: bool | None
     weekday_text: list[str]
     photo_references: list[str]
+    currency_symbol: str = "$"
     reviews: list[PlaceReview]
 
 
@@ -293,7 +309,7 @@ def get_place_details(
 
     fields = (
         "name,rating,user_ratings_total,price_level,"
-        "formatted_phone_number,website,opening_hours,photos,reviews"
+        "formatted_phone_number,website,opening_hours,photos,reviews,address_components"
     )
     try:
         resp = requests.get(
@@ -306,6 +322,11 @@ def get_place_details(
 
         data = resp.json().get("result", {})
         hours = data.get("opening_hours", {})
+        country_code = next(
+            (c["short_name"] for c in data.get("address_components", [])
+             if "country" in c.get("types", [])),
+            "US",
+        )
 
         return PlaceDetailsResponse(
             name=data.get("name", ""),
@@ -317,6 +338,7 @@ def get_place_details(
             open_now=hours.get("open_now"),
             weekday_text=hours.get("weekday_text", []),
             photo_references=[p["photo_reference"] for p in data.get("photos", [])[:5]],
+            currency_symbol=_COUNTRY_CURRENCY.get(country_code, "$"),
             reviews=[
                 PlaceReview(
                     author_name=r.get("author_name", ""),
@@ -324,7 +346,7 @@ def get_place_details(
                     text=r.get("text", ""),
                     relative_time=r.get("relative_time_description", ""),
                 )
-                for r in data.get("reviews", [])[:3]
+                for r in data.get("reviews", [])[:5]
             ],
         )
     except HTTPException:

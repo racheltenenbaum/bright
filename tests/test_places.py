@@ -576,6 +576,9 @@ PLACE_DETAILS_RESPONSE = {
         "price_level": 2,
         "formatted_phone_number": "+44 20 7946 0958",
         "website": "https://sunnycafe.co.uk",
+        "address_components": [
+            {"short_name": "GB", "types": ["country", "political"]},
+        ],
         "opening_hours": {
             "open_now": True,
             "weekday_text": [
@@ -628,6 +631,7 @@ def test_place_details_success(client, auth_headers):
     assert data["open_now"] is True
     assert len(data["weekday_text"]) == 7
     assert data["photo_references"] == ["ref1", "ref2", "ref3"]
+    assert data["currency_symbol"] == "£"
     assert len(data["reviews"]) == 2
     assert data["reviews"][0]["author_name"] == "Alice B."
     assert data["reviews"][0]["rating"] == 5
@@ -671,17 +675,17 @@ def test_place_details_limits_photos_to_five(client, auth_headers):
     assert len(response.json()["photo_references"]) == 5
 
 
-def test_place_details_limits_reviews_to_three(client, auth_headers):
+def test_place_details_limits_reviews_to_five(client, auth_headers):
     many_reviews = {"result": {**PLACE_DETAILS_RESPONSE["result"],
                                 "reviews": [{"author_name": f"User{i}", "rating": 4,
                                               "text": "Good", "relative_time_description": "1 week ago"}
-                                             for i in range(6)]}}
+                                             for i in range(8)]}}
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = many_reviews
     with patch("src.routers.places.requests.get", return_value=mock_resp):
         response = client.get("/places/abc123/details", headers=auth_headers)
-    assert len(response.json()["reviews"]) == 3
+    assert len(response.json()["reviews"]) == 5
 
 
 def test_place_details_missing_optional_fields(client, auth_headers):
@@ -700,3 +704,15 @@ def test_place_details_missing_optional_fields(client, auth_headers):
     assert data["open_now"] is None
     assert data["photo_references"] == []
     assert data["reviews"] == []
+    assert data["currency_symbol"] == "$"
+
+
+def test_place_details_unknown_country_defaults_currency(client, auth_headers):
+    response_data = {"result": {**PLACE_DETAILS_RESPONSE["result"],
+                                 "address_components": [{"short_name": "XX", "types": ["country", "political"]}]}}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = response_data
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert response.json()["currency_symbol"] == "$"
