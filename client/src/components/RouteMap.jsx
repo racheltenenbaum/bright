@@ -82,6 +82,8 @@ export default function RouteMap() {
   const startRef = useRef(null);
   const endRef = useRef(null);
   const sunDataRef = useRef(null);
+  const modeRef = useRef("route");
+  const placeMarkersRef = useRef([]);
 
   const [preference, setPreference] = useState("sun");
   const [start, setStart] = useState(null);
@@ -105,11 +107,28 @@ export default function RouteMap() {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [weather, setWeather] = useState(null);
   const [spots, setSpots] = useState([]);
+  const [mode, setMode] = useState("route");
+  const [placeTypes, setPlaceTypes] = useState(["cafe"]);
+  const [placeRadius, setPlaceRadius] = useState(500);
+  const [placesResults, setPlacesResults] = useState([]);
+  const [placesSearching, setPlacesSearching] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [placeSaveSuccess, setPlaceSaveSuccess] = useState(null);
+  const [placeSaveError, setPlaceSaveError] = useState(null);
 
   startRef.current = start;
   endRef.current = end;
   sunDataRef.current = sunData;
   currentLocationRef.current = currentLocation;
+  modeRef.current = mode;
+
+  const PLACE_TYPE_OPTIONS = [
+    { key: "cafe",       label: "Cafe" },
+    { key: "restaurant", label: "Restaurant" },
+    { key: "bar",        label: "Bar" },
+    { key: "park",       label: "Park" },
+  ];
+  const PLACE_SPOT_ICON = { cafe: "faMugHot", restaurant: "faUtensils", bar: "faMugHot", park: "faTree" };
 
   const colors = preference === "shade" ? {
     accent:      "#5E8FAD",
@@ -278,6 +297,10 @@ export default function RouteMap() {
     window.google.maps.event.clearListeners(map, "click");
 
     map.addListener("click", async (e) => {
+      if (modeRef.current === "places") {
+        setSelectedPlace(null);
+        return;
+      }
       const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       const geocoder = new window.google.maps.Geocoder();
       const result = await geocoder.geocode({ location: coords });
@@ -561,6 +584,114 @@ export default function RouteMap() {
     } catch { /* ignore */ }
   }
 
+  function clearPlaceMarkers() {
+    placeMarkersRef.current.forEach((m) => m.setMap(null));
+    placeMarkersRef.current = [];
+  }
+
+  function renderPlaceMarkers(places) {
+    clearPlaceMarkers();
+    places.forEach((place) => {
+      const pinColor = place.is_sunny ? "#FFD600" : "#5E8FAD";
+      const pin = encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36">` +
+        `<path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>` +
+        `<circle cx="12" cy="12" r="5" fill="white"/></svg>`
+      );
+      const marker = new window.google.maps.Marker({
+        position: { lat: place.lat, lng: place.lng },
+        map: mapRef.current,
+        icon: {
+          url: `data:image/svg+xml;charset=UTF-8,${pin}`,
+          scaledSize: new window.google.maps.Size(28, 40),
+          anchor: new window.google.maps.Point(14, 40),
+        },
+        title: place.name,
+        zIndex: 2,
+      });
+      marker.addListener("click", () => {
+        setSelectedPlace(place);
+        mapRef.current?.panTo({ lat: place.lat, lng: place.lng });
+      });
+      placeMarkersRef.current.push(marker);
+    });
+  }
+
+  async function searchPlaces() {
+    if (!mapRef.current) return;
+    const center = {
+      lat: mapRef.current.getCenter().lat(),
+      lng: mapRef.current.getCenter().lng(),
+    };
+    setError(null);
+    setSelectedPlace(null);
+    setPlacesSearching(true);
+    clearPlaceMarkers();
+    setPlacesResults([]);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.post(
+        "/places/search",
+        { lat: center.lat, lng: center.lng, radius: placeRadius, preference, types: placeTypes },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setPlacesResults(res.data.places);
+      renderPlaceMarkers(res.data.places);
+      if (res.data.places.length > 0) {
+        const bounds = new window.google.maps.LatLngBounds();
+        res.data.places.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+        mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 80, left: 20 });
+      }
+    } catch {
+      setError("Could not search for places. Please try again.");
+    } finally {
+      setPlacesSearching(false);
+    }
+  }
+
+  async function savePlaceAsSpot(place) {
+    setPlaceSaveError(null);
+    try {
+      const token = localStorage.getItem("token");
+      await api.post(
+        "/spots",
+        {
+          name: place.name,
+          address: place.address,
+          lat: place.lat,
+          lng: place.lng,
+          icon: PLACE_SPOT_ICON[place.type] || "faMapPin",
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setPlaceSaveSuccess(place.place_id);
+      setTimeout(() => setPlaceSaveSuccess(null), 2500);
+    } catch {
+      setPlaceSaveError("Could not save spot.");
+    }
+  }
+
+  function switchMode(newMode) {
+    if (newMode === mode) return;
+    if (newMode === "places") {
+      clearPolylines(polylinesRef);
+      setStart(null); setEnd(null);
+      setStartAddress(""); setEndAddress("");
+      setSunData(null); setRouteStats(null);
+      setRouteCoords(null); setRouteSegments(null);
+      setRouteSaved(false); setSavedRouteName(null);
+      setGoMode(false); setSaveForm(null);
+    } else {
+      clearPlaceMarkers();
+      setPlacesResults([]);
+      setSelectedPlace(null);
+      setPlaceSaveSuccess(null);
+      setPlaceSaveError(null);
+    }
+    setError(null);
+    setMode(newMode);
+  }
+
   function reset() {
     setStart(null);
     setEnd(null);
@@ -577,6 +708,11 @@ export default function RouteMap() {
     setRouteSegments(null);
     setGoMode(false);
     clearPolylines(polylinesRef);
+    clearPlaceMarkers();
+    setPlacesResults([]);
+    setSelectedPlace(null);
+    setPlaceSaveSuccess(null);
+    setPlaceSaveError(null);
     if (weatherLocationRef.current)
       fetchWeather(
         weatherLocationRef.current.lat,
@@ -588,6 +724,26 @@ export default function RouteMap() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Mode tabs: Plan Route | Find Places */}
+      <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+        {["route", "places"].map((m) => (
+          <button
+            key={m}
+            onClick={() => switchMode(m)}
+            style={{
+              flex: 1, fontSize: "0.82em", fontWeight: 700,
+              padding: "0.45em 0",
+              background: mode === m ? colors.accent : "transparent",
+              color: mode === m ? colors.text : colors.subtext,
+              border: `2px solid ${mode === m ? colors.accent : colors.accentFaint}`,
+              borderRadius: "10px", cursor: "pointer", boxShadow: "none",
+            }}
+          >
+            {m === "route" ? "Plan Route" : "Find Places"}
+          </button>
+        ))}
+      </div>
+
       {/* Sun / Shade toggle + Reset */}
       <div
         style={{
@@ -642,16 +798,16 @@ export default function RouteMap() {
         >
           <FontAwesomeIcon icon={faCloudSun} /> Shade
         </span>
-        {start && !planning && (
+        {(mode === "route" ? (start && !planning) : placesResults.length > 0) && (
           <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
         )}
       </div>
 
-      {/* Address inputs + action buttons */}
+      {/* Address inputs + action buttons — route mode only */}
       <div
         style={{
           marginBottom: "8px",
-          display: "flex",
+          display: mode === "route" ? "flex" : "none",
           flexDirection: "column",
           gap: "8px",
         }}
@@ -802,8 +958,71 @@ export default function RouteMap() {
         )}
       </div>
 
+      {/* Find Places panel — places mode only */}
+      {mode === "places" && (
+        <div style={{ marginBottom: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          {/* Place type chips */}
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {PLACE_TYPE_OPTIONS.map(({ key, label }) => {
+              const selected = placeTypes.includes(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() =>
+                    setPlaceTypes((prev) =>
+                      prev.includes(key)
+                        ? prev.length > 1 ? prev.filter((t) => t !== key) : prev
+                        : [...prev, key]
+                    )
+                  }
+                  style={{
+                    fontSize: "0.78em", fontWeight: 700, padding: "0.35em 0.9em",
+                    borderRadius: "999px", border: `2px solid ${selected ? colors.accent : colors.accentFaint}`,
+                    background: selected ? colors.accentGlow : "transparent",
+                    color: selected ? colors.text : colors.subtext,
+                    cursor: "pointer", boxShadow: "none",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Radius slider */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <span style={{ fontSize: "0.78em", color: colors.subtext, whiteSpace: "nowrap" }}>
+              Radius: {placeRadius >= 1000 ? `${placeRadius / 1000} km` : `${placeRadius} m`}
+            </span>
+            <input
+              type="range" min={250} max={2000} step={250}
+              value={placeRadius}
+              onChange={(e) => setPlaceRadius(Number(e.target.value))}
+              style={{ flex: 1, accentColor: colors.accent }}
+            />
+          </div>
+
+          {/* Search button */}
+          <button
+            onClick={searchPlaces}
+            disabled={placesSearching}
+            style={{ fontWeight: 800, fontSize: "0.85em", padding: "0.4em 1.2em", alignSelf: "flex-end" }}
+          >
+            {placesSearching ? "Searching…" : "Search"}
+          </button>
+
+          {/* Result count */}
+          {!placesSearching && placesResults.length > 0 && (
+            <span style={{ fontSize: "0.78em", color: colors.subtext }}>
+              {placesResults.filter((p) => p.is_sunny).length} sunny ·{" "}
+              {placesResults.filter((p) => !p.is_sunny).length} shaded
+            </span>
+          )}
+        </div>
+      )}
+
       {(savedRouteName || routeStats || planning) && (
-        <div style={{ margin: "0 0 6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ margin: "0 0 6px", display: mode === "route" ? "flex" : "none", alignItems: "center", justifyContent: "space-between" }}>
           {savedRouteName && (
             <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
               <FontAwesomeIcon icon={faHeart} /> {savedRouteName}
@@ -951,6 +1170,56 @@ export default function RouteMap() {
               {goMode ? "Stop" : "Go"}
             </button>
           )}
+          {selectedPlace && (
+            <div style={{
+              position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
+              background: colors.surface, padding: "14px 18px", borderRadius: "20px",
+              border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
+              zIndex: 10, minWidth: "220px", maxWidth: "85%",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ fontSize: "0.95em", color: colors.text, display: "block" }}>{selectedPlace.name}</strong>
+                  <span style={{ fontSize: "0.76em", color: colors.subtext, display: "block", marginTop: "2px",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {selectedPlace.address}
+                  </span>
+                  {selectedPlace.rating != null && (
+                    <span style={{ fontSize: "0.76em", color: colors.text, display: "block", marginTop: "2px" }}>
+                      ★ {selectedPlace.rating}
+                    </span>
+                  )}
+                  <span style={{ fontSize: "0.76em", fontWeight: 700, display: "block", marginTop: "4px",
+                    color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
+                    {selectedPlace.is_sunny ? "☀ Sunny side" : "Shaded side"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedPlace(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
+                    color: colors.subtext, padding: "0", boxShadow: "none", flexShrink: 0, lineHeight: 1 }}
+                >
+                  ×
+                </button>
+              </div>
+              <div style={{ marginTop: "10px" }}>
+                {placeSaveSuccess === selectedPlace.place_id ? (
+                  <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>Saved to My Spots!</span>
+                ) : (
+                  <>
+                    <button onClick={() => savePlaceAsSpot(selectedPlace)}
+                      style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}>
+                      Save as Spot
+                    </button>
+                    {placeSaveError && (
+                      <span style={{ fontSize: "0.76em", color: "#C0392B", marginLeft: "8px" }}>{placeSaveError}</span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {goMode && routeSegments && (() => {
             const side = routeSegments[goSegmentIdx]?.sunny_side;
             const instructions = {

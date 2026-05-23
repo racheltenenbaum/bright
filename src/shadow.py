@@ -1,4 +1,4 @@
-from math import radians, tan, sin, cos, degrees, atan2
+from math import radians, tan, sin, cos, degrees, atan2, inf
 from shapely.geometry import Polygon, Point
 
 EARTH_RADIUS_M = 6_371_000.0
@@ -115,6 +115,119 @@ def which_side_sunny(
     if left_shaded and right_shaded:
         return "neither"
     return "right" if left_shaded else "left"
+
+
+def extract_roads_from_overpass(overpass_data: dict) -> list[dict]:
+    """
+    Parse Overpass API JSON response into a list of road segments.
+    Returns [{"lat1": float, "lng1": float, "lat2": float, "lng2": float}, ...]
+    Each consecutive node pair in a highway way forms one segment.
+    """
+    elements = overpass_data.get("elements", [])
+
+    nodes: dict[int, tuple[float, float]] = {}
+    for el in elements:
+        if el["type"] == "node":
+            nodes[el["id"]] = (el["lat"], el["lon"])
+
+    segments = []
+    for el in elements:
+        if el["type"] != "way":
+            continue
+        if "highway" not in el.get("tags", {}):
+            continue
+        node_ids = [nid for nid in el.get("nodes", []) if nid in nodes]
+        for i in range(len(node_ids) - 1):
+            lat1, lng1 = nodes[node_ids[i]]
+            lat2, lng2 = nodes[node_ids[i + 1]]
+            segments.append({"lat1": lat1, "lng1": lng1, "lat2": lat2, "lng2": lng2})
+
+    return segments
+
+
+def _point_to_segment_dist_sq(
+    plat: float, plng: float,
+    lat1: float, lng1: float,
+    lat2: float, lng2: float,
+) -> float:
+    """Squared approximate distance (in degrees²) from point P to segment AB."""
+    cos_lat = cos(radians((lat1 + lat2) / 2))
+    bx = (lng2 - lng1) * cos_lat
+    by = lat2 - lat1
+    px = (plng - lng1) * cos_lat
+    py = plat - lat1
+    ab_len_sq = bx * bx + by * by
+    if ab_len_sq == 0:
+        return px * px + py * py
+    t = max(0.0, min(1.0, (px * bx + py * by) / ab_len_sq))
+    rx = px - t * bx
+    ry = py - t * by
+    return rx * rx + ry * ry
+
+
+def find_nearest_road_segment(
+    plat: float, plng: float, segments: list[dict]
+) -> dict | None:
+    """Return the road segment closest to (plat, plng), or None if list is empty."""
+    if not segments:
+        return None
+    return min(
+        segments,
+        key=lambda s: _point_to_segment_dist_sq(
+            plat, plng, s["lat1"], s["lng1"], s["lat2"], s["lng2"]
+        ),
+    )
+
+
+def _side_of_segment(
+    plat: float, plng: float,
+    lat1: float, lng1: float,
+    lat2: float, lng2: float,
+) -> str:
+    """
+    Return 'left' or 'right' for which side of segment A→B the point P is on.
+    Uses a signed cross-product in approximate Cartesian coordinates.
+    """
+    cos_lat = cos(radians((lat1 + lat2) / 2))
+    dx = (lng2 - lng1) * cos_lat   # A→B direction (x component)
+    dy = lat2 - lat1                # A→B direction (y component)
+    px = (plng - lng1) * cos_lat   # A→P (x)
+    py = plat - lat1                # A→P (y)
+    cross = dx * py - dy * px      # z-component of cross product
+    return "left" if cross > 0 else "right"
+
+
+def place_is_sunny(
+    plat: float,
+    plng: float,
+    road_segments: list[dict],
+    buildings: list[dict],
+    sun_altitude: float,
+    sun_azimuth: float,
+) -> bool:
+    """
+    Return True if the place at (plat, plng) is on the sunny side of its nearest road.
+    Falls back to is_point_shaded() when no road segments are available.
+    """
+    if sun_altitude <= 0:
+        return False
+
+    nearest = find_nearest_road_segment(plat, plng, road_segments)
+    if nearest is None:
+        return not is_point_shaded(plat, plng, buildings, sun_altitude, sun_azimuth)
+
+    side = _side_of_segment(plat, plng, nearest["lat1"], nearest["lng1"], nearest["lat2"], nearest["lng2"])
+    sunny_side = which_side_sunny(
+        nearest["lat1"], nearest["lng1"],
+        nearest["lat2"], nearest["lng2"],
+        buildings, sun_altitude, sun_azimuth,
+    )
+
+    if sunny_side == "both":
+        return True
+    if sunny_side == "neither":
+        return False
+    return sunny_side == side
 
 
 def extract_buildings_from_overpass(overpass_data: dict) -> list[dict]:

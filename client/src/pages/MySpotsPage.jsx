@@ -59,6 +59,7 @@ export default function MySpotsPage() {
   const mapContainerRef = useRef(null);
   const formMapRef = useRef(null);
   const formMarkerRef = useRef(null);
+  const locationDotRef = useRef(null);
   const autocompleteRef = useRef(null);
   const formRef = useRef(form);
   formRef.current = form;
@@ -68,9 +69,10 @@ export default function MySpotsPage() {
   // Init mini-map when form opens
   useEffect(() => {
     if (!showForm || !isLoaded) return;
-    requestAnimationFrame(() => {
+    requestAnimationFrame(async () => {
       if (!mapContainerRef.current || formMapRef.current) return;
-      const center = formRef.current.lat && formRef.current.lng
+      const hasSpotPos = formRef.current.lat && formRef.current.lng;
+      const center = hasSpotPos
         ? { lat: formRef.current.lat, lng: formRef.current.lng }
         : DEFAULT_CENTER;
       formMapRef.current = new window.google.maps.Map(mapContainerRef.current, {
@@ -79,11 +81,8 @@ export default function MySpotsPage() {
         disableDefaultUI: true,
         zoomControl: true,
       });
-      if (formRef.current.lat && formRef.current.lng) {
-        formMarkerRef.current = new window.google.maps.Marker({
-          position: center,
-          map: formMapRef.current,
-        });
+      if (hasSpotPos) {
+        placeMarker(center);
       }
       formMapRef.current.addListener("click", async (e) => {
         const lat = e.latLng.lat();
@@ -92,10 +91,49 @@ export default function MySpotsPage() {
         setForm((prev) => ({ ...prev, lat, lng, address: address || prev.address }));
         placeMarker({ lat, lng });
       });
+
+      // Show current location dot and pan to it if no spot position yet
+      const locationDotSvg = encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">' +
+          '<circle cx="11" cy="11" r="11" fill="rgba(255,214,0,0.25)"/>' +
+          '<circle cx="11" cy="11" r="6" fill="#FFD600" stroke="white" stroke-width="2"/>' +
+        '</svg>'
+      );
+      try {
+        let lat, lng;
+        try {
+          await Geolocation.requestPermissions();
+          const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+        } catch {
+          const pos = await new Promise((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true })
+          );
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+        }
+        if (!formMapRef.current) return;
+        locationDotRef.current = new window.google.maps.Marker({
+          position: { lat, lng },
+          map: formMapRef.current,
+          icon: {
+            url: `data:image/svg+xml;charset=UTF-8,${locationDotSvg}`,
+            scaledSize: new window.google.maps.Size(22, 22),
+            anchor: new window.google.maps.Point(11, 11),
+          },
+          zIndex: 1,
+          title: "Your location",
+        });
+        if (!hasSpotPos) {
+          formMapRef.current.panTo({ lat, lng });
+        }
+      } catch { /* geolocation unavailable */ }
     });
     return () => {
       formMapRef.current = null;
       formMarkerRef.current = null;
+      locationDotRef.current = null;
     };
   }, [showForm, isLoaded]);
 
@@ -109,12 +147,24 @@ export default function MySpotsPage() {
 
   function placeMarker(pos) {
     if (!formMapRef.current) return;
+    const sunnyPin = {
+      url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">' +
+          '<path fill="#FFD600" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>' +
+          '<circle cx="12" cy="12" r="5" fill="white"/>' +
+        '</svg>'
+      )}`,
+      scaledSize: new window.google.maps.Size(24, 36),
+      anchor: new window.google.maps.Point(12, 36),
+    };
     if (formMarkerRef.current) {
       formMarkerRef.current.setPosition(pos);
     } else {
       formMarkerRef.current = new window.google.maps.Marker({
         position: pos,
         map: formMapRef.current,
+        icon: sunnyPin,
+        zIndex: 2,
       });
     }
   }
@@ -191,6 +241,7 @@ export default function MySpotsPage() {
     setShowForm(false);
     formMapRef.current = null;
     formMarkerRef.current = null;
+    locationDotRef.current = null;
   }
 
   async function saveSpot() {
