@@ -20,6 +20,21 @@ const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const LIBRARIES = ["places"];
 
+function computeSunAltitude(lat, lng) {
+  const now = new Date();
+  const jd = now / 86400000 + 2440587.5;
+  const n = jd - 2451545.0;
+  const L = ((280.46 + 0.9856474 * n) % 360) * Math.PI / 180;
+  const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
+  const lam = L + (1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * Math.PI / 180;
+  const dec = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lam));
+  const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
+  const lst = ((gmst + lng / 15) % 24 + 24) % 24;
+  const ha = (lst - 12) * 15 * Math.PI / 180;
+  const latRad = lat * Math.PI / 180;
+  return Math.asin(Math.sin(latRad) * Math.sin(dec) + Math.cos(latRad) * Math.cos(dec) * Math.cos(ha)) * 180 / Math.PI;
+}
+
 function clearPolylines(ref) {
   ref.current.forEach((p) => p.setMap(null));
   ref.current = [];
@@ -72,6 +87,7 @@ export default function RouteMap() {
   const endMarkerRef = useRef(null);
   const currentLocationMarkerRef = useRef(null);
   const watchIdRef = useRef(null);
+  const sunCheckedRef = useRef(false);
   const weatherLocationRef = useRef(null);
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
@@ -125,6 +141,7 @@ export default function RouteMap() {
   startRef.current = start;
   endRef.current = end;
   sunDataRef.current = sunData;
+  const isNighttime = placesSunAltitude !== null && placesSunAltitude <= 0;
   currentLocationRef.current = currentLocation;
   modeRef.current = mode;
 
@@ -233,6 +250,10 @@ export default function RouteMap() {
         mapRef.current.panTo({ lat, lng });
         initialPanDone = true;
         fetchWeather(lat, lng);
+      }
+      if (!sunCheckedRef.current) {
+        sunCheckedRef.current = true;
+        setPlacesSunAltitude(computeSunAltitude(lat, lng));
       }
       if (currentLocationMarkerRef.current) {
         currentLocationMarkerRef.current.setPosition({ lat, lng });
@@ -821,7 +842,7 @@ export default function RouteMap() {
       <div
         style={{
           marginBottom: "8px",
-          display: mode === "places" && placesSunAltitude !== null && placesSunAltitude <= 0 ? "none" : "flex",
+          display: mode === "places" && isNighttime ? "none" : "flex",
           alignItems: "center",
           gap: "10px",
         }}
@@ -1071,10 +1092,22 @@ export default function RouteMap() {
             {placesSearching ? "Searching…" : "Search"}
           </button>
 
-          {/* Result count */}
-          {!placesSearching && placesResults.length > 0 && (
+          {/* Nighttime notice */}
+          {isNighttime && (
             <span style={{ fontSize: "0.78em", color: colors.subtext }}>
-              {placesResults.length} {placesSunAltitude !== null && placesSunAltitude <= 0 ? "" : (preference === "sun" ? "sunny " : "shaded ")}place{placesResults.length !== 1 ? "s" : ""} nearby
+              🌙 After sunset — showing all open places nearby
+            </span>
+          )}
+
+          {/* Result count */}
+          {!placesSearching && placesResults.length > 0 && !isNighttime && (
+            <span style={{ fontSize: "0.78em", color: colors.subtext }}>
+              {placesResults.length} {preference === "sun" ? "sunny " : "shaded "}place{placesResults.length !== 1 ? "s" : ""} nearby
+            </span>
+          )}
+          {!placesSearching && placesResults.length > 0 && isNighttime && (
+            <span style={{ fontSize: "0.78em", color: colors.subtext }}>
+              {placesResults.length} place{placesResults.length !== 1 ? "s" : ""} nearby
             </span>
           )}
         </div>
@@ -1331,7 +1364,7 @@ export default function RouteMap() {
                         {placeDetails.open_now ? "Open now" : "Closed"}
                       </span>
                     )}
-                    {(placesSunAltitude === null || placesSunAltitude > 0) && (
+                    {!isNighttime && (
                       <span style={{ fontSize: "0.76em", fontWeight: 700,
                         color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
                         {selectedPlace.is_sunny ? "☀ Sunny now" : "☁ Shaded now"}
