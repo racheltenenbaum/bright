@@ -53,6 +53,22 @@ body.shade-mode {
   --color-link-hover: #325470;
 }
 
+body.night-mode {
+  color: #f0e6c8;
+  background-color: #0d1b2a;
+  --color-bg: #0d1b2a;
+  --color-surface: #1a2e45;
+  --color-input-bg: #162338;
+  --color-text: #f0e6c8;
+  --color-accent: #ffb800;
+  --color-accent-dim: #d4940a;
+  --color-accent-hover: rgba(255,184,0,0.15);
+  --color-placeholder: #5a7080;
+  --color-subtext: #8a9bb0;
+  --color-link: #ffb800;
+  --color-link-hover: #d4940a;
+}
+
 #root {
   height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   display: flex;

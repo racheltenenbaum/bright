@@ -20,6 +20,28 @@ const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const LIBRARIES = ["places"];
 
+const NIGHT_MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#0d1b2a" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#0d1b2a" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8a9bb0" }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#1a3048" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#c8d8e4" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#0a1828" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#6b7e90" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#081c10" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#3a5c3a" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1c3a5e" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#0d1b2a" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#213a57" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#0d1b2a" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f0d090" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#0a1828" }] },
+  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#c8a860" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#04111f" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3a5060" }] },
+];
+
 function computeSunAltitude(lat, lng) {
   const now = new Date();
   const jd = now / 86400000 + 2440587.5;
@@ -129,7 +151,7 @@ export default function RouteMap() {
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
   const [placesResults, setPlacesResults] = useState([]);
   const [placesSearching, setPlacesSearching] = useState(false);
-  const [placesSunAltitude, setPlacesSunAltitude] = useState(null);
+  const [placesSunAltitude, setPlacesSunAltitude] = useState(() => computeSunAltitude(MAP_CENTER.lat, MAP_CENTER.lng));
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [placeDetails, setPlaceDetails] = useState(null);
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState(false);
@@ -141,7 +163,7 @@ export default function RouteMap() {
   startRef.current = start;
   endRef.current = end;
   sunDataRef.current = sunData;
-  const isNighttime = placesSunAltitude !== null && placesSunAltitude <= 0;
+  const isNighttime = placesSunAltitude <= 0;
   currentLocationRef.current = currentLocation;
   modeRef.current = mode;
 
@@ -153,7 +175,14 @@ export default function RouteMap() {
   ];
   const PLACE_SPOT_ICON = { cafe: "faMugHot", restaurant: "faUtensils", bar: "faMugHot", park: "faTree" };
 
-  const colors = preference === "shade" ? {
+  const colors = isNighttime ? {
+    accent:      "#FFB800",
+    accentFaint: "#3A2E00",
+    accentGlow:  "rgba(255,184,0,0.18)",
+    text:        "#F0E6C8",
+    subtext:     "#8A9BB0",
+    surface:     "rgba(13,27,42,0.97)",
+  } : preference === "shade" ? {
     accent:      "#5E8FAD",
     accentFaint: "#B0CCDE",
     accentGlow:  "rgba(94,143,173,0.15)",
@@ -192,11 +221,18 @@ export default function RouteMap() {
     autoCalculateRef.current = true;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync body theme class with preference
+  // Sync body theme class with preference / nighttime
   useEffect(() => {
-    document.body.classList.toggle("shade-mode", preference === "shade");
-    return () => document.body.classList.remove("shade-mode");
-  }, [preference]);
+    document.body.classList.toggle("shade-mode", !isNighttime && preference === "shade");
+    document.body.classList.toggle("night-mode", isNighttime);
+    return () => { document.body.classList.remove("shade-mode"); document.body.classList.remove("night-mode"); };
+  }, [preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Apply dark map style at night
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.setOptions({ styles: isNighttime ? NIGHT_MAP_STYLE : [] });
+  }, [isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calculate once start, end and API are ready
   useEffect(() => {
@@ -217,6 +253,7 @@ export default function RouteMap() {
       mapTypeControl: true,
       streetViewControl: true,
       streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
+      styles: isNighttime ? NIGHT_MAP_STYLE : [],
     });
   }, [isLoaded]);
 
@@ -838,64 +875,43 @@ export default function RouteMap() {
         ))}
       </div>
 
-      {/* Sun / Shade toggle + Reset */}
-      <div
-        style={{
-          marginBottom: "8px",
-          display: mode === "places" && isNighttime ? "none" : "flex",
-          alignItems: "center",
-          gap: "10px",
-        }}
-      >
-        <span
-          style={{
-            fontSize: "0.88em",
-            fontWeight: 600,
-            color: preference === "sun" ? colors.text : "#A0A0A0",
-          }}
-        >
-          <FontAwesomeIcon icon={faSun} /> Sun
-        </span>
-        <div
-          onClick={togglePreference}
-          style={{
-            width: "48px",
-            height: "26px",
-            borderRadius: "13px",
-            background: preference === "sun" ? "#FFD600" : colors.accent,
-            position: "relative",
-            cursor: "pointer",
-            transition: "background 0.25s",
-            boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
-          }}
-        >
-          <div
-            style={{
-              width: "20px",
-              height: "20px",
-              borderRadius: "50%",
-              background: "white",
-              position: "absolute",
-              top: "3px",
-              left: preference === "sun" ? "3px" : "25px",
-              transition: "left 0.25s",
-              boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-            }}
-          />
+      {/* Sun / Shade toggle + Reset — or after-sunset notice in places mode */}
+      {mode === "places" && isNighttime ? (
+        <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "0.88em", color: colors.subtext }}>🌙 After sunset</span>
+          {placesResults.length > 0 && (
+            <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
+          )}
         </div>
-        <span
-          style={{
-            fontSize: "0.88em",
-            fontWeight: 600,
-            color: preference === "shade" ? colors.text : "#A0A0A0",
-          }}
-        >
-          <FontAwesomeIcon icon={faCloudSun} /> Shade
-        </span>
-        {(mode === "route" ? (start && !planning) : placesResults.length > 0) && (
-          <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
-        )}
-      </div>
+      ) : (
+        <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : "#A0A0A0" }}>
+            <FontAwesomeIcon icon={faSun} /> Sun
+          </span>
+          <div
+            onClick={togglePreference}
+            style={{
+              width: "48px", height: "26px", borderRadius: "13px",
+              background: preference === "sun" ? "#FFD600" : colors.accent,
+              position: "relative", cursor: "pointer",
+              transition: "background 0.25s", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
+            }}
+          >
+            <div style={{
+              width: "20px", height: "20px", borderRadius: "50%",
+              background: "white", position: "absolute", top: "3px",
+              left: preference === "sun" ? "3px" : "25px",
+              transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+            }} />
+          </div>
+          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : "#A0A0A0" }}>
+            <FontAwesomeIcon icon={faCloudSun} /> Shade
+          </span>
+          {(mode === "route" ? (start && !planning) : placesResults.length > 0) && (
+            <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
+          )}
+        </div>
+      )}
 
       {/* Address inputs + action buttons — route mode only */}
       <div
@@ -1092,24 +1108,6 @@ export default function RouteMap() {
             {placesSearching ? "Searching…" : "Search"}
           </button>
 
-          {/* Nighttime notice */}
-          {isNighttime && (
-            <span style={{ fontSize: "0.78em", color: colors.subtext }}>
-              🌙 After sunset — showing all open places nearby
-            </span>
-          )}
-
-          {/* Result count */}
-          {!placesSearching && placesResults.length > 0 && !isNighttime && (
-            <span style={{ fontSize: "0.78em", color: colors.subtext }}>
-              {placesResults.length} {preference === "sun" ? "sunny " : "shaded "}place{placesResults.length !== 1 ? "s" : ""} nearby
-            </span>
-          )}
-          {!placesSearching && placesResults.length > 0 && isNighttime && (
-            <span style={{ fontSize: "0.78em", color: colors.subtext }}>
-              {placesResults.length} place{placesResults.length !== 1 ? "s" : ""} nearby
-            </span>
-          )}
         </div>
       )}
 
@@ -1148,7 +1146,7 @@ export default function RouteMap() {
             marginBottom: "8px",
             padding: "10px 14px",
             borderRadius: "12px",
-            background: "#FFF0ED",
+            background: isNighttime ? colors.surface : "#FFF0ED",
             border: "2px solid #FF5A3C",
             boxShadow: "3px 3px 0 #FF5A3C",
             display: "flex",
