@@ -84,6 +84,7 @@ export default function RouteMap() {
   const sunDataRef = useRef(null);
   const modeRef = useRef("route");
   const placeMarkersRef = useRef([]);
+  const touchStartYRef = useRef(null);
 
   const [preference, setPreference] = useState("sun");
   const [start, setStart] = useState(null);
@@ -117,6 +118,7 @@ export default function RouteMap() {
   const [placeSaveSuccess, setPlaceSaveSuccess] = useState(null);
   const [placeSaveError, setPlaceSaveError] = useState(null);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [panelExpanded, setPanelExpanded] = useState(false);
 
   startRef.current = start;
   endRef.current = end;
@@ -591,6 +593,7 @@ export default function RouteMap() {
     if (!selectedPlace) { setPlaceDetails(null); return; }
     setPlaceDetails(null);
     setShowAllReviews(false);
+    setPanelExpanded(false);
     setPlaceDetailsLoading(true);
     const token = localStorage.getItem("token");
     api.get(`/places/${selectedPlace.place_id}/details`, {
@@ -721,6 +724,7 @@ export default function RouteMap() {
       setPlacesResults([]);
       setSelectedPlace(null);
       setShowAllReviews(false);
+      setPanelExpanded(false);
       setPlaceSaveSuccess(null);
       setPlaceSaveError(null);
     }
@@ -749,6 +753,7 @@ export default function RouteMap() {
     setSelectedPlace(null);
     setPlaceDetails(null);
     setShowAllReviews(false);
+    setPanelExpanded(false);
     setPlaceSaveSuccess(null);
     setPlaceSaveError(null);
     if (weatherLocationRef.current)
@@ -1195,30 +1200,78 @@ export default function RouteMap() {
             </button>
           )}
           {selectedPlace && (
-            <div style={{
-              position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
-              background: colors.surface, borderRadius: "20px",
-              border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
-              zIndex: 10, width: "min(340px, 90vw)",
-              maxHeight: "calc(100% - 44px)", overflow: "hidden",
-              display: "flex", flexDirection: "column",
-            }}>
-              <div style={{ overflowY: "auto", flex: 1 }}>
-                {/* Name + close */}
-                <div style={{ padding: "12px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <strong style={{ fontSize: "0.95em", color: colors.text }}>{selectedPlace.name}</strong>
-                  <button onClick={() => setSelectedPlace(null)}
-                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
-                      color: colors.subtext, padding: 0, boxShadow: "none", flexShrink: 0, lineHeight: 1, marginLeft: "10px" }}>
-                    ×
-                  </button>
-                </div>
+            <div
+              onClick={!panelExpanded ? () => setPanelExpanded(true) : undefined}
+              style={{
+                position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
+                background: colors.surface, borderRadius: "20px",
+                border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
+                zIndex: 10, width: "min(340px, 90vw)",
+                height: panelExpanded ? "calc(100% - 44px)" : "82px",
+                overflow: "hidden", display: "flex", flexDirection: "column",
+                transition: "height 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                cursor: panelExpanded ? "default" : "pointer",
+              }}
+            >
+              {/* Drag handle */}
+              <div
+                onTouchStart={(e) => { touchStartYRef.current = e.touches[0].clientY; }}
+                onTouchEnd={(e) => {
+                  const delta = e.changedTouches[0].clientY - touchStartYRef.current;
+                  if (delta < -40) setPanelExpanded(true);
+                  else if (delta > 40) panelExpanded ? setPanelExpanded(false) : setSelectedPlace(null);
+                }}
+                style={{ display: "flex", justifyContent: "center", padding: "8px 0 4px", flexShrink: 0 }}
+              >
+                <div style={{ width: "36px", height: "4px", borderRadius: "2px", background: colors.accentFaint }} />
+              </div>
 
-                {/* Photo carousel — bounded within panel */}
+              {/* Sticky header: always visible — name, compact preview, close */}
+              <div
+                onTouchStart={(e) => { touchStartYRef.current = e.touches[0].clientY; }}
+                onTouchEnd={(e) => {
+                  const delta = e.changedTouches[0].clientY - touchStartYRef.current;
+                  if (delta < -40) setPanelExpanded(true);
+                  else if (delta > 40) panelExpanded ? setPanelExpanded(false) : setSelectedPlace(null);
+                }}
+                style={{ padding: "0 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexShrink: 0 }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <strong style={{ fontSize: "0.95em", color: colors.text, display: "block",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {selectedPlace.name}
+                  </strong>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "2px" }}>
+                    <span style={{ fontSize: "0.73em", color: colors.subtext,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "155px" }}>
+                      {selectedPlace.address}
+                    </span>
+                    {(placeDetails?.rating ?? selectedPlace.rating) != null && (
+                      <span style={{ fontSize: "0.73em", color: colors.text, fontWeight: 600, flexShrink: 0 }}>
+                        ★ {placeDetails?.rating ?? selectedPlace.rating}
+                      </span>
+                    )}
+                    <span style={{ fontSize: "0.72em", fontWeight: 700, flexShrink: 0,
+                      color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
+                      {selectedPlace.is_sunny ? "☀" : "☁"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setSelectedPlace(null); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
+                    color: colors.subtext, padding: "0 0 0 10px", boxShadow: "none", flexShrink: 0, lineHeight: 1 }}>
+                  ×
+                </button>
+              </div>
+
+              {/* Scrollable body — revealed on expand */}
+              <div style={{ overflowY: "auto", flex: 1 }}>
+                {/* Photo carousel */}
                 {placeDetails?.photo_references?.length > 0 && (
                   <div style={{
                     display: "flex", gap: "6px", overflowX: "auto",
-                    padding: "10px 16px", scrollbarWidth: "none", boxSizing: "border-box",
+                    padding: "0 16px 10px", scrollbarWidth: "none", boxSizing: "border-box",
                   }}>
                     {placeDetails.photo_references.map((ref, i) => (
                       <img key={i}
@@ -1231,13 +1284,7 @@ export default function RouteMap() {
                   </div>
                 )}
 
-                <div style={{ padding: "6px 16px 14px" }}>
-                  {/* Address */}
-                  <span style={{ fontSize: "0.76em", color: colors.subtext, display: "block", marginBottom: "6px",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {selectedPlace.address}
-                  </span>
-
+                <div style={{ padding: "0 16px 14px" }}>
                   {/* Rating + price + open status + sun/shade */}
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", flexWrap: "wrap" }}>
                     {(placeDetails?.rating ?? selectedPlace.rating) != null && (
