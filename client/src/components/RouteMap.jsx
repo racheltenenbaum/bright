@@ -20,27 +20,6 @@ const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const LIBRARIES = ["places"];
 
-const NIGHT_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#0d1b2a" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#0d1b2a" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#8a9bb0" }] },
-  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#1a3048" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#c8d8e4" }] },
-  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#0a1828" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#6b7e90" }] },
-  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#081c10" }] },
-  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#3a5c3a" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1c3a5e" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#0d1b2a" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#213a57" }] },
-  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#0d1b2a" }] },
-  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f0d090" }] },
-  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#0a1828" }] },
-  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#c8a860" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#04111f" }] },
-  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3a5060" }] },
-];
 
 function computeSunAltitude(lat, lng) {
   const now = new Date();
@@ -227,11 +206,6 @@ export default function RouteMap() {
     return () => { document.body.classList.remove("shade-mode"); document.body.classList.remove("night-mode"); };
   }, [preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Apply dark map style at night
-  useEffect(() => {
-    if (!mapRef.current) return;
-    mapRef.current.setOptions({ styles: isNighttime ? NIGHT_MAP_STYLE : [] });
-  }, [isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calculate once start, end and API are ready
   useEffect(() => {
@@ -252,7 +226,7 @@ export default function RouteMap() {
       mapTypeControl: true,
       streetViewControl: true,
       streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
-      styles: isNighttime ? NIGHT_MAP_STYLE : [],
+      styles: [],
     });
   }, [isLoaded]);
 
@@ -669,8 +643,8 @@ export default function RouteMap() {
     Object.values(placeMarkersMapRef.current).forEach(({ marker, place }) => {
       const selected = selectedPlace?.place_id === place.place_id;
       const color = selected
-        ? (isNighttime ? "#FFB800" : (place.is_sunny ? "#D4940A" : "#3D6E8C"))
-        : (isNighttime ? "#7A9BB5" : (place.is_sunny ? "#FFD600" : "#5E8FAD"));
+        ? (isNighttime ? "#4A7FA8" : (place.is_sunny ? "#D4940A" : "#3D6E8C"))
+        : (isNighttime ? "#1E3A5F" : (place.is_sunny ? "#FFD600" : "#5E8FAD"));
       const w = selected ? 34 : 28;
       const h = selected ? 49 : 40;
       marker.setIcon({
@@ -695,7 +669,7 @@ export default function RouteMap() {
   function renderPlaceMarkers(places) {
     clearPlaceMarkers();
     places.forEach((place) => {
-      const pinColor = isNighttime ? "#7A9BB5" : (place.is_sunny ? "#FFD600" : "#5E8FAD");
+      const pinColor = isNighttime ? "#1E3A5F" : (place.is_sunny ? "#FFD600" : "#5E8FAD");
       const pin = encodeURIComponent(
         `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36">` +
         `<path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>` +
@@ -742,10 +716,6 @@ export default function RouteMap() {
     setError(null);
     setSelectedPlace(null);
     setPlacesSearching(true);
-    setPlacesSunAltitude(computeSunAltitude(
-      currentLocationRef.current?.lat ?? MAP_CENTER.lat,
-      currentLocationRef.current?.lng ?? MAP_CENTER.lng,
-    ));
     clearPlaceMarkers();
 
     try {
@@ -809,11 +779,6 @@ export default function RouteMap() {
       setGoMode(false); setSaveForm(null);
     } else {
       clearPlaceMarkers();
-  
-      setPlacesSunAltitude(computeSunAltitude(
-      currentLocationRef.current?.lat ?? MAP_CENTER.lat,
-      currentLocationRef.current?.lng ?? MAP_CENTER.lng,
-    ));
       setSelectedPlace(null);
       setShowAllReviews(false);
       setPanelExpanded(false);
@@ -841,11 +806,6 @@ export default function RouteMap() {
     setGoMode(false);
     clearPolylines(polylinesRef);
     clearPlaceMarkers();
-
-    setPlacesSunAltitude(computeSunAltitude(
-      currentLocationRef.current?.lat ?? MAP_CENTER.lat,
-      currentLocationRef.current?.lng ?? MAP_CENTER.lng,
-    ));
     setSelectedPlace(null);
     setPlaceDetails(null);
     setShowAllReviews(false);
