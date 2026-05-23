@@ -149,7 +149,6 @@ export default function RouteMap() {
   const [spots, setSpots] = useState([]);
   const [mode, setMode] = useState("route");
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
-  const [placesResults, setPlacesResults] = useState([]);
   const [placesSearching, setPlacesSearching] = useState(false);
   const [placesSunAltitude, setPlacesSunAltitude] = useState(() => computeSunAltitude(MAP_CENTER.lat, MAP_CENTER.lng));
   const [selectedPlace, setSelectedPlace] = useState(null);
@@ -177,7 +176,7 @@ export default function RouteMap() {
 
   const colors = isNighttime ? {
     accent:      "#FFB800",
-    accentFaint: "#3A2E00",
+    accentFaint: "rgba(255,184,0,0.35)",
     accentGlow:  "rgba(255,184,0,0.18)",
     text:        "#F0E6C8",
     subtext:     "#8A9BB0",
@@ -475,6 +474,7 @@ export default function RouteMap() {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       setWeather(r.data);
+      setPlacesSunAltitude(r.data.sun_altitude);
       weatherLocationRef.current = { lat, lng };
     } catch (_) { /* weather is non-critical */ }
   }
@@ -669,8 +669,8 @@ export default function RouteMap() {
     Object.values(placeMarkersMapRef.current).forEach(({ marker, place }) => {
       const selected = selectedPlace?.place_id === place.place_id;
       const color = selected
-        ? (place.is_sunny ? "#D4940A" : "#3D6E8C")
-        : (place.is_sunny ? "#FFD600" : "#5E8FAD");
+        ? (isNighttime ? "#FFB800" : (place.is_sunny ? "#D4940A" : "#3D6E8C"))
+        : (isNighttime ? "#7A9BB5" : (place.is_sunny ? "#FFD600" : "#5E8FAD"));
       const w = selected ? 34 : 28;
       const h = selected ? 49 : 40;
       marker.setIcon({
@@ -695,7 +695,7 @@ export default function RouteMap() {
   function renderPlaceMarkers(places) {
     clearPlaceMarkers();
     places.forEach((place) => {
-      const pinColor = place.is_sunny ? "#FFD600" : "#5E8FAD";
+      const pinColor = isNighttime ? "#7A9BB5" : (place.is_sunny ? "#FFD600" : "#5E8FAD");
       const pin = encodeURIComponent(
         `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36">` +
         `<path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>` +
@@ -742,9 +742,12 @@ export default function RouteMap() {
     setError(null);
     setSelectedPlace(null);
     setPlacesSearching(true);
-    setPlacesSunAltitude(null);
+    setPlacesSunAltitude(computeSunAltitude(
+      currentLocationRef.current?.lat ?? MAP_CENTER.lat,
+      currentLocationRef.current?.lng ?? MAP_CENTER.lng,
+    ));
     clearPlaceMarkers();
-    setPlacesResults([]);
+
     try {
       const token = localStorage.getItem("token");
       const body = { lat: center.lat, lng: center.lng, radius, preference, types: placeTypes };
@@ -759,7 +762,6 @@ export default function RouteMap() {
       }
 
       setPlacesSunAltitude(res.data.sun_altitude);
-      setPlacesResults(places);
       renderPlaceMarkers(places);
       if (places.length > 0) {
         const bounds = new window.google.maps.LatLngBounds();
@@ -807,8 +809,11 @@ export default function RouteMap() {
       setGoMode(false); setSaveForm(null);
     } else {
       clearPlaceMarkers();
-      setPlacesResults([]);
-      setPlacesSunAltitude(null);
+  
+      setPlacesSunAltitude(computeSunAltitude(
+      currentLocationRef.current?.lat ?? MAP_CENTER.lat,
+      currentLocationRef.current?.lng ?? MAP_CENTER.lng,
+    ));
       setSelectedPlace(null);
       setShowAllReviews(false);
       setPanelExpanded(false);
@@ -836,8 +841,11 @@ export default function RouteMap() {
     setGoMode(false);
     clearPolylines(polylinesRef);
     clearPlaceMarkers();
-    setPlacesResults([]);
-    setPlacesSunAltitude(null);
+
+    setPlacesSunAltitude(computeSunAltitude(
+      currentLocationRef.current?.lat ?? MAP_CENTER.lat,
+      currentLocationRef.current?.lng ?? MAP_CENTER.lng,
+    ));
     setSelectedPlace(null);
     setPlaceDetails(null);
     setShowAllReviews(false);
@@ -879,13 +887,10 @@ export default function RouteMap() {
       {mode === "places" && isNighttime ? (
         <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "0.88em", color: colors.subtext }}>🌙 After sunset</span>
-          {placesResults.length > 0 && (
-            <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
-          )}
         </div>
       ) : (
         <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : "#A0A0A0" }}>
+          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext }}>
             <FontAwesomeIcon icon={faSun} /> Sun
           </span>
           <div
@@ -904,10 +909,10 @@ export default function RouteMap() {
               transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
             }} />
           </div>
-          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : "#A0A0A0" }}>
+          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext }}>
             <FontAwesomeIcon icon={faCloudSun} /> Shade
           </span>
-          {(mode === "route" ? (start && !planning) : placesResults.length > 0) && (
+          {mode === "route" && (start && !planning) && (
             <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
           )}
         </div>
