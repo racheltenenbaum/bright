@@ -109,7 +109,6 @@ export default function RouteMap() {
   const [spots, setSpots] = useState([]);
   const [mode, setMode] = useState("route");
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
-  const [placeRadius, setPlaceRadius] = useState(500);
   const [placesResults, setPlacesResults] = useState([]);
   const [placesSearching, setPlacesSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
@@ -641,6 +640,18 @@ export default function RouteMap() {
       lat: mapRef.current.getCenter().lat(),
       lng: mapRef.current.getCenter().lng(),
     };
+
+    // Compute radius to cover the visible map viewport
+    const viewportBounds = mapRef.current.getBounds();
+    let radius = 500;
+    if (viewportBounds) {
+      const ne = viewportBounds.getNorthEast();
+      const dLat = Math.abs(ne.lat() - center.lat) * 111000;
+      const dLng = Math.abs(ne.lng() - center.lng) * 111000 * Math.cos(center.lat * Math.PI / 180);
+      radius = Math.round(Math.sqrt(dLat * dLat + dLng * dLng));
+    }
+    radius = Math.min(radius, 50000);
+
     setError(null);
     setSelectedPlace(null);
     setPlacesSearching(true);
@@ -648,16 +659,22 @@ export default function RouteMap() {
     setPlacesResults([]);
     try {
       const token = localStorage.getItem("token");
-      const res = await api.post(
-        "/places/search",
-        { lat: center.lat, lng: center.lng, radius: placeRadius, preference, types: placeTypes },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      setPlacesResults(res.data.places);
-      renderPlaceMarkers(res.data.places);
-      if (res.data.places.length > 0) {
+      const body = { lat: center.lat, lng: center.lng, radius, preference, types: placeTypes };
+      let res = await api.post("/places/search", body, { headers: { Authorization: `Bearer ${token}` } });
+      let places = res.data.places;
+
+      // Auto-expand once if no results and there's room to grow
+      if (places.length === 0 && radius < 50000) {
+        const expanded = Math.min(radius * 2, 50000);
+        res = await api.post("/places/search", { ...body, radius: expanded }, { headers: { Authorization: `Bearer ${token}` } });
+        places = res.data.places;
+      }
+
+      setPlacesResults(places);
+      renderPlaceMarkers(places);
+      if (places.length > 0) {
         const bounds = new window.google.maps.LatLngBounds();
-        res.data.places.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+        places.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
         mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 80, left: 20 });
       }
     } catch {
@@ -1010,19 +1027,6 @@ export default function RouteMap() {
             })}
           </div>
 
-          {/* Radius slider */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "0.78em", color: colors.subtext, whiteSpace: "nowrap" }}>
-              Radius: {placeRadius >= 1000 ? `${placeRadius / 1000} km` : `${placeRadius} m`}
-            </span>
-            <input
-              type="range" min={250} max={2000} step={250}
-              value={placeRadius}
-              onChange={(e) => setPlaceRadius(Number(e.target.value))}
-              style={{ flex: 1, accentColor: colors.accent }}
-            />
-          </div>
-
           {/* Search button */}
           <button
             onClick={searchPlaces}
@@ -1320,7 +1324,7 @@ export default function RouteMap() {
                           style={{ fontSize: "0.75em", padding: "0.3em 0.8em", alignSelf: "flex-start",
                             background: "transparent", border: `1.5px solid ${colors.accentFaint}`,
                             color: colors.subtext, borderRadius: "999px", cursor: "pointer", boxShadow: "none" }}>
-                          {showAllReviews ? "Show fewer reviews" : `Show all ${placeDetails.reviews.length} reviews`}
+                          {showAllReviews ? "Show fewer" : "Show more reviews"}
                         </button>
                       )}
                     </div>
