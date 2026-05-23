@@ -578,6 +578,7 @@ PLACE_DETAILS_RESPONSE = {
         "website": "https://sunnycafe.co.uk",
         "address_components": [
             {"short_name": "GB", "types": ["country", "political"]},
+            {"short_name": "W1A 1AA", "types": ["postal_code"]},
         ],
         "opening_hours": {
             "open_now": True,
@@ -632,6 +633,7 @@ def test_place_details_success(client, auth_headers):
     assert len(data["weekday_text"]) == 7
     assert data["photo_references"] == ["ref1", "ref2", "ref3"]
     assert data["currency_symbol"] == "£"
+    assert data["postal_code"] == "W1A 1AA"
     assert len(data["reviews"]) == 2
     assert data["reviews"][0]["author_name"] == "Alice B."
     assert data["reviews"][0]["rating"] == 5

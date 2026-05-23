@@ -1269,19 +1269,15 @@ export default function RouteMap() {
                   <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "2px" }}>
                     <span style={{ fontSize: "0.73em", color: colors.subtext,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "155px" }}>
-                      {selectedPlace.address}
+                      {selectedPlace.address}{placeDetails?.postal_code ? `, ${placeDetails.postal_code}` : ""}
                     </span>
                     {(placeDetails?.rating ?? selectedPlace.rating) != null && (
                       <span style={{ fontSize: "0.73em", color: colors.text, fontWeight: 600, flexShrink: 0 }}>
-                        ★ {placeDetails?.rating ?? selectedPlace.rating}
+                        ★{placeDetails?.rating ?? selectedPlace.rating}
                         {placeDetails?.user_ratings_total != null &&
                           <span style={{ fontWeight: 400, color: colors.subtext }}> ({placeDetails.user_ratings_total.toLocaleString()})</span>}
                       </span>
                     )}
-                    <span style={{ fontSize: "0.72em", fontWeight: 700, flexShrink: 0, marginLeft: "auto",
-                      color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
-                      {selectedPlace.is_sunny ? "☀" : "☁"}
-                    </span>
                   </div>
                 </div>
                 <button
@@ -1332,7 +1328,7 @@ export default function RouteMap() {
                     )}
                     <span style={{ fontSize: "0.76em", fontWeight: 700,
                       color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
-                      {selectedPlace.is_sunny ? "☀ Sunny side" : "Shaded side"}
+                      {selectedPlace.is_sunny ? "☀ Sunny now" : "☁ Shaded now"}
                     </span>
                   </div>
 

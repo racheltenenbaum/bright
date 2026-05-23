@@ -213,6 +213,7 @@ class PlaceDetailsResponse(BaseModel):
     weekday_text: list[str]
     photo_references: list[str]
     currency_symbol: str = "$"
+    postal_code: str | None = None
     reviews: list[PlaceReview]
 
 
@@ -327,6 +328,11 @@ def get_place_details(
              if "country" in c.get("types", [])),
             "US",
         )
+        postal_code = next(
+            (c["short_name"] for c in data.get("address_components", [])
+             if "postal_code" in c.get("types", [])),
+            None,
+        )
 
         return PlaceDetailsResponse(
             name=data.get("name", ""),
@@ -339,6 +345,7 @@ def get_place_details(
             weekday_text=hours.get("weekday_text", []),
             photo_references=[p["photo_reference"] for p in data.get("photos", [])[:5]],
             currency_symbol=_COUNTRY_CURRENCY.get(country_code, "$"),
+            postal_code=postal_code,
             reviews=[
                 PlaceReview(
                     author_name=r.get("author_name", ""),
