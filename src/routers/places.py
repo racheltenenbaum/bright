@@ -26,6 +26,9 @@ OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 VALID_TYPES = {"cafe", "restaurant", "bar", "park"}
 
+# Place types that pollute results when searching for cafes/restaurants
+_EXCLUDE_TYPES = {"gas_station", "convenience_store", "car_wash", "car_repair", "car_dealer"}
+
 # In-memory L1 cache for road data
 _road_cache: dict[str, list] = {}
 
@@ -124,7 +127,8 @@ def _fetch_places_from_google(lat: float, lng: float, radius: int, place_type: s
             timeout=10,
         )
         if resp.status_code == 200:
-            return resp.json().get("results", [])
+            results = resp.json().get("results", [])
+            return [r for r in results if not _EXCLUDE_TYPES.intersection(r.get("types", []))]
     except Exception:
         pass
     return []
@@ -225,12 +229,15 @@ def search_places(
                 seen[pid] = place_type
                 raw_places.append((raw, place_type))
 
+    want_sunny = body.preference == "sun"
     results: list[PlaceResult] = []
     for raw, place_type in raw_places:
         loc = raw["geometry"]["location"]
         plat = loc["lat"]
         plng = loc["lng"]
         is_sunny = place_is_sunny(plat, plng, road_segments, buildings, sun_altitude, sun_azimuth)
+        if is_sunny != want_sunny:
+            continue
         results.append(PlaceResult(
             place_id=raw["place_id"],
             name=raw["name"],

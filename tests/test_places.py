@@ -255,6 +255,36 @@ def test_fetch_places_no_api_key_returns_empty():
     assert results == []
 
 
+def test_fetch_places_excludes_gas_stations():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"results": [
+        {**GOOGLE_PLACE, "types": ["cafe", "food", "establishment"]},
+        {"place_id": "gas123", "name": "BP Forecourt Cafe",
+         "geometry": {"location": {"lat": 51.5, "lng": -0.1}},
+         "vicinity": "Gas Station Road",
+         "types": ["gas_station", "cafe", "establishment"]},
+    ]}
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        results = places_module._fetch_places_from_google(LAT, LNG, 500, "cafe")
+    assert len(results) == 1
+    assert results[0]["place_id"] == GOOGLE_PLACE["place_id"]
+
+
+def test_fetch_places_excludes_convenience_stores():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"results": [
+        {"place_id": "cvs123", "name": "CVS with Coffee",
+         "geometry": {"location": {"lat": 51.5, "lng": -0.1}},
+         "vicinity": "High Street",
+         "types": ["convenience_store", "cafe", "establishment"]},
+    ]}
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        results = places_module._fetch_places_from_google(LAT, LNG, 500, "cafe")
+    assert results == []
+
+
 # ── /places/search endpoint ────────────────────────────────────────────────────
 
 def test_search_places_unauthenticated(client):
@@ -391,6 +421,38 @@ def test_search_places_place_without_rating(client, auth_headers):
         }, headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["places"][0]["rating"] is None
+
+
+def test_search_places_preference_sun_excludes_shaded(client, auth_headers):
+    # GOOGLE_PLACE_2 is shaded (no roads/buildings but mock which_side_sunny to shade it)
+    segments = [{"lat1": 51.49, "lng1": -0.10, "lat2": 51.51, "lng2": -0.10}]
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE, GOOGLE_PLACE_2]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=segments), \
+         patch("src.shadow.which_side_sunny", return_value="neither"):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["places"] == []
+
+
+def test_search_places_preference_shade_excludes_sunny(client, auth_headers):
+    segments = [{"lat1": 51.49, "lng1": -0.10, "lat2": 51.51, "lng2": -0.10}]
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=segments), \
+         patch("src.shadow.which_side_sunny", return_value="both"):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "shade", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    # place is sunny (both sides) but preference is shade → excluded
+    assert response.json()["places"] == []
 
 
 def test_search_places_with_road_side_analysis(client, auth_headers):

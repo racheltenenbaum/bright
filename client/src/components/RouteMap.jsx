@@ -1014,8 +1014,7 @@ export default function RouteMap() {
           {/* Result count */}
           {!placesSearching && placesResults.length > 0 && (
             <span style={{ fontSize: "0.78em", color: colors.subtext }}>
-              {placesResults.filter((p) => p.is_sunny).length} sunny ·{" "}
-              {placesResults.filter((p) => !p.is_sunny).length} shaded
+              {placesResults.length} {preference === "sun" ? "sunny" : "shaded"} place{placesResults.length !== 1 ? "s" : ""} nearby
             </span>
           )}
         </div>
