@@ -54,19 +54,17 @@ body.shade-mode {
 }
 
 body.night-mode {
-  color: #f0e6c8;
-  background-color: #0d1b2a;
-  --color-bg: #0d1b2a;
-  --color-surface: #1a2e45;
-  --color-input-bg: #162338;
-  --color-text: #f0e6c8;
-  --color-accent: #ffb800;
-  --color-accent-dim: #d4940a;
-  --color-accent-hover: rgba(255,184,0,0.15);
-  --color-placeholder: #5a7080;
-  --color-subtext: #8a9bb0;
-  --color-link: #ffb800;
-  --color-link-hover: #d4940a;
+  color: #1a2f40;
+  --color-surface: #b8cad6;
+  --color-input-bg: #ccd8e2;
+  --color-text: #1a2f40;
+  --color-accent: #3d6e8c;
+  --color-accent-dim: #5a8aae;
+  --color-accent-hover: #a0bece;
+  --color-placeholder: #5a7d96;
+  --color-subtext: #325470;
+  --color-link: #325470;
+  --color-link-hover: #1f3a52;
 }
 
 #root {

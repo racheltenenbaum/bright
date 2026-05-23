@@ -154,12 +154,12 @@ export default function RouteMap() {
   const PLACE_SPOT_ICON = { cafe: "faMugHot", restaurant: "faUtensils", bar: "faMugHot", park: "faTree" };
 
   const colors = isNighttime ? {
-    accent:      "#FFB800",
-    accentFaint: "rgba(255,184,0,0.35)",
-    accentGlow:  "rgba(255,184,0,0.18)",
-    text:        "#F0E6C8",
-    subtext:     "#8A9BB0",
-    surface:     "rgba(13,27,42,0.97)",
+    accent:      "#3D6E8C",
+    accentFaint: "#8AB0C8",
+    accentGlow:  "rgba(61,110,140,0.15)",
+    text:        "#1A2F40",
+    subtext:     "#2D5070",
+    surface:     "rgba(184,202,214,0.95)",
   } : preference === "shade" ? {
     accent:      "#5E8FAD",
     accentFaint: "#B0CCDE",
@@ -643,8 +643,8 @@ export default function RouteMap() {
     Object.values(placeMarkersMapRef.current).forEach(({ marker, place }) => {
       const selected = selectedPlace?.place_id === place.place_id;
       const color = selected
-        ? (isNighttime ? "#4A7FA8" : (place.is_sunny ? "#D4940A" : "#3D6E8C"))
-        : (isNighttime ? "#1E3A5F" : (place.is_sunny ? "#FFD600" : "#5E8FAD"));
+        ? (isNighttime ? "#2D5070" : (place.is_sunny ? "#D4940A" : "#3D6E8C"))
+        : (isNighttime ? "#3D6E8C" : (place.is_sunny ? "#FFD600" : "#5E8FAD"));
       const w = selected ? 34 : 28;
       const h = selected ? 49 : 40;
       marker.setIcon({
@@ -669,7 +669,7 @@ export default function RouteMap() {
   function renderPlaceMarkers(places) {
     clearPlaceMarkers();
     places.forEach((place) => {
-      const pinColor = isNighttime ? "#1E3A5F" : (place.is_sunny ? "#FFD600" : "#5E8FAD");
+      const pinColor = isNighttime ? "#3D6E8C" : (place.is_sunny ? "#FFD600" : "#5E8FAD");
       const pin = encodeURIComponent(
         `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36">` +
         `<path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>` +
