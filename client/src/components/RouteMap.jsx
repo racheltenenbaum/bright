@@ -113,6 +113,8 @@ export default function RouteMap() {
   const [placesResults, setPlacesResults] = useState([]);
   const [placesSearching, setPlacesSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
+  const [placeDetails, setPlaceDetails] = useState(null);
+  const [placeDetailsLoading, setPlaceDetailsLoading] = useState(false);
   const [placeSaveSuccess, setPlaceSaveSuccess] = useState(null);
   const [placeSaveError, setPlaceSaveError] = useState(null);
 
@@ -584,6 +586,20 @@ export default function RouteMap() {
     } catch { /* ignore */ }
   }
 
+  // Fetch full place details whenever a marker is selected
+  useEffect(() => {
+    if (!selectedPlace) { setPlaceDetails(null); return; }
+    setPlaceDetails(null);
+    setPlaceDetailsLoading(true);
+    const token = localStorage.getItem("token");
+    api.get(`/places/${selectedPlace.place_id}/details`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => setPlaceDetails(res.data))
+      .catch(() => {})
+      .finally(() => setPlaceDetailsLoading(false));
+  }, [selectedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function clearPlaceMarkers() {
     placeMarkersRef.current.forEach((m) => m.setMap(null));
     placeMarkersRef.current = [];
@@ -711,6 +727,7 @@ export default function RouteMap() {
     clearPlaceMarkers();
     setPlacesResults([]);
     setSelectedPlace(null);
+    setPlaceDetails(null);
     setPlaceSaveSuccess(null);
     setPlaceSaveError(null);
     if (weatherLocationRef.current)
@@ -1172,49 +1189,140 @@ export default function RouteMap() {
           {selectedPlace && (
             <div style={{
               position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
-              background: colors.surface, padding: "14px 18px", borderRadius: "20px",
+              background: colors.surface, borderRadius: "20px",
               border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
-              zIndex: 10, minWidth: "220px", maxWidth: "85%",
+              zIndex: 10, width: "min(340px, 90vw)",
+              maxHeight: "55vh", overflowY: "auto",
             }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ fontSize: "0.95em", color: colors.text, display: "block" }}>{selectedPlace.name}</strong>
-                  <span style={{ fontSize: "0.76em", color: colors.subtext, display: "block", marginTop: "2px",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {selectedPlace.address}
-                  </span>
-                  {selectedPlace.rating != null && (
-                    <span style={{ fontSize: "0.76em", color: colors.text, display: "block", marginTop: "2px" }}>
-                      ★ {selectedPlace.rating}
+              {/* Photo strip */}
+              {(placeDetails?.photo_references?.length > 0) && (
+                <div style={{ display: "flex", gap: "4px", overflowX: "auto", padding: "12px 12px 0",
+                  scrollbarWidth: "none" }}>
+                  {placeDetails.photo_references.map((ref, i) => (
+                    <img key={i}
+                      src={`https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${ref}&key=${API_KEY}`}
+                      alt=""
+                      style={{ height: "110px", width: "160px", objectFit: "cover",
+                        borderRadius: "10px", flexShrink: 0 }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ padding: "12px 16px 14px" }}>
+                {/* Header row */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ fontSize: "0.95em", color: colors.text, display: "block" }}>{selectedPlace.name}</strong>
+                    <span style={{ fontSize: "0.76em", color: colors.subtext, display: "block", marginTop: "1px",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {selectedPlace.address}
+                    </span>
+                  </div>
+                  <button onClick={() => setSelectedPlace(null)}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
+                      color: colors.subtext, padding: 0, boxShadow: "none", flexShrink: 0, lineHeight: 1 }}>
+                    ×
+                  </button>
+                </div>
+
+                {/* Rating + open status */}
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "6px", flexWrap: "wrap" }}>
+                  {(placeDetails?.rating ?? selectedPlace.rating) != null && (
+                    <span style={{ fontSize: "0.8em", color: colors.text, fontWeight: 600 }}>
+                      ★ {placeDetails?.rating ?? selectedPlace.rating}
+                      {placeDetails?.user_ratings_total != null &&
+                        <span style={{ fontWeight: 400, color: colors.subtext }}> ({placeDetails.user_ratings_total.toLocaleString()})</span>}
                     </span>
                   )}
-                  <span style={{ fontSize: "0.76em", fontWeight: 700, display: "block", marginTop: "4px",
+                  {placeDetails?.price_level != null && (
+                    <span style={{ fontSize: "0.76em", color: colors.subtext }}>{"£".repeat(placeDetails.price_level)}</span>
+                  )}
+                  {placeDetails?.open_now != null && (
+                    <span style={{ fontSize: "0.76em", fontWeight: 700,
+                      color: placeDetails.open_now ? "#5A8F5A" : "#C0392B" }}>
+                      {placeDetails.open_now ? "Open now" : "Closed"}
+                    </span>
+                  )}
+                  <span style={{ fontSize: "0.76em", fontWeight: 700,
                     color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
                     {selectedPlace.is_sunny ? "☀ Sunny side" : "Shaded side"}
                   </span>
                 </div>
-                <button
-                  onClick={() => setSelectedPlace(null)}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
-                    color: colors.subtext, padding: "0", boxShadow: "none", flexShrink: 0, lineHeight: 1 }}
-                >
-                  ×
-                </button>
-              </div>
-              <div style={{ marginTop: "10px" }}>
-                {placeSaveSuccess === selectedPlace.place_id ? (
-                  <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>Saved to My Spots!</span>
-                ) : (
-                  <>
-                    <button onClick={() => savePlaceAsSpot(selectedPlace)}
-                      style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}>
-                      Save as Spot
-                    </button>
-                    {placeSaveError && (
-                      <span style={{ fontSize: "0.76em", color: "#C0392B", marginLeft: "8px" }}>{placeSaveError}</span>
-                    )}
-                  </>
+
+                {/* Loading skeleton */}
+                {placeDetailsLoading && (
+                  <div style={{ marginTop: "10px", fontSize: "0.76em", color: colors.subtext }}>Loading details…</div>
                 )}
+
+                {/* Opening hours */}
+                {placeDetails?.weekday_text?.length > 0 && (
+                  <details style={{ marginTop: "10px" }}>
+                    <summary style={{ fontSize: "0.78em", color: colors.subtext, cursor: "pointer", listStyle: "none" }}>
+                      Hours ▾
+                    </summary>
+                    <div style={{ marginTop: "4px", display: "flex", flexDirection: "column", gap: "1px" }}>
+                      {placeDetails.weekday_text.map((line, i) => (
+                        <span key={i} style={{ fontSize: "0.74em", color: colors.subtext }}>{line}</span>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {/* Reviews */}
+                {placeDetails?.reviews?.length > 0 && (
+                  <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {placeDetails.reviews.map((r, i) => (
+                      <div key={i} style={{ borderTop: `1px solid ${colors.accentFaint}`, paddingTop: "8px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                          <span style={{ fontSize: "0.78em", fontWeight: 700, color: colors.text }}>{r.author_name}</span>
+                          <span style={{ fontSize: "0.72em", color: colors.subtext }}>{r.relative_time}</span>
+                        </div>
+                        <span style={{ fontSize: "0.72em", color: colors.subtext }}>{"★".repeat(r.rating ?? 0)}</span>
+                        <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: colors.text, lineHeight: 1.4,
+                          display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                          {r.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Phone + website */}
+                {placeDetails && (placeDetails.formatted_phone_number || placeDetails.website) && (
+                  <div style={{ marginTop: "10px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    {placeDetails.formatted_phone_number && (
+                      <a href={`tel:${placeDetails.formatted_phone_number}`}
+                        style={{ fontSize: "0.76em", color: colors.subtext, textDecoration: "none" }}>
+                        📞 {placeDetails.formatted_phone_number}
+                      </a>
+                    )}
+                    {placeDetails.website && (
+                      <a href={placeDetails.website} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: "0.76em", color: colors.subtext, textDecoration: "none",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "180px" }}>
+                        🌐 {new URL(placeDetails.website).hostname.replace("www.", "")}
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Save as Spot */}
+                <div style={{ marginTop: "12px" }}>
+                  {placeSaveSuccess === selectedPlace.place_id ? (
+                    <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>Saved to My Spots!</span>
+                  ) : (
+                    <>
+                      <button onClick={() => savePlaceAsSpot(selectedPlace)}
+                        style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}>
+                        Save as Spot
+                      </button>
+                      {placeSaveError && (
+                        <span style={{ fontSize: "0.76em", color: "#C0392B", marginLeft: "8px" }}>{placeSaveError}</span>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}

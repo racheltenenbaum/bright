@@ -29,6 +29,7 @@ GOOGLE_PLACE = {
     "geometry": {"location": {"lat": 51.5, "lng": -0.1}},
     "rating": 4.5,
     "vicinity": "10 Sun Street",
+    "photos": [{"photo_reference": "ref_abc123"}],
 }
 
 GOOGLE_PLACE_2 = {
@@ -404,8 +405,34 @@ def test_search_places_result_has_expected_fields(client, auth_headers):
     assert "lng" in place
     assert "address" in place
     assert "rating" in place
+    assert "photo_reference" in place
     assert "type" in place
     assert "is_sunny" in place
+
+
+def test_search_places_photo_reference_passed_through(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.json()["places"][0]["photo_reference"] == "ref_abc123"
+
+
+def test_search_places_photo_reference_none_when_absent(client, auth_headers):
+    place_no_photo = {k: v for k, v in GOOGLE_PLACE.items() if k != "photos"}
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[place_no_photo]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.json()["places"][0]["photo_reference"] is None
 
 
 def test_search_places_place_without_rating(client, auth_headers):
@@ -537,3 +564,139 @@ def test_point_to_segment_dist_sq_degenerate_segment():
     # Both endpoints at the same location → distance is to that single point
     dist_sq = _point_to_segment_dist_sq(51.5, -0.1, 51.5, -0.1, 51.5, -0.1)
     assert dist_sq == 0.0
+
+
+# ── /places/{place_id}/details endpoint ───────────────────────────────────────
+
+PLACE_DETAILS_RESPONSE = {
+    "result": {
+        "name": "Sunny Cafe",
+        "rating": 4.5,
+        "user_ratings_total": 234,
+        "price_level": 2,
+        "formatted_phone_number": "+44 20 7946 0958",
+        "website": "https://sunnycafe.co.uk",
+        "opening_hours": {
+            "open_now": True,
+            "weekday_text": [
+                "Monday: 8:00 AM – 6:00 PM",
+                "Tuesday: 8:00 AM – 6:00 PM",
+                "Wednesday: 8:00 AM – 6:00 PM",
+                "Thursday: 8:00 AM – 6:00 PM",
+                "Friday: 8:00 AM – 7:00 PM",
+                "Saturday: 9:00 AM – 5:00 PM",
+                "Sunday: 10:00 AM – 4:00 PM",
+            ],
+        },
+        "photos": [
+            {"photo_reference": "ref1"},
+            {"photo_reference": "ref2"},
+            {"photo_reference": "ref3"},
+        ],
+        "reviews": [
+            {
+                "author_name": "Alice B.",
+                "rating": 5,
+                "text": "Best coffee in town!",
+                "relative_time_description": "2 weeks ago",
+            },
+            {
+                "author_name": "Bob C.",
+                "rating": 4,
+                "text": "Great spot for a sunny afternoon.",
+                "relative_time_description": "last month",
+            },
+        ],
+    }
+}
+
+
+def test_place_details_success(client, auth_headers):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = PLACE_DETAILS_RESPONSE
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Sunny Cafe"
+    assert data["rating"] == 4.5
+    assert data["user_ratings_total"] == 234
+    assert data["price_level"] == 2
+    assert data["formatted_phone_number"] == "+44 20 7946 0958"
+    assert data["website"] == "https://sunnycafe.co.uk"
+    assert data["open_now"] is True
+    assert len(data["weekday_text"]) == 7
+    assert data["photo_references"] == ["ref1", "ref2", "ref3"]
+    assert len(data["reviews"]) == 2
+    assert data["reviews"][0]["author_name"] == "Alice B."
+    assert data["reviews"][0]["rating"] == 5
+    assert data["reviews"][0]["text"] == "Best coffee in town!"
+    assert data["reviews"][0]["relative_time"] == "2 weeks ago"
+
+
+def test_place_details_unauthenticated(client):
+    response = client.get("/places/abc123/details")
+    assert response.status_code == 401
+
+
+def test_place_details_no_api_key(client, auth_headers):
+    with patch("src.routers.places.GOOGLE_MAPS_API_KEY", None):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert response.status_code == 503
+
+
+def test_place_details_api_non_200(client, auth_headers):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert response.status_code == 502
+
+
+def test_place_details_api_exception(client, auth_headers):
+    with patch("src.routers.places.requests.get", side_effect=Exception("network")):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert response.status_code == 502
+
+
+def test_place_details_limits_photos_to_five(client, auth_headers):
+    many_photos = {"result": {**PLACE_DETAILS_RESPONSE["result"],
+                               "photos": [{"photo_reference": f"ref{i}"} for i in range(10)]}}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = many_photos
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert len(response.json()["photo_references"]) == 5
+
+
+def test_place_details_limits_reviews_to_three(client, auth_headers):
+    many_reviews = {"result": {**PLACE_DETAILS_RESPONSE["result"],
+                                "reviews": [{"author_name": f"User{i}", "rating": 4,
+                                              "text": "Good", "relative_time_description": "1 week ago"}
+                                             for i in range(6)]}}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = many_reviews
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert len(response.json()["reviews"]) == 3
+
+
+def test_place_details_missing_optional_fields(client, auth_headers):
+    minimal = {"result": {"name": "Bare Cafe"}}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = minimal
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        response = client.get("/places/abc123/details", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Bare Cafe"
+    assert data["rating"] is None
+    assert data["formatted_phone_number"] is None
+    assert data["website"] is None
+    assert data["open_now"] is None
+    assert data["photo_references"] == []
+    assert data["reviews"] == []

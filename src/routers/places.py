@@ -21,6 +21,7 @@ router = APIRouter(prefix="/places", tags=["places"])
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 GOOGLE_PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+GOOGLE_PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 GOOGLE_TIMEZONE_URL = "https://maps.googleapis.com/maps/api/timezone/json"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
@@ -179,6 +180,26 @@ class PlaceSearchRequest(BaseModel):
         return v
 
 
+class PlaceReview(BaseModel):
+    author_name: str
+    rating: int | None
+    text: str
+    relative_time: str
+
+
+class PlaceDetailsResponse(BaseModel):
+    name: str
+    rating: float | None
+    user_ratings_total: int | None
+    price_level: int | None
+    formatted_phone_number: str | None
+    website: str | None
+    open_now: bool | None
+    weekday_text: list[str]
+    photo_references: list[str]
+    reviews: list[PlaceReview]
+
+
 class PlaceResult(BaseModel):
     place_id: str
     name: str
@@ -186,6 +207,7 @@ class PlaceResult(BaseModel):
     lng: float
     address: str
     rating: float | None
+    photo_reference: str | None
     type: str
     is_sunny: bool
 
@@ -238,6 +260,8 @@ def search_places(
         is_sunny = place_is_sunny(plat, plng, road_segments, buildings, sun_altitude, sun_azimuth)
         if is_sunny != want_sunny:
             continue
+        photos = raw.get("photos", [])
+        photo_reference = photos[0].get("photo_reference") if photos else None
         results.append(PlaceResult(
             place_id=raw["place_id"],
             name=raw["name"],
@@ -245,6 +269,7 @@ def search_places(
             lng=plng,
             address=raw.get("vicinity", ""),
             rating=raw.get("rating"),
+            photo_reference=photo_reference,
             type=place_type,
             is_sunny=is_sunny,
         ))
@@ -254,3 +279,55 @@ def search_places(
         sun_altitude=sun_altitude,
         sun_azimuth=sun_azimuth,
     )
+
+
+@router.get("/{place_id}/details", response_model=PlaceDetailsResponse)
+@limiter.limit(RATE_LIMIT_SHADOW)
+def get_place_details(
+    request: Request,
+    place_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    if not GOOGLE_MAPS_API_KEY:
+        raise HTTPException(status_code=503, detail="Maps API not configured")
+
+    fields = (
+        "name,rating,user_ratings_total,price_level,"
+        "formatted_phone_number,website,opening_hours,photos,reviews"
+    )
+    try:
+        resp = requests.get(
+            GOOGLE_PLACE_DETAILS_URL,
+            params={"place_id": place_id, "fields": fields, "key": GOOGLE_MAPS_API_KEY},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Places API request failed")
+
+        data = resp.json().get("result", {})
+        hours = data.get("opening_hours", {})
+
+        return PlaceDetailsResponse(
+            name=data.get("name", ""),
+            rating=data.get("rating"),
+            user_ratings_total=data.get("user_ratings_total"),
+            price_level=data.get("price_level"),
+            formatted_phone_number=data.get("formatted_phone_number"),
+            website=data.get("website"),
+            open_now=hours.get("open_now"),
+            weekday_text=hours.get("weekday_text", []),
+            photo_references=[p["photo_reference"] for p in data.get("photos", [])[:5]],
+            reviews=[
+                PlaceReview(
+                    author_name=r.get("author_name", ""),
+                    rating=r.get("rating"),
+                    text=r.get("text", ""),
+                    relative_time=r.get("relative_time_description", ""),
+                )
+                for r in data.get("reviews", [])[:3]
+            ],
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not fetch place details")
