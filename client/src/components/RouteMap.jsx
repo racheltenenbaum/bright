@@ -422,9 +422,11 @@ export default function RouteMap() {
       if (!startRef.current) {
         setStart(coords);
         setStartAddress(address);
+        setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
       } else if (!endRef.current || !sunDataRef.current) {
         setEnd(coords);
         setEndAddress(address);
+        setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
         setSavedRouteName(null);
         setRouteSaved(false);
       }
@@ -493,6 +495,7 @@ export default function RouteMap() {
     };
     const address = place.formatted_address || place.name || "";
 
+    setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
     if (type === "start") {
       setStart(coords);
       setStartAddress(address);
