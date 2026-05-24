@@ -78,9 +78,9 @@ function extractCity(components) {
 }
 
 const ICON_GROUPS = [
-  { key: "food", label: "Food & drink", icons: new Set(["faMugHot","faMugSaucer","faUtensils","faPizzaSlice","faBurger","faDrumstickBite","faFish","faBowlFood","faBreadSlice","faCookieBite","faCakeCandles","faIceCream","faEgg","faCarrot","faLeaf","faLemon"]) },
+  { key: "coffee", label: "Coffee", icons: new Set(["faMugHot","faMugSaucer"]) },
+  { key: "food", label: "Food", icons: new Set(["faUtensils","faPizzaSlice","faBurger","faDrumstickBite","faFish","faBowlFood","faBreadSlice","faCookieBite","faCakeCandles","faIceCream","faEgg","faCarrot","faLeaf","faLemon"]) },
   { key: "drinks", label: "Drinks", icons: new Set(["faBeerMugEmpty","faWineGlass","faMartiniGlassCitrus","faGlassWhiskey","faChampagneGlasses"]) },
-  { key: "places", label: "Places", icons: new Set(["faHouse","faBriefcase","faDumbbell","faGraduationCap","faShoppingCart","faHeart","faStar","faMapPin","faBicycle","faMusic","faTree","faPlane","faTrain","faBus","faBed","faCamera","faBook","faSun"]) },
 ];
 const DEFAULT_CENTER = { lat: 51.505, lng: -0.09 };
 
@@ -94,6 +94,7 @@ export default function MySpotsPage() {
   const [expandedSpotId, setExpandedSpotId] = useState(null);
   const [filterCity, setFilterCity] = useState(null);
   const [filterGroup, setFilterGroup] = useState(null);
+  const [showCityModal, setShowCityModal] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(BLANK_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -396,28 +397,21 @@ export default function MySpotsPage() {
         };
         const chipActive = { ...chipBase, background: "#FFD600", color: "#3D2C00", border: "2px solid #3D2C00" };
         return (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "14px" }}>
-            {/* Icon group filter — always shown */}
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              <button style={!filterGroup ? chipActive : chipBase} onClick={() => setFilterGroup(null)}>All</button>
-              {ICON_GROUPS.map((g) => (
-                <button key={g.key} style={filterGroup === g.key ? chipActive : chipBase}
-                  onClick={() => setFilterGroup(filterGroup === g.key ? null : g.key)}>
-                  {g.label}
-                </button>
-              ))}
-            </div>
-            {/* City filter — only shown when there are 2+ distinct cities */}
-            {cities.length >= 2 && (
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                <button style={!filterCity ? chipActive : chipBase} onClick={() => setFilterCity(null)}>All cities</button>
-                {cities.map((c) => (
-                  <button key={c} style={filterCity === c ? chipActive : chipBase}
-                    onClick={() => setFilterCity(filterCity === c ? null : c)}>
-                    {c}
-                  </button>
-                ))}
-              </div>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "14px" }}>
+            <button style={!filterGroup ? chipActive : chipBase} onClick={() => setFilterGroup(null)}>All</button>
+            {ICON_GROUPS.map((g) => (
+              <button key={g.key} style={filterGroup === g.key ? chipActive : chipBase}
+                onClick={() => setFilterGroup(filterGroup === g.key ? null : g.key)}>
+                {g.label}
+              </button>
+            ))}
+            {cities.length >= 1 && (
+              <button
+                style={filterCity ? chipActive : chipBase}
+                onClick={() => setShowCityModal(true)}
+              >
+                {filterCity || "City"} ▾
+              </button>
             )}
           </div>
         );
@@ -612,6 +606,39 @@ export default function MySpotsPage() {
           </div>
         </div>
       )}
+
+      {/* City picker modal */}
+      {showCityModal && (() => {
+        const cities = [...new Set(spots.map((s) => s.city).filter(Boolean))].sort();
+        return (
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(61,44,0,0.25)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+            onClick={() => setShowCityModal(false)}
+          >
+            <div
+              style={{ background: "#FFFDF5", border: "2.5px solid #fff", borderRadius: "24px", padding: "24px", maxWidth: "320px", width: "90%", boxShadow: "6px 6px 0 #E8C000", display: "flex", flexDirection: "column", gap: "10px" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: 0, fontSize: "1em" }}>Filter by city</h3>
+              <button
+                style={{ textAlign: "left", background: filterCity === null ? "#FFD600" : "#FFF8DC", border: filterCity === null ? "2px solid #3D2C00" : "2px solid #E8C000", borderRadius: "10px", padding: "10px 14px", cursor: "pointer", fontWeight: 700, color: "#3D2C00", fontSize: "0.9em", boxShadow: "none" }}
+                onClick={() => { setFilterCity(null); setShowCityModal(false); }}
+              >
+                All cities
+              </button>
+              {cities.map((c) => (
+                <button
+                  key={c}
+                  style={{ textAlign: "left", background: filterCity === c ? "#FFD600" : "#FFF8DC", border: filterCity === c ? "2px solid #3D2C00" : "2px solid #E8C000", borderRadius: "10px", padding: "10px 14px", cursor: "pointer", fontWeight: 700, color: "#3D2C00", fontSize: "0.9em", boxShadow: "none" }}
+                  onClick={() => { setFilterCity(c); setShowCityModal(false); }}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete confirm */}
       {pendingDelete && (
