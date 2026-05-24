@@ -92,6 +92,10 @@ export default function MySpotsPage() {
   const formRef = useRef(form);
   formRef.current = form;
 
+  const previewMapContainerRef = useRef(null);
+  const previewMapRef = useRef(null);
+  const previewMarkerRef = useRef(null);
+
   useEffect(() => { fetchSpots(); }, []);
 
   // Init mini-map when form opens
@@ -172,6 +176,48 @@ export default function MySpotsPage() {
     placeMarker(pos);
     formMapRef.current.panTo(pos);
   }, [form.lat, form.lng]);
+
+  // Init read-only preview mini-map when a spot is expanded
+  useEffect(() => {
+    if (!expandedSpotId || !isLoaded) {
+      previewMapRef.current = null;
+      previewMarkerRef.current = null;
+      return;
+    }
+    const spot = spots.find((s) => s.id === expandedSpotId);
+    if (!spot?.lat || !spot?.lng) return;
+    requestAnimationFrame(() => {
+      if (!previewMapContainerRef.current) return;
+      const pos = { lat: spot.lat, lng: spot.lng };
+      previewMapRef.current = new window.google.maps.Map(previewMapContainerRef.current, {
+        center: pos,
+        zoom: 15,
+        disableDefaultUI: true,
+        gestureHandling: "none",
+        clickableIcons: false,
+      });
+      const pin = {
+        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">' +
+            '<path fill="#FFD600" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>' +
+            '<circle cx="12" cy="12" r="5" fill="white"/>' +
+          '</svg>'
+        )}`,
+        scaledSize: new window.google.maps.Size(24, 36),
+        anchor: new window.google.maps.Point(12, 36),
+      };
+      previewMarkerRef.current = new window.google.maps.Marker({
+        position: pos,
+        map: previewMapRef.current,
+        icon: pin,
+        zIndex: 2,
+      });
+    });
+    return () => {
+      previewMapRef.current = null;
+      previewMarkerRef.current = null;
+    };
+  }, [expandedSpotId, isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function placeMarker(pos) {
     if (!formMapRef.current) return;
@@ -364,6 +410,10 @@ export default function MySpotsPage() {
 
               {expanded && (
                 <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #F5E070" }}>
+                  {/* Read-only mini-map */}
+                  <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid #E8C000", height: "160px", marginBottom: "10px" }}>
+                    <div ref={expandedSpotId === spot.id ? previewMapContainerRef : null} style={{ height: "100%", width: "100%" }} />
+                  </div>
                   {spot.description && (
                     <p style={{ margin: "0 0 10px", fontSize: "0.82em", color: "#7B5800", lineHeight: 1.4 }}>
                       {spot.description}

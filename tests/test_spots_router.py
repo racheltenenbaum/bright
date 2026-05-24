@@ -161,6 +161,34 @@ def test_delete_spot_wrong_user(client, auth_headers, db):
     assert db.get(Spot, spot.id) is not None
 
 
+def test_create_spot_with_place_id(client, auth_headers):
+    payload = {**SPOT_PAYLOAD, "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4"}
+    response = client.post("/spots", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["place_id"] == "ChIJN1t_tDeuEmsRUsoyG83frY4"
+
+
+def test_create_spot_place_id_optional(client, auth_headers):
+    response = client.post("/spots", json=SPOT_PAYLOAD, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["place_id"] is None
+
+
+def test_update_spot_sets_place_id(client, auth_headers, test_user, db):
+    spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    response = client.patch(
+        f"/spots/{spot.id}",
+        json={**SPOT_PAYLOAD, "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["place_id"] == "ChIJN1t_tDeuEmsRUsoyG83frY4"
+
+
 def test_spots_isolated_between_users(client, db):
     from src.auth import create_access_token
     from src.models import User

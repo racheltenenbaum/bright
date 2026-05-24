@@ -25,13 +25,15 @@ function computeSunAltitude(lat, lng) {
   const now = new Date();
   const jd = now / 86400000 + 2440587.5;
   const n = jd - 2451545.0;
-  const L = ((280.46 + 0.9856474 * n) % 360) * Math.PI / 180;
+  const L = (280.46 + 0.9856474 * n) % 360;
   const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
-  const lam = L + (1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * Math.PI / 180;
-  const dec = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lam));
-  const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
-  const lst = ((gmst + lng / 15) % 24 + 24) % 24;
-  const ha = (lst - 12) * 15 * Math.PI / 180;
+  const lam = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * Math.PI / 180;
+  const obliquity = 23.439 * Math.PI / 180;
+  const dec = Math.asin(Math.sin(obliquity) * Math.sin(lam));
+  const ra = Math.atan2(Math.cos(obliquity) * Math.sin(lam), Math.cos(lam)) * (12 / Math.PI);
+  const gmst = ((18.697374558 + 24.06570982441908 * n) % 24 + 24) % 24;
+  const lha = (((gmst + lng / 15 - ra) % 24) + 24) % 24;
+  const ha = lha * 15 * Math.PI / 180;
   const latRad = lat * Math.PI / 180;
   return Math.asin(Math.sin(latRad) * Math.sin(dec) + Math.cos(latRad) * Math.cos(dec) * Math.cos(ha)) * 180 / Math.PI;
 }
@@ -239,7 +241,7 @@ export default function RouteMap() {
       mapRef.current.setCenter({ lat: spot.lat, lng: spot.lng });
       mapRef.current.setZoom(16);
       const syntheticPlace = {
-        place_id: `spot-${spot.id}`,
+        place_id: spot.place_id || `spot-${spot.id}`,
         name: spot.name,
         address: spot.address,
         lat: spot.lat,
@@ -781,6 +783,7 @@ export default function RouteMap() {
     setSaveSpotError(null);
     try {
       const token = localStorage.getItem("token");
+      const placeId = saveSpotModal.place.place_id;
       await api.post(
         "/spots",
         {
@@ -790,6 +793,7 @@ export default function RouteMap() {
           lng: saveSpotModal.place.lng,
           icon: saveSpotModal.icon,
           description: saveSpotModal.note.trim() || null,
+          place_id: placeId && !placeId.startsWith("spot-") ? placeId : null,
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );

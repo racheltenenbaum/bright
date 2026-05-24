@@ -65,6 +65,7 @@ class SpotCreate(BaseModel):
     lng: float
     icon: str
     description: str | None = None
+    place_id: str | None = None
 
 
 class SpotResponse(BaseModel):
@@ -75,6 +76,7 @@ class SpotResponse(BaseModel):
     lng: float
     icon: str
     description: str | None
+    place_id: str | None
 
     model_config = {"from_attributes": True}
 

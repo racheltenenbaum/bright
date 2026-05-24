@@ -47,6 +47,7 @@ class Spot(Base):
     lng = Column(Float, nullable=False)
     icon = Column(String(64), nullable=False)
     description = Column(Text, nullable=True)
+    place_id = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
