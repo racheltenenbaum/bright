@@ -148,6 +148,7 @@ export default function RouteMap() {
   const [savedRouteName, setSavedRouteName] = useState(null);
   const [savedRouteId, setSavedRouteId] = useState(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const [sharePlaceCopied, setSharePlaceCopied] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [routeCoords, setRouteCoords] = useState(null);
   const [routeSegments, setRouteSegments] = useState(null);
@@ -697,6 +698,20 @@ export default function RouteMap() {
     } catch { /* ignore */ }
   }
 
+  async function sharePlace(place) {
+    const url = `https://maps.google.com/?q=${place.lat},${place.lng}`;
+    try {
+      const canShare = (await Share.canShare()).value;
+      if (canShare) {
+        await Share.share({ title: place.name, text: `Check out ${place.name}!`, url, dialogTitle: "Share place" });
+      } else {
+        await navigator.clipboard.writeText(`${place.name} — ${url}`);
+        setSharePlaceCopied(true);
+        setTimeout(() => setSharePlaceCopied(false), 2000);
+      }
+    } catch { /* ignore */ }
+  }
+
   // Fetch full place details whenever a marker is selected
   useEffect(() => {
     if (!selectedPlace) { setPlaceDetails(null); setSelectedPlaceIsSunny(null); return; }
@@ -1021,7 +1036,7 @@ export default function RouteMap() {
           <FontAwesomeIcon icon={faCloudSun} /> Shade
         </span>
         {isNighttime && (
-          <span style={{ fontSize: "0.82em", color: colors.subtext, marginLeft: "2px" }}>🌙 After sunset</span>
+          <span style={{ fontSize: "0.82em", color: colors.subtext, marginLeft: "2px", opacity: 1 / 0.4 }}>🌙 After sunset</span>
         )}
         {mode === "route" && (start && !planning) && (
           <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
@@ -1591,6 +1606,12 @@ export default function RouteMap() {
                           style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}
                         >
                           Plan route here →
+                        </button>
+                        <button
+                          onClick={() => sharePlace(selectedPlace)}
+                          style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}
+                        >
+                          {sharePlaceCopied ? "Copied!" : <FontAwesomeIcon icon={faShareNodes} />}
                         </button>
                       </div>
                     );

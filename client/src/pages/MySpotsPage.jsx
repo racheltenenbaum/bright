@@ -1,13 +1,14 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Geolocation } from "@capacitor/geolocation";
+import { Share } from "@capacitor/share";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faHouse, faBriefcase, faDumbbell, faMugHot, faMugSaucer, faGraduationCap, faStar,
   faMapPin, faUtensils, faShoppingCart, faHeart, faBicycle, faMusic,
   faTree, faPlane, faTrain, faBus, faBed, faCamera, faBook, faSun,
-  faPlus, faTrash, faPen, faCheck, faXmark, faLocationCrosshairs,
+  faPlus, faTrash, faPen, faCheck, faXmark, faLocationCrosshairs, faShareNodes,
   faBeerMugEmpty, faWineGlass, faMartiniGlassCitrus, faGlassWhiskey, faChampagneGlasses,
   faPizzaSlice, faBurger, faIceCream, faCookieBite, faBreadSlice,
   faDrumstickBite, faFish, faBowlFood, faLeaf, faCarrot, faLemon, faCakeCandles, faEgg,
@@ -383,6 +384,16 @@ export default function MySpotsPage() {
     }
   }
 
+  async function shareSpot(spot) {
+    const url = `https://maps.google.com/?q=${spot.lat},${spot.lng}`;
+    const canShare = (await Share.canShare()).value;
+    if (canShare) {
+      await Share.share({ title: spot.name, text: `Check out ${spot.name}!`, url, dialogTitle: "Share spot" });
+    } else {
+      await navigator.clipboard.writeText(`${spot.name} — ${url}`);
+    }
+  }
+
   return (
     <div className="page-container" style={{ maxWidth: "600px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
@@ -468,6 +479,9 @@ export default function MySpotsPage() {
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                  <button onClick={(e) => { e.stopPropagation(); shareSpot(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                    <FontAwesomeIcon icon={faShareNodes} />
+                  </button>
                   <button onClick={(e) => { e.stopPropagation(); openEdit(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                     <FontAwesomeIcon icon={faPen} />
                   </button>
