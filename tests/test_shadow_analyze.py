@@ -1,5 +1,5 @@
 import sqlite3
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 
 import src.routers.shadow_analyze as sa_module
 from src.routers.shadow_analyze import (
@@ -12,6 +12,12 @@ from src.routers.shadow_analyze import (
     _sqlite_set,
     _fetch_buildings_for_bbox,
     _fetch_elevations,
+    _is_terrain_flat,
+    _terrain_ray_points,
+    _check_terrain_shadows,
+    RAY_DISTANCES_M,
+    FLAT_TERRAIN_THRESHOLD_M,
+    MAX_SUN_ALT_FOR_TERRAIN_DEG,
 )
 
 ROUTE = [[51.5, -0.1], [51.502, -0.1], [51.504, -0.1]]
@@ -190,6 +196,137 @@ def test_fetch_elevations_non_200():
 def test_fetch_elevations_exception():
     with patch("requests.get", side_effect=Exception("network")):
         assert _fetch_elevations([(51.5, -0.1)]) == [0.0]
+
+
+# ── _is_terrain_flat ──────────────────────────────────────────────────────────
+
+def test_is_terrain_flat_single_point():
+    assert _is_terrain_flat([100.0]) is True
+
+
+def test_is_terrain_flat_empty():
+    assert _is_terrain_flat([]) is True
+
+
+def test_is_terrain_flat_true():
+    assert _is_terrain_flat([50.0, 55.0, 52.0, 48.0]) is True  # range = 7 < 20
+
+
+def test_is_terrain_flat_false():
+    assert _is_terrain_flat([10.0, 35.0, 20.0]) is False  # range = 25 >= 20
+
+
+def test_is_terrain_flat_custom_threshold():
+    assert _is_terrain_flat([0.0, 15.0], threshold_m=10.0) is False
+    assert _is_terrain_flat([0.0, 15.0], threshold_m=20.0) is True
+
+
+# ── _terrain_ray_points ────────────────────────────────────────────────────────
+
+def test_terrain_ray_points_count():
+    pts = _terrain_ray_points(51.5, -0.1, 180.0, [100, 500, 1000])
+    assert len(pts) == 3
+
+
+def test_terrain_ray_points_are_tuples():
+    pts = _terrain_ray_points(51.5, -0.1, 180.0, RAY_DISTANCES_M)
+    for lat, lng in pts:
+        assert isinstance(lat, float)
+        assert isinstance(lng, float)
+
+
+def test_terrain_ray_points_moves_away_from_sun():
+    # Sun azimuth 180° (due south) → ray goes north (back_bearing = 0°)
+    pts = _terrain_ray_points(51.5, -0.1, 180.0, [1000])
+    lat, lng = pts[0]
+    assert lat > 51.5  # moved north
+    assert abs(lng - (-0.1)) < 0.001  # longitude barely changed
+
+
+# ── _check_terrain_shadows ─────────────────────────────────────────────────────
+
+def test_check_terrain_shadows_flat_skips_api():
+    samples = [(0, 51.5, -0.1), (1, 51.51, -0.1)]
+    elevations = [10.0, 12.0]  # range = 2 < 20 → flat
+    with patch("src.routers.shadow_analyze._fetch_elevations") as mock_fetch:
+        result = _check_terrain_shadows(samples, elevations, 10.0, 180.0)
+    mock_fetch.assert_not_called()
+    assert result == {0: False, 1: False}
+
+
+def test_check_terrain_shadows_blocking_terrain():
+    # Point at elevation 0, sun altitude 10° → at 900m, need terrain > 159m to block
+    # We mock ray elevations: [0, 0, 200, 0, 0] → blocked at 900m
+    import math
+    samples = [(0, 51.5, -0.1)]
+    elevations = [0.0]
+    # Make terrain hilly so flatness check passes
+    hilly_elevations = [0.0, 50.0]
+    samples_hilly = [(0, 51.5, -0.1), (1, 51.52, -0.1)]
+
+    n = len(RAY_DISTANCES_M)
+    # Only first point's rays matter; second returns all zeros
+    ray_returns = [0.0] * n + [0.0] * n
+    # Set index 2 (900m for first point) high enough to block
+    blocking_elev = 0.0 + RAY_DISTANCES_M[2] * math.tan(math.radians(10.0)) + 10.0
+    ray_returns[2] = blocking_elev
+
+    with patch("src.routers.shadow_analyze._fetch_elevations", return_value=ray_returns):
+        result = _check_terrain_shadows(samples_hilly, hilly_elevations, 10.0, 180.0)
+    assert result[0] is True
+    assert result[1] is False
+
+
+def test_check_terrain_shadows_non_blocking():
+    import math
+    samples = [(0, 51.5, -0.1), (1, 51.52, -0.1)]
+    elevations = [0.0, 50.0]  # hilly enough
+    n = len(RAY_DISTANCES_M)
+    # All ray elevations below blocking threshold
+    ray_returns = [5.0] * (2 * n)
+    with patch("src.routers.shadow_analyze._fetch_elevations", return_value=ray_returns):
+        result = _check_terrain_shadows(samples, elevations, 10.0, 180.0)
+    assert result == {0: False, 1: False}
+
+
+# ── _analyze_route terrain integration ────────────────────────────────────────
+
+def test_analyze_route_high_sun_skips_terrain():
+    """With sun altitude > MAX_SUN_ALT_FOR_TERRAIN_DEG, _check_terrain_shadows is not called."""
+    from src.routers.shadow_analyze import _analyze_route
+    with patch("src.routers.shadow_analyze._fetch_elevations", return_value=[0.0, 0.0, 0.0]):
+        with patch("src.routers.shadow_analyze._check_terrain_shadows") as mock_terrain:
+            _analyze_route(ROUTE, BUILDINGS, MAX_SUN_ALT_FOR_TERRAIN_DEG + 1, 180.0)
+    mock_terrain.assert_not_called()
+
+
+def test_analyze_route_low_sun_hilly_calls_terrain():
+    """With sun altitude <= MAX_SUN_ALT_FOR_TERRAIN_DEG and hilly terrain, terrain check runs."""
+    from src.routers.shadow_analyze import _analyze_route
+    # 3 route points → 3 elevation samples; make range > threshold so it's hilly
+    route_elevs = [0.0, 60.0, 30.0]
+    n = len(RAY_DISTANCES_M)
+    ray_elevs = [0.0] * (3 * n)
+    # First call returns route elevations, second returns ray elevations
+    with patch("src.routers.shadow_analyze._fetch_elevations", side_effect=[route_elevs, ray_elevs]):
+        result = _analyze_route(ROUTE, BUILDINGS, 15.0, 180.0)
+    assert len(result.segments) == len(ROUTE)
+
+
+def test_analyze_route_terrain_shadow_marks_shaded():
+    """Blocking terrain on a low-sun route marks the segment as shaded."""
+    import math
+    from src.routers.shadow_analyze import _analyze_route
+    route_elevs = [0.0, 50.0, 25.0]
+    n = len(RAY_DISTANCES_M)
+    sun_altitude = 15.0
+    # Make first point's ray blocked at distance index 2
+    ray_returns = [0.0] * (3 * n)
+    ray_returns[2] = 0.0 + RAY_DISTANCES_M[2] * math.tan(math.radians(sun_altitude)) + 50.0
+    with patch("src.routers.shadow_analyze._fetch_elevations", side_effect=[route_elevs, ray_returns]):
+        result = _analyze_route(ROUTE, BUILDINGS, sun_altitude, 180.0)
+    # First segment should be terrain-shaded
+    assert result.segments[0].shaded is True
 
 
 # ── /sun/shadow-analyze endpoint ───────────────────────────────────────────────

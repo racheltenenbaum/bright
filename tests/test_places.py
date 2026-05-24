@@ -28,6 +28,7 @@ GOOGLE_PLACE = {
     "name": "Sunny Cafe",
     "geometry": {"location": {"lat": 51.5, "lng": -0.1}},
     "rating": 4.5,
+    "user_ratings_total": 15,
     "vicinity": "10 Sun Street",
     "photos": [{"photo_reference": "ref_abc123"}],
 }
@@ -37,6 +38,7 @@ GOOGLE_PLACE_2 = {
     "name": "Shady Bar",
     "geometry": {"location": {"lat": 51.501, "lng": -0.102}},
     "rating": 3.8,
+    "user_ratings_total": 20,
     "vicinity": "5 Dark Lane",
 }
 
@@ -578,7 +580,7 @@ def test_venue_with_fewer_than_10_reviews_hidden(client, auth_headers):
     assert response.json()["places"] == []
 
 
-def test_venue_with_exactly_10_reviews_shown(client, auth_headers):
+def test_venue_with_exactly_10_reviews_hidden(client, auth_headers):
     place_10 = {**PLACE_FEW_REVIEWS, "user_ratings_total": 10}
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
@@ -588,7 +590,7 @@ def test_venue_with_exactly_10_reviews_shown(client, auth_headers):
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
     assert response.status_code == 200
-    assert len(response.json()["places"]) == 1
+    assert len(response.json()["places"]) == 0
 
 
 def test_park_with_fewer_than_10_reviews_shown(client, auth_headers):
@@ -603,8 +605,8 @@ def test_park_with_fewer_than_10_reviews_shown(client, auth_headers):
     assert len(response.json()["places"]) == 1
 
 
-def test_venue_missing_ratings_total_shown(client, auth_headers):
-    """Places with no user_ratings_total field at all should not be filtered out."""
+def test_venue_missing_ratings_total_hidden(client, auth_headers):
+    """Places with no user_ratings_total field are filtered out (treated as 0 reviews)."""
     place_no_count = {k: v for k, v in GOOGLE_PLACE.items() if k != "user_ratings_total"}
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
@@ -614,7 +616,7 @@ def test_venue_missing_ratings_total_shown(client, auth_headers):
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
     assert response.status_code == 200
-    assert len(response.json()["places"]) == 1
+    assert len(response.json()["places"]) == 0
 
 
 # ── Unit tests: _road_sqlite_get / _road_sqlite_set ───────────────────────────

@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sqlite3
 import threading
@@ -12,8 +13,12 @@ from pydantic import BaseModel
 from src.auth import get_current_user
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
-from src.shadow import extract_buildings_from_overpass, is_point_shaded, which_side_sunny
+from src.shadow import extract_buildings_from_overpass, is_point_shaded, which_side_sunny, _offset_point
 from src.utils.astronomy import get_sun_position
+
+RAY_DISTANCES_M: list[float] = [150.0, 400.0, 900.0, 2000.0, 4000.0]
+FLAT_TERRAIN_THRESHOLD_M: float = 20.0
+MAX_SUN_ALT_FOR_TERRAIN_DEG: float = 25.0
 
 router = APIRouter(prefix="/sun", tags=["sun"])
 
@@ -239,16 +244,61 @@ class ShadowBatchResponse(BaseModel):
     routes: list[ShadowBatchRouteResult]
 
 
+def _is_terrain_flat(elevations: list[float], threshold_m: float = FLAT_TERRAIN_THRESHOLD_M) -> bool:
+    if len(elevations) < 2:
+        return True
+    return max(elevations) - min(elevations) < threshold_m
+
+
+def _terrain_ray_points(lat: float, lng: float, sun_azimuth: float, distances_m: list[float]) -> list[tuple[float, float]]:
+    back_bearing = (sun_azimuth + 180) % 360
+    return [_offset_point(lat, lng, back_bearing, d) for d in distances_m]
+
+
+def _check_terrain_shadows(
+    samples: list[tuple[int, float, float]],
+    elevations: list[float],
+    sun_altitude: float,
+    sun_azimuth: float,
+) -> dict[int, bool]:
+    if _is_terrain_flat(elevations):
+        return {idx: False for idx, _, _ in samples}
+
+    all_ray_coords: list[tuple[float, float]] = []
+    for _, lat, lng in samples:
+        all_ray_coords.extend(_terrain_ray_points(lat, lng, sun_azimuth, RAY_DISTANCES_M))
+
+    ray_elevs = _fetch_elevations(all_ray_coords)
+    tan_alt = math.tan(math.radians(sun_altitude))
+    n = len(RAY_DISTANCES_M)
+    result: dict[int, bool] = {}
+    for i, (idx, _, _) in enumerate(samples):
+        point_elev = elevations[i]
+        chunk = ray_elevs[i * n : (i + 1) * n]
+        result[idx] = any(
+            chunk[j] > point_elev + RAY_DISTANCES_M[j] * tan_alt
+            for j in range(len(chunk))
+        )
+    return result
+
+
 def _analyze_route(route: list[list[float]], buildings: list, sun_altitude: float, sun_azimuth: float) -> ShadowBatchRouteResult:
     samples = _sample_coords(route, target=25)
     elevations = _fetch_elevations([(lat, lng) for _, lat, lng in samples])
+
+    terrain_shaded_map: dict[int, bool] = {}
+    if sun_altitude <= MAX_SUN_ALT_FOR_TERRAIN_DEG:
+        terrain_shaded_map = _check_terrain_shadows(samples, elevations, sun_altitude, sun_azimuth)
+
     shaded_map: dict[int, bool] = {}
     side_map: dict[int, str] = {}
     for (idx, lat, lng), elevation in zip(samples, elevations):
-        shaded_map[idx] = is_point_shaded(lat, lng, buildings, sun_altitude, sun_azimuth, elevation)
+        building_shaded = is_point_shaded(lat, lng, buildings, sun_altitude, sun_azimuth, elevation)
+        shaded_map[idx] = building_shaded or terrain_shaded_map.get(idx, False)
         next_idx = min(idx + 1, len(route) - 1)
         lat2, lng2 = route[next_idx][0], route[next_idx][1]
         side_map[idx] = which_side_sunny(lat, lng, lat2, lng2, buildings, sun_altitude, sun_azimuth, elevation)
+
     segments = [
         SegmentResult(
             index=i,
