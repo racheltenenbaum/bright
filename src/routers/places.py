@@ -309,7 +309,7 @@ def search_places(
     # Filter out low-review venues (parks exempt)
     raw_places = [
         (raw, pt) for raw, pt in raw_places
-        if pt == "park" or raw.get("user_ratings_total", 10) >= 10
+        if pt == "park" or raw.get("user_ratings_total", 0) > 10
     ]
 
     want_sunny = body.preference == "sun"

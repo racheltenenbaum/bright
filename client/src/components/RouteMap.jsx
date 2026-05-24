@@ -1618,12 +1618,6 @@ export default function RouteMap() {
                         >
                           Plan route here →
                         </button>
-                        <button
-                          onClick={() => sharePlace(selectedPlace)}
-                          style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}
-                        >
-                          {sharePlaceCopied ? "Copied!" : <FontAwesomeIcon icon={faShareNodes} />}
-                        </button>
                       </div>
                     );
                   })()}
