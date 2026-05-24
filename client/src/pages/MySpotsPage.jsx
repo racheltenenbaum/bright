@@ -66,7 +66,22 @@ export function spotIcon(key) {
   return SPOT_ICONS.find((s) => s.key === key)?.icon ?? faMapPin;
 }
 
-const BLANK_FORM = { name: "", address: "", lat: null, lng: null, icon: "faHouse", description: "" };
+const BLANK_FORM = { name: "", address: "", lat: null, lng: null, icon: "faHouse", description: "", city: "" };
+
+function extractCity(components) {
+  if (!components) return "";
+  for (const type of ["locality", "postal_town", "administrative_area_level_2", "administrative_area_level_1"]) {
+    const comp = components.find((c) => c.types.includes(type));
+    if (comp) return comp.long_name;
+  }
+  return "";
+}
+
+const ICON_GROUPS = [
+  { key: "food", label: "Food & drink", icons: new Set(["faMugHot","faMugSaucer","faUtensils","faPizzaSlice","faBurger","faDrumstickBite","faFish","faBowlFood","faBreadSlice","faCookieBite","faCakeCandles","faIceCream","faEgg","faCarrot","faLeaf","faLemon"]) },
+  { key: "drinks", label: "Drinks", icons: new Set(["faBeerMugEmpty","faWineGlass","faMartiniGlassCitrus","faGlassWhiskey","faChampagneGlasses"]) },
+  { key: "places", label: "Places", icons: new Set(["faHouse","faBriefcase","faDumbbell","faGraduationCap","faShoppingCart","faHeart","faStar","faMapPin","faBicycle","faMusic","faTree","faPlane","faTrain","faBus","faBed","faCamera","faBook","faSun"]) },
+];
 const DEFAULT_CENTER = { lat: 51.505, lng: -0.09 };
 
 export default function MySpotsPage() {
@@ -77,6 +92,8 @@ export default function MySpotsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedSpotId, setExpandedSpotId] = useState(null);
+  const [filterCity, setFilterCity] = useState(null);
+  const [filterGroup, setFilterGroup] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(BLANK_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -119,8 +136,8 @@ export default function MySpotsPage() {
       formMapRef.current.addListener("click", async (e) => {
         const lat = e.latLng.lat();
         const lng = e.latLng.lng();
-        const address = await reverseGeocode(lat, lng);
-        setForm((prev) => ({ ...prev, lat, lng, address: address || prev.address }));
+        const { address, city } = await reverseGeocode(lat, lng);
+        setForm((prev) => ({ ...prev, lat, lng, address: address || prev.address, city: city || prev.city }));
         placeMarker({ lat, lng });
       });
 
@@ -247,8 +264,12 @@ export default function MySpotsPage() {
     try {
       const geocoder = new window.google.maps.Geocoder();
       const result = await geocoder.geocode({ location: { lat, lng } });
-      return result.results[0]?.formatted_address || null;
-    } catch { return null; }
+      const first = result.results[0];
+      return {
+        address: first?.formatted_address || null,
+        city: extractCity(first?.address_components || []),
+      };
+    } catch { return { address: null, city: "" }; }
   }
 
   async function useCurrentLocation() {
@@ -267,8 +288,8 @@ export default function MySpotsPage() {
         lat = pos.coords.latitude;
         lng = pos.coords.longitude;
       }
-      const address = await reverseGeocode(lat, lng);
-      setForm((prev) => ({ ...prev, lat, lng, address: address || "" }));
+      const { address, city } = await reverseGeocode(lat, lng);
+      setForm((prev) => ({ ...prev, lat, lng, address: address || "", city: city || prev.city }));
     } catch {
       setSaveError("Could not get your location.");
     } finally {
@@ -282,7 +303,8 @@ export default function MySpotsPage() {
     const lat = place.geometry.location.lat();
     const lng = place.geometry.location.lng();
     const address = place.formatted_address || place.name || "";
-    setForm((prev) => ({ ...prev, lat, lng, address }));
+    const city = extractCity(place.address_components || []);
+    setForm((prev) => ({ ...prev, lat, lng, address, city }));
   }
 
   async function fetchSpots() {
@@ -306,7 +328,7 @@ export default function MySpotsPage() {
 
   function openEdit(spot) {
     setEditingId(spot.id);
-    setForm({ name: spot.name, address: spot.address, lat: spot.lat, lng: spot.lng, icon: spot.icon, description: spot.description || "" });
+    setForm({ name: spot.name, address: spot.address, lat: spot.lat, lng: spot.lng, icon: spot.icon, city: spot.city || "", description: spot.description || "" });
     setSaveError(null);
     setShowForm(true);
   }
@@ -324,7 +346,7 @@ export default function MySpotsPage() {
     setSaveError(null);
     try {
       const token = localStorage.getItem("token");
-      const payload = { name: form.name.trim(), address: form.address, lat: form.lat, lng: form.lng, icon: form.icon, description: form.description.trim() || null };
+      const payload = { name: form.name.trim(), address: form.address, lat: form.lat, lng: form.lng, icon: form.icon, city: form.city, description: form.description.trim() || null };
       if (editingId) {
         const res = await api.patch(`/spots/${editingId}`, payload, { headers: { Authorization: `Bearer ${token}` } });
         setSpots((prev) => prev.map((s) => s.id === editingId ? res.data : s));
@@ -365,8 +387,51 @@ export default function MySpotsPage() {
         <p style={{ color: "#A87500", fontSize: "0.92em" }}>No spots saved yet. Add your first one!</p>
       )}
 
+      {!loading && spots.length > 0 && (() => {
+        const cities = [...new Set(spots.map((s) => s.city).filter(Boolean))].sort();
+        const chipBase = {
+          fontSize: "0.76em", fontWeight: 700, padding: "0.3em 0.85em",
+          borderRadius: "999px", cursor: "pointer", border: "2px solid #E8C000",
+          background: "#FFF8DC", color: "#7B5800", boxShadow: "none",
+        };
+        const chipActive = { ...chipBase, background: "#FFD600", color: "#3D2C00", border: "2px solid #3D2C00" };
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "14px" }}>
+            {/* Icon group filter — always shown */}
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              <button style={!filterGroup ? chipActive : chipBase} onClick={() => setFilterGroup(null)}>All</button>
+              {ICON_GROUPS.map((g) => (
+                <button key={g.key} style={filterGroup === g.key ? chipActive : chipBase}
+                  onClick={() => setFilterGroup(filterGroup === g.key ? null : g.key)}>
+                  {g.label}
+                </button>
+              ))}
+            </div>
+            {/* City filter — only shown when there are 2+ distinct cities */}
+            {cities.length >= 2 && (
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                <button style={!filterCity ? chipActive : chipBase} onClick={() => setFilterCity(null)}>All cities</button>
+                {cities.map((c) => (
+                  <button key={c} style={filterCity === c ? chipActive : chipBase}
+                    onClick={() => setFilterCity(filterCity === c ? null : c)}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {spots.map((spot) => {
+        {spots.filter((s) => {
+          if (filterCity && s.city !== filterCity) return false;
+          if (filterGroup) {
+            const group = ICON_GROUPS.find((g) => g.key === filterGroup);
+            if (group && !group.icons.has(s.icon)) return false;
+          }
+          return true;
+        }).map((spot) => {
           const expanded = expandedSpotId === spot.id;
           return (
             <div

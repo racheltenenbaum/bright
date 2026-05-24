@@ -64,6 +64,7 @@ class SpotCreate(BaseModel):
     lat: float
     lng: float
     icon: str
+    city: str
     description: str | None = None
     place_id: str | None = None
 
@@ -75,6 +76,7 @@ class SpotResponse(BaseModel):
     lat: float
     lng: float
     icon: str
+    city: str
     description: str | None
     place_id: str | None
 

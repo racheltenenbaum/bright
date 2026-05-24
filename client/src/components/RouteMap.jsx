@@ -20,6 +20,15 @@ const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const LIBRARIES = ["places"];
 
+function extractCity(components) {
+  if (!components) return "";
+  for (const type of ["locality", "postal_town", "administrative_area_level_2", "administrative_area_level_1"]) {
+    const comp = components.find((c) => c.types.includes(type));
+    if (comp) return comp.long_name;
+  }
+  return "";
+}
+
 
 function computeSunAltitude(lat, lng) {
   const now = new Date();
@@ -784,6 +793,11 @@ export default function RouteMap() {
       note: "",
       icon: PLACE_SPOT_ICON[place.type] || "faMapPin",
       place,
+      city: "",
+    });
+    new window.google.maps.Geocoder().geocode({ location: { lat: place.lat, lng: place.lng } }, (results) => {
+      const city = extractCity(results?.[0]?.address_components);
+      setSaveSpotModal((prev) => prev ? { ...prev, city } : prev);
     });
     setSaveSpotIconOpen(false);
     setSaveSpotError(null);
@@ -804,6 +818,7 @@ export default function RouteMap() {
           lat: saveSpotModal.place.lat,
           lng: saveSpotModal.place.lng,
           icon: saveSpotModal.icon,
+          city: saveSpotModal.city || "",
           description: saveSpotModal.note.trim() || null,
           place_id: savedPlaceId,
         },

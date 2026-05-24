@@ -7,6 +7,7 @@ SPOT_PAYLOAD = {
     "lat": 51.5,
     "lng": -0.1,
     "icon": "faHouse",
+    "city": "London",
 }
 
 
@@ -26,7 +27,7 @@ def test_create_spot_description_optional(client, auth_headers):
 
 def test_update_spot_description(client, auth_headers, test_user, db):
     spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
-                icon="faMugHot", user_id=test_user.id)
+                icon="faMugHot", city="London", user_id=test_user.id)
     db.add(spot)
     db.commit()
 
@@ -78,7 +79,7 @@ def test_get_spots_empty(client, auth_headers):
 
 def test_get_spots_returns_own_spots(client, auth_headers, test_user, db):
     spot = Spot(name="Work", address="Office Rd", lat=51.51, lng=-0.09,
-                icon="faBriefcase", user_id=test_user.id)
+                icon="faBriefcase", city="London", user_id=test_user.id)
     db.add(spot)
     db.commit()
 
@@ -96,12 +97,12 @@ def test_get_spots_unauthenticated(client):
 
 def test_update_spot(client, auth_headers, test_user, db):
     spot = Spot(name="Home", address="Old St", lat=51.5, lng=-0.1,
-                icon="faHouse", user_id=test_user.id)
+                icon="faHouse", city="London", user_id=test_user.id)
     db.add(spot)
     db.commit()
 
     response = client.patch(f"/spots/{spot.id}",
-                            json={"name": "My Home", "address": "New St", "lat": 51.5, "lng": -0.1, "icon": "faHouse"},
+                            json={"name": "My Home", "address": "New St", "lat": 51.5, "lng": -0.1, "icon": "faHouse", "city": "London"},
                             headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["name"] == "My Home"
@@ -120,7 +121,7 @@ def test_update_spot_wrong_user(client, db):
     db.refresh(other)
 
     spot = Spot(name="Home", address="St", lat=51.5, lng=-0.1,
-                icon="faHouse", user_id=other.id)
+                icon="faHouse", city="London", user_id=other.id)
     db.add(spot)
     db.commit()
 
@@ -131,7 +132,7 @@ def test_update_spot_wrong_user(client, db):
 
 def test_delete_spot(client, auth_headers, test_user, db):
     spot = Spot(name="Gym", address="Gym St", lat=51.5, lng=-0.1,
-                icon="faDumbbell", user_id=test_user.id)
+                icon="faDumbbell", city="London", user_id=test_user.id)
     db.add(spot)
     db.commit()
 
@@ -151,7 +152,7 @@ def test_delete_spot_wrong_user(client, auth_headers, db):
     db.refresh(other)
 
     spot = Spot(name="Home", address="St", lat=51.5, lng=-0.1,
-                icon="faHouse", user_id=other.id)
+                icon="faHouse", city="London", user_id=other.id)
     db.add(spot)
     db.commit()
 
@@ -176,7 +177,7 @@ def test_create_spot_place_id_optional(client, auth_headers):
 
 def test_update_spot_sets_place_id(client, auth_headers, test_user, db):
     spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
-                icon="faMugHot", user_id=test_user.id)
+                icon="faMugHot", city="London", user_id=test_user.id)
     db.add(spot)
     db.commit()
 
@@ -203,9 +204,36 @@ def test_spots_isolated_between_users(client, db):
     db.refresh(u1); db.refresh(u2)
 
     db.add(Spot(name="Home", address="St", lat=51.5, lng=-0.1,
-                icon="faHouse", user_id=u1.id))
+                icon="faHouse", city="London", user_id=u1.id))
     db.commit()
 
     headers2 = {"Authorization": f"Bearer {create_access_token(u2.id)}"}
     response = client.get("/spots", headers=headers2)
     assert response.json() == []
+
+
+def test_create_spot_city_stored_and_returned(client, auth_headers):
+    response = client.post("/spots", json={**SPOT_PAYLOAD, "city": "Paris"}, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["city"] == "Paris"
+
+
+def test_create_spot_city_required(client, auth_headers):
+    payload = {k: v for k, v in SPOT_PAYLOAD.items() if k != "city"}
+    response = client.post("/spots", json=payload, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_update_spot_city(client, auth_headers, test_user, db):
+    spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", city="London", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    response = client.patch(
+        f"/spots/{spot.id}",
+        json={**SPOT_PAYLOAD, "city": "Manchester"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["city"] == "Manchester"
