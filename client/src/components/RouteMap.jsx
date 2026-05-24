@@ -801,16 +801,22 @@ export default function RouteMap() {
       let places = res.data.places;
 
       // Auto-expand once if no results and there's room to grow
+      let expanded = false;
       if (places.length === 0 && radius < 50000) {
-        const expanded = Math.min(radius * 2, 50000);
-        res = await api.post("/places/search", { ...body, radius: expanded }, { headers: { Authorization: `Bearer ${token}` } });
+        const expandedRadius = Math.min(radius * 2, 50000);
+        res = await api.post("/places/search", { ...body, radius: expandedRadius }, { headers: { Authorization: `Bearer ${token}` } });
         places = res.data.places;
+        expanded = true;
       }
 
       setPlacesSunAltitude(res.data.sun_altitude);
       renderPlaceMarkers(places);
       if (places.length === 0) {
         mapRef.current.setZoom(Math.max(mapRef.current.getZoom() - 1, 10));
+      } else if (expanded && places.length > 0) {
+        const bounds = new window.google.maps.LatLngBounds();
+        places.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+        mapRef.current.fitBounds(bounds, 80);
       }
     } catch {
       setError("Could not search for places. Please try again.");
