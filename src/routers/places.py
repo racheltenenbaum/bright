@@ -295,15 +295,29 @@ def search_places(
         buildings = []
         road_segments = []
 
+    local_hour = int(time_str.split(":")[0])
+    evening = local_hour >= 20
+
+    # If bar is requested and it's evening, also fetch cafes and promote them to bar type
+    types_to_fetch: list[tuple[str, str]] = [(t, t) for t in body.types]
+    if "bar" in body.types and "cafe" not in body.types and evening:
+        types_to_fetch.append(("cafe", "bar"))
+
     # Collect places from Google for each requested type; deduplicate by place_id
-    seen: dict[str, str] = {}  # place_id → type
-    raw_places: list[tuple[dict, str]] = []  # (raw_place, type)
-    for place_type in body.types:
-        for raw in _fetch_places_from_google(body.lat, body.lng, body.radius, place_type):
+    seen: dict[str, str] = {}  # place_id → assigned type
+    raw_places: list[tuple[dict, str]] = []  # (raw_place, assigned_type)
+    for fetch_type, assigned_type in types_to_fetch:
+        for raw in _fetch_places_from_google(body.lat, body.lng, body.radius, fetch_type):
             pid = raw.get("place_id", "")
             if pid and pid not in seen:
-                seen[pid] = place_type
-                raw_places.append((raw, place_type))
+                seen[pid] = assigned_type
+                raw_places.append((raw, assigned_type))
+
+    # Filter out low-review venues (parks exempt)
+    raw_places = [
+        (raw, pt) for raw, pt in raw_places
+        if pt == "park" or raw.get("user_ratings_total", 10) >= 10
+    ]
 
     want_sunny = body.preference == "sun"
     results: list[PlaceResult] = []

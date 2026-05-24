@@ -28,7 +28,7 @@ export default function HomePage() {
       </p>
       {isAuthenticated ? (
         <button onClick={() => navigate("/plan")} style={{ fontSize: "1.05em", padding: "0.65em 2.4em" }}>
-          Plan Route <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
+          to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
         </button>
       ) : (
         <div style={{ display: "flex", gap: "14px" }}>

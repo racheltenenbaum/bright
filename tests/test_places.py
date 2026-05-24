@@ -507,6 +507,144 @@ def test_search_places_with_road_side_analysis(client, auth_headers):
     assert response.json()["places"][0]["is_sunny"] is True
 
 
+CAFE_LATE = {
+    "place_id": "cafe_late_01",
+    "name": "Evening Cafe",
+    "geometry": {"location": {"lat": 51.5, "lng": -0.1}},
+    "rating": 4.3,
+    "user_ratings_total": 120,
+    "vicinity": "5 Night Street",
+}
+
+
+def _make_fetch(by_type: dict):
+    """Return a side_effect callable that dispatches on place_type."""
+    def _fetch(lat, lng, radius, place_type):
+        return by_type.get(place_type, [])
+    return _fetch
+
+
+# ── Café-to-bar evening logic ─────────────────────────────────────────────────
+
+def test_cafe_included_as_bar_at_or_after_20h(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "20:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE]})), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["bar"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    places = response.json()["places"]
+    assert len(places) == 1
+    assert places[0]["place_id"] == "cafe_late_01"
+    assert places[0]["type"] == "bar"
+
+
+def test_cafe_not_included_as_bar_before_20h(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "19:59:00")), \
+         patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE]})), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["bar"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["places"] == []
+
+
+def test_cafe_already_in_types_not_double_counted(client, auth_headers):
+    """When both cafe and bar are requested, the cafe is not counted twice."""
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "21:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE], "bar": []})), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe", "bar"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    assert len(response.json()["places"]) == 1
+
+
+# ── Review-count filter ───────────────────────────────────────────────────────
+
+PLACE_FEW_REVIEWS = {
+    "place_id": "few_reviews_01",
+    "name": "Tiny Cafe",
+    "geometry": {"location": {"lat": 51.5, "lng": -0.1}},
+    "rating": 4.8,
+    "user_ratings_total": 9,
+    "vicinity": "1 Quiet Lane",
+}
+
+PARK_FEW_REVIEWS = {
+    "place_id": "park_few_01",
+    "name": "Small Park",
+    "geometry": {"location": {"lat": 51.5, "lng": -0.1}},
+    "rating": 4.0,
+    "user_ratings_total": 3,
+    "vicinity": "Green St",
+}
+
+
+def test_venue_with_fewer_than_10_reviews_hidden(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[PLACE_FEW_REVIEWS]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["places"] == []
+
+
+def test_venue_with_exactly_10_reviews_shown(client, auth_headers):
+    place_10 = {**PLACE_FEW_REVIEWS, "user_ratings_total": 10}
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[place_10]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    assert len(response.json()["places"]) == 1
+
+
+def test_park_with_fewer_than_10_reviews_shown(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[PARK_FEW_REVIEWS]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["park"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    assert len(response.json()["places"]) == 1
+
+
+def test_venue_missing_ratings_total_shown(client, auth_headers):
+    """Places with no user_ratings_total field at all should not be filtered out."""
+    place_no_count = {k: v for k, v in GOOGLE_PLACE.items() if k != "user_ratings_total"}
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[place_no_count]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    assert len(response.json()["places"]) == 1
+
+
 # ── Unit tests: _road_sqlite_get / _road_sqlite_set ───────────────────────────
 
 def test_road_sqlite_get_miss():

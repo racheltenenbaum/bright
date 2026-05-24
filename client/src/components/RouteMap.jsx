@@ -1464,7 +1464,7 @@ export default function RouteMap() {
                       <div style={{ marginTop: "12px" }}>
                         {alreadySaved || placeSaveSuccess === selectedPlace.place_id ? (
                           <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>
-                            {placeSaveSuccess === selectedPlace.place_id ? "Saved to My Spots!" : "✓ Saved to My Spots"}
+                            {placeSaveSuccess === selectedPlace.place_id ? "Saved to Spots!" : "✓ Saved to Spots"}
                           </span>
                         ) : (
                           <button onClick={() => openSaveSpotModal(selectedPlace)}

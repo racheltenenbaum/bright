@@ -116,7 +116,7 @@ export default function MyRoutesPage() {
 
   return (
     <div className="page-container" style={{ maxWidth: "600px" }}>
-      <h2>My Routes <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600", fontSize: "0.85em" }} /></h2>
+      <h2>Routes <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600", fontSize: "0.85em" }} /></h2>
       {error && <p style={{ color: "#C0392B", fontSize: "0.88em" }}>{error}</p>}
       {loading && <p style={{ color: "#A87500", fontSize: "0.92em" }}>Loading routes...</p>}
       {!loading && routes.length === 0 && !error && (
