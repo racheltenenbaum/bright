@@ -482,12 +482,16 @@ export default function MySpotsPage() {
                   <button onClick={(e) => { e.stopPropagation(); shareSpot(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                     <FontAwesomeIcon icon={faShareNodes} />
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); openEdit(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
-                    <FontAwesomeIcon icon={faPen} />
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); setPendingDelete(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
-                    <FontAwesomeIcon icon={faTrash} />
-                  </button>
+                  {expanded && (
+                    <>
+                      <button onClick={(e) => { e.stopPropagation(); openEdit(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                        <FontAwesomeIcon icon={faPen} />
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); setPendingDelete(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                        <FontAwesomeIcon icon={faTrash} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 

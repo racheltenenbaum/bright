@@ -1012,8 +1012,8 @@ export default function RouteMap() {
       </div>
 
       {/* Sun / Shade toggle + Reset */}
-      <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px", opacity: isNighttime ? 0.4 : 1 }}>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext }}>
+      <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext, opacity: isNighttime ? 0.4 : 1 }}>
           <FontAwesomeIcon icon={faSun} /> Sun
         </span>
         <div
@@ -1023,6 +1023,7 @@ export default function RouteMap() {
             background: preference === "sun" ? "#FFD600" : colors.accent,
             position: "relative", cursor: isNighttime ? "default" : "pointer",
             transition: "background 0.25s", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
+            opacity: isNighttime ? 0.4 : 1,
           }}
         >
           <div style={{
@@ -1032,11 +1033,11 @@ export default function RouteMap() {
             transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
           }} />
         </div>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext }}>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext, opacity: isNighttime ? 0.4 : 1 }}>
           <FontAwesomeIcon icon={faCloudSun} /> Shade
         </span>
         {isNighttime && (
-          <span style={{ fontSize: "0.82em", color: colors.subtext, marginLeft: "2px", opacity: 1 / 0.4 }}>🌙 After sunset</span>
+          <span style={{ fontSize: "0.82em", color: colors.subtext, marginLeft: "2px" }}>🌙 After sunset</span>
         )}
         {mode === "route" && (start && !planning) && (
           <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
@@ -1459,12 +1460,22 @@ export default function RouteMap() {
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setSelectedPlace(null); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
-                    color: colors.subtext, padding: "0 0 0 10px", boxShadow: "none", flexShrink: 0, lineHeight: 1, alignSelf: "flex-start" }}>
-                  ×
-                </button>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "2px", flexShrink: 0 }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); sharePlace(selectedPlace); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.95em",
+                      color: colors.subtext, padding: "0 4px 0 10px", boxShadow: "none", lineHeight: 1, alignSelf: "flex-start" }}
+                    title="Share"
+                  >
+                    {sharePlaceCopied ? <span style={{ fontSize: "0.7em", fontWeight: 700 }}>Copied!</span> : <FontAwesomeIcon icon={faShareNodes} />}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSelectedPlace(null); }}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.1em",
+                      color: colors.subtext, padding: "0 0 0 4px", boxShadow: "none", lineHeight: 1, alignSelf: "flex-start" }}>
+                    ×
+                  </button>
+                </div>
               </div>
 
               {/* Scrollable body — revealed on expand */}
