@@ -178,6 +178,11 @@ export default function MySpotsPage() {
         if (!hasSpotPos) {
           formMapRef.current.panTo({ lat, lng });
         }
+        const bias = new window.google.maps.LatLngBounds(
+          { lat: lat - 0.15, lng: lng - 0.15 },
+          { lat: lat + 0.15, lng: lng + 0.15 },
+        );
+        autocompleteRef.current?.setBounds(bias);
       } catch { /* geolocation unavailable */ }
     });
     return () => {
@@ -291,6 +296,11 @@ export default function MySpotsPage() {
       }
       const { address, city } = await reverseGeocode(lat, lng);
       setForm((prev) => ({ ...prev, lat, lng, address: address || "", city: city || prev.city }));
+      const bias = new window.google.maps.LatLngBounds(
+        { lat: lat - 0.15, lng: lng - 0.15 },
+        { lat: lat + 0.15, lng: lng + 0.15 },
+      );
+      autocompleteRef.current?.setBounds(bias);
     } catch {
       setSaveError("Could not get your location.");
     } finally {

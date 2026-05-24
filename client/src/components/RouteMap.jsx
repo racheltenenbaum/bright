@@ -29,6 +29,23 @@ function extractCity(components) {
   return "";
 }
 
+function iconFromPlaceTypes(types) {
+  if (!types?.length) return "faMapPin";
+  if (types.includes("cafe")) return "faMugHot";
+  if (types.includes("bar") || types.includes("night_club")) return "faBeerMugEmpty";
+  if (types.includes("bakery")) return "faBreadSlice";
+  if (types.includes("restaurant") || types.includes("food")) return "faUtensils";
+  if (types.includes("park") || types.includes("natural_feature")) return "faTree";
+  if (types.includes("gym") || types.includes("health")) return "faDumbbell";
+  if (types.includes("lodging")) return "faBed";
+  if (types.includes("train_station") || types.includes("subway_station") || types.includes("transit_station")) return "faTrain";
+  if (types.includes("airport")) return "faPlane";
+  if (types.includes("university") || types.includes("school")) return "faGraduationCap";
+  if (types.includes("library")) return "faBook";
+  if (types.includes("shopping_mall") || types.includes("store") || types.includes("supermarket")) return "faShoppingCart";
+  return "faMapPin";
+}
+
 
 function computeSunAltitude(lat, lng) {
   const now = new Date();
@@ -309,6 +326,13 @@ export default function RouteMap() {
       if (!sunCheckedRef.current) {
         sunCheckedRef.current = true;
         setPlacesSunAltitude(computeSunAltitude(lat, lng));
+        const bias = new window.google.maps.LatLngBounds(
+          { lat: lat - 0.15, lng: lng - 0.15 },
+          { lat: lat + 0.15, lng: lng + 0.15 },
+        );
+        startAutocompleteRef.current?.setBounds(bias);
+        endAutocompleteRef.current?.setBounds(bias);
+        placeNameAutocompleteRef.current?.setBounds(bias);
       }
       if (currentLocationMarkerRef.current) {
         currentLocationMarkerRef.current.setPosition({ lat, lng });
@@ -793,7 +817,7 @@ export default function RouteMap() {
     setSaveSpotModal({
       name: place.name,
       note: "",
-      icon: PLACE_SPOT_ICON[place.type] || "faMapPin",
+      icon: PLACE_SPOT_ICON[place.type] || iconFromPlaceTypes(place.googleTypes) || "faMapPin",
       place,
       city: "",
     });
@@ -848,6 +872,7 @@ export default function RouteMap() {
       lng,
       is_sunny: null,
       type: null,
+      googleTypes: place.types || [],
     };
     clearPlaceMarkers();
     renderPlaceMarkers([syntheticPlace]);
@@ -875,6 +900,7 @@ export default function RouteMap() {
     setSavedRouteName(null);
     setRouteSaved(false);
     if (currentLocationRef.current) {
+      autoCalculateRef.current = true;
       setStart(currentLocationRef.current);
       new window.google.maps.Geocoder().geocode(
         { location: currentLocationRef.current },
