@@ -612,6 +612,7 @@ export default function RouteMap() {
           duration: leg.duration.text,
         });
         setSunData({ sun_altitude, sun_azimuth, date });
+        setPlacesSunAltitude(sun_altitude);
         setRouteCoords(bestCoords);
         setRouteSegments(bestSegments);
         drawRoute(
