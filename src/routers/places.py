@@ -235,6 +235,38 @@ class PlaceSearchResponse(BaseModel):
     sun_azimuth: float
 
 
+class PlaceSunCheckRequest(BaseModel):
+    lat: float
+    lng: float
+
+
+class PlaceSunCheckResponse(BaseModel):
+    is_sunny: bool
+    sun_altitude: float
+
+
+@router.post("/sun-check", response_model=PlaceSunCheckResponse)
+@limiter.limit(RATE_LIMIT_SHADOW)
+def check_place_sun(
+    request: Request,
+    body: PlaceSunCheckRequest,
+    current_user: User = Depends(get_current_user),
+):
+    date_str, time_str = _get_local_datetime(body.lat, body.lng)
+    sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng, date_str, time_str)
+
+    if sun_altitude <= 0:
+        return PlaceSunCheckResponse(is_sunny=False, sun_altitude=sun_altitude)
+
+    padding = 200 / 111_000
+    buildings = _fetch_buildings_for_bbox(
+        body.lat - padding, body.lng - padding,
+        body.lat + padding, body.lng + padding,
+    )
+    is_sunny = place_is_sunny(body.lat, body.lng, [], buildings, sun_altitude, sun_azimuth)
+    return PlaceSunCheckResponse(is_sunny=is_sunny, sun_altitude=sun_altitude)
+
+
 @router.post("/search", response_model=PlaceSearchResponse)
 @limiter.limit(RATE_LIMIT_SHADOW)
 def search_places(

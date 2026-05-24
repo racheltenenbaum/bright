@@ -725,3 +725,39 @@ def test_place_details_unknown_country_defaults_currency(client, auth_headers):
     with patch("src.routers.places.requests.get", return_value=mock_resp):
         response = client.get("/places/abc123/details", headers=auth_headers)
     assert response.json()["currency_symbol"] == "$"
+
+
+# ── sun-check endpoint ─────────────────────────────────────────────────────────
+
+def test_sun_check_returns_sunny(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=(45.0, 180.0)), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places.place_is_sunny", return_value=True):
+        response = client.post("/places/sun-check", json={"lat": 51.5, "lng": -0.1}, headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_sunny"] is True
+    assert data["sun_altitude"] == 45.0
+
+
+def test_sun_check_returns_shaded(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=(30.0, 90.0)), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places.place_is_sunny", return_value=False):
+        response = client.post("/places/sun-check", json={"lat": 51.5, "lng": -0.1}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["is_sunny"] is False
+
+
+def test_sun_check_nighttime_skips_buildings(client, auth_headers):
+    with patch("src.routers.places.get_sun_position", return_value=(-5.0, 180.0)) as mock_sun, \
+         patch("src.routers.places._fetch_buildings_for_bbox") as mock_buildings:
+        response = client.post("/places/sun-check", json={"lat": 51.5, "lng": -0.1}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["is_sunny"] is False
+    mock_buildings.assert_not_called()
+
+
+def test_sun_check_unauthenticated(client):
+    response = client.post("/places/sun-check", json={"lat": 51.5, "lng": -0.1})
+    assert response.status_code == 401

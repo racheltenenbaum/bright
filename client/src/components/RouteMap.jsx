@@ -141,6 +141,7 @@ export default function RouteMap() {
   const [saveSpotError, setSaveSpotError] = useState(null);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(false);
+  const [selectedPlaceIsSunny, setSelectedPlaceIsSunny] = useState(null);
 
   startRef.current = start;
   endRef.current = end;
@@ -251,6 +252,15 @@ export default function RouteMap() {
       renderPlaceMarkers([syntheticPlace]);
       setSelectedPlace(syntheticPlace);
       window.history.replaceState({}, document.title);
+      const token = localStorage.getItem("token");
+      api.post("/places/sun-check", { lat: spot.lat, lng: spot.lng }, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => {
+          setSelectedPlaceIsSunny(res.data.is_sunny);
+          setPlacesSunAltitude(res.data.sun_altitude);
+        })
+        .catch(() => {});
     }
   }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -648,8 +658,9 @@ export default function RouteMap() {
 
   // Fetch full place details whenever a marker is selected
   useEffect(() => {
-    if (!selectedPlace) { setPlaceDetails(null); return; }
+    if (!selectedPlace) { setPlaceDetails(null); setSelectedPlaceIsSunny(null); return; }
     setPlaceDetails(null);
+    setSelectedPlaceIsSunny(null);
     setShowAllReviews(false);
     setPanelExpanded(false);
     setPlaceDetailsLoading(true);
@@ -784,7 +795,8 @@ export default function RouteMap() {
     try {
       const token = localStorage.getItem("token");
       const placeId = saveSpotModal.place.place_id;
-      await api.post(
+      const savedPlaceId = placeId && !placeId.startsWith("spot-") ? placeId : null;
+      const res = await api.post(
         "/spots",
         {
           name: saveSpotModal.name.trim() || saveSpotModal.place.name,
@@ -793,10 +805,11 @@ export default function RouteMap() {
           lng: saveSpotModal.place.lng,
           icon: saveSpotModal.icon,
           description: saveSpotModal.note.trim() || null,
-          place_id: placeId && !placeId.startsWith("spot-") ? placeId : null,
+          place_id: savedPlaceId,
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      setSpots((prev) => [...prev, res.data]);
       setPlaceSaveSuccess(saveSpotModal.place.place_id);
       setSaveSpotModal(null);
       setTimeout(() => setPlaceSaveSuccess(null), 2500);
@@ -1363,12 +1376,15 @@ export default function RouteMap() {
                         {placeDetails.open_now ? "Open now" : "Closed"}
                       </span>
                     )}
-                    {!isNighttime && selectedPlace.is_sunny != null && (
-                      <span style={{ fontSize: "0.76em", fontWeight: 700,
-                        color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
-                        {selectedPlace.is_sunny ? "☀ Sunny now" : "☁ Shaded now"}
-                      </span>
-                    )}
+                    {!isNighttime && (() => {
+                      const isSunny = selectedPlace.is_sunny ?? selectedPlaceIsSunny;
+                      return isSunny != null ? (
+                        <span style={{ fontSize: "0.76em", fontWeight: 700,
+                          color: isSunny ? "#C8A000" : "#4A7090" }}>
+                          {isSunny ? "☀ Sunny now" : "☁ Shaded now"}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
 
                   {/* Contact info */}
@@ -1440,16 +1456,25 @@ export default function RouteMap() {
                   )}
 
                   {/* Save as Spot */}
-                  <div style={{ marginTop: "12px" }}>
-                    {placeSaveSuccess === selectedPlace.place_id ? (
-                      <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>Saved to My Spots!</span>
-                    ) : (
-                      <button onClick={() => openSaveSpotModal(selectedPlace)}
-                        style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}>
-                        Save as Spot
-                      </button>
-                    )}
-                  </div>
+                  {(() => {
+                    const alreadySaved = spots.some(
+                      (s) => s.place_id && s.place_id === selectedPlace.place_id,
+                    );
+                    return (
+                      <div style={{ marginTop: "12px" }}>
+                        {alreadySaved || placeSaveSuccess === selectedPlace.place_id ? (
+                          <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>
+                            {placeSaveSuccess === selectedPlace.place_id ? "Saved to My Spots!" : "✓ Saved to My Spots"}
+                          </span>
+                        ) : (
+                          <button onClick={() => openSaveSpotModal(selectedPlace)}
+                            style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}>
+                            Save as Spot
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1509,7 +1534,7 @@ export default function RouteMap() {
               {weather.uv_index != null && (
                 <span style={{ color: colors.subtext }}>UV {weather.uv_index}</span>
               )}
-              {weather.uv_index >= 6 && preference === "sun" && (
+              {weather.uv_index >= 6 && !isNighttime && (
                 <span style={{ color: "#C0392B", fontWeight: 700 }}>
                   sunscreen!
                 </span>
