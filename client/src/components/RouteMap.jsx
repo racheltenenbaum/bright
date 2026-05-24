@@ -103,6 +103,7 @@ export default function RouteMap() {
   const weatherLocationRef = useRef(null);
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
+  const placeNameAutocompleteRef = useRef(null);
   const autoCalculateRef = useRef(false);
   const currentLocationRef = useRef(null);
 
@@ -151,6 +152,7 @@ export default function RouteMap() {
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(false);
   const [selectedPlaceIsSunny, setSelectedPlaceIsSunny] = useState(null);
+  const [placeNameQuery, setPlaceNameQuery] = useState("");
 
   startRef.current = start;
   endRef.current = end;
@@ -833,6 +835,54 @@ export default function RouteMap() {
     }
   }
 
+  async function handlePlaceNameSearch() {
+    const place = placeNameAutocompleteRef.current?.getPlace();
+    if (!place?.geometry) return;
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
+    const syntheticPlace = {
+      place_id: place.place_id,
+      name: place.name || place.formatted_address?.split(",")[0] || "",
+      address: place.formatted_address || "",
+      lat,
+      lng,
+      is_sunny: null,
+      type: null,
+    };
+    clearPlaceMarkers();
+    renderPlaceMarkers([syntheticPlace]);
+    setSelectedPlace(syntheticPlace);
+    mapRef.current?.setCenter({ lat, lng });
+    mapRef.current?.setZoom(16);
+    const token = localStorage.getItem("token");
+    api.post("/places/sun-check", { lat, lng }, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => { setSelectedPlaceIsSunny(res.data.is_sunny); setPlacesSunAltitude(res.data.sun_altitude); })
+      .catch(() => {});
+  }
+
+  function planRouteToPlace(place) {
+    clearPlaceMarkers();
+    setSelectedPlace(null);
+    setShowAllReviews(false);
+    setPanelExpanded(false);
+    setPlaceSaveSuccess(null);
+    setError(null);
+    setMode("route");
+    clearPolylines(polylinesRef);
+    setSunData(null);
+    setEnd({ lat: place.lat, lng: place.lng });
+    setEndAddress(place.address || place.name || "");
+    setSavedRouteName(null);
+    setRouteSaved(false);
+    if (currentLocationRef.current) {
+      setStart(currentLocationRef.current);
+      new window.google.maps.Geocoder().geocode(
+        { location: currentLocationRef.current },
+        (results) => setStartAddress(results?.[0]?.formatted_address || "My location"),
+      );
+    }
+  }
+
   function switchMode(newMode) {
     if (newMode === mode) return;
     if (newMode === "places") {
@@ -849,6 +899,7 @@ export default function RouteMap() {
       setShowAllReviews(false);
       setPanelExpanded(false);
       setPlaceSaveSuccess(null);
+      setPlaceNameQuery("");
     }
     setError(null);
     setMode(newMode);
@@ -1100,6 +1151,19 @@ export default function RouteMap() {
       {/* Find Places panel — places mode only */}
       {mode === "places" && (
         <div style={{ marginBottom: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          {/* Name search */}
+          <Autocomplete
+            onLoad={(a) => { placeNameAutocompleteRef.current = a; }}
+            onPlaceChanged={handlePlaceNameSearch}
+          >
+            <input
+              type="text"
+              placeholder="Search by name…"
+              value={placeNameQuery}
+              onChange={(e) => setPlaceNameQuery(e.target.value)}
+            />
+          </Autocomplete>
+
           {/* Place type chips */}
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {PLACE_TYPE_OPTIONS.map(({ key, label }) => {
@@ -1470,13 +1534,13 @@ export default function RouteMap() {
                     </div>
                   )}
 
-                  {/* Save as Spot */}
+                  {/* Save as Spot + Plan route here */}
                   {(() => {
                     const alreadySaved = spots.some(
                       (s) => s.place_id && s.place_id === selectedPlace.place_id,
                     );
                     return (
-                      <div style={{ marginTop: "12px" }}>
+                      <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                         {alreadySaved || placeSaveSuccess === selectedPlace.place_id ? (
                           <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>
                             {placeSaveSuccess === selectedPlace.place_id ? "Saved to Spots!" : "✓ Saved to Spots"}
@@ -1487,6 +1551,12 @@ export default function RouteMap() {
                             Save as Spot
                           </button>
                         )}
+                        <button
+                          onClick={() => planRouteToPlace(selectedPlace)}
+                          style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}
+                        >
+                          Plan route here →
+                        </button>
                       </div>
                     );
                   })()}
