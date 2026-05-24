@@ -328,10 +328,26 @@ def test_search_places_sun_below_horizon(client, auth_headers):
     assert response.status_code == 200
     data = response.json()
     assert data["sun_altitude"] < 0
-    # All places returned unfiltered at night, all marked is_sunny=False
+    # "sun" preference at night returns no places (sun is down)
+    assert len(data["places"]) == 0
+    # Overpass should not be called when sun is below horizon
+    mock_buildings.assert_not_called()
+
+
+def test_search_places_sun_below_horizon_shade_preference(client, auth_headers):
+    mock_buildings = MagicMock()
+    with patch("src.routers.places.get_sun_position", return_value=SUN_DOWN), \
+         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "22:00:00")), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", mock_buildings):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "shade", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    # "shade" preference at night returns all places (everything is in shade)
     assert len(data["places"]) == 1
     assert all(not p["is_sunny"] for p in data["places"])
-    # Overpass should not be called when sun is below horizon
     mock_buildings.assert_not_called()
 
 
