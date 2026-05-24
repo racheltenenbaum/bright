@@ -275,6 +275,108 @@ button.btn-danger:active {
   }
 }
 
+/* ── Google Places Autocomplete ──────────────────────── */
+
+.pac-container {
+  font-family: "Nunito", sans-serif;
+  background: #fffdf5;
+  border: 2px solid #ffffff;
+  border-radius: 14px;
+  box-shadow: 4px 4px 0 #e8c000;
+  margin-top: 4px;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.pac-container::after {
+  padding: 4px 10px 6px;
+  font-size: 10px;
+  opacity: 0.4;
+}
+
+.pac-item {
+  padding: 8px 14px;
+  border-top: 1px solid #fff3c0;
+  cursor: pointer;
+  color: #3d2c00;
+  font-family: "Nunito", sans-serif;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.pac-item:first-child {
+  border-top: none;
+}
+
+.pac-item:hover,
+.pac-item-selected {
+  background: #fff8dc;
+}
+
+.pac-item-query {
+  font-size: 13px;
+  font-weight: 700;
+  color: #3d2c00;
+  font-family: "Nunito", sans-serif;
+  padding-right: 4px;
+}
+
+.pac-matched {
+  color: #a87500;
+  font-weight: 800;
+}
+
+.pac-icon {
+  opacity: 0.45;
+  margin-right: 2px;
+}
+
+body.shade-mode .pac-container {
+  background: #ebf1f6;
+  box-shadow: 4px 4px 0 #84aeca;
+}
+
+body.shade-mode .pac-item {
+  color: #263748;
+  border-top-color: #d0dde8;
+}
+
+body.shade-mode .pac-item:hover,
+body.shade-mode .pac-item-selected {
+  background: #c4d9e8;
+}
+
+body.shade-mode .pac-item-query {
+  color: #263748;
+}
+
+body.shade-mode .pac-matched {
+  color: #4a7090;
+}
+
+body.night-mode .pac-container {
+  background: #ccd8e2;
+  box-shadow: 4px 4px 0 #5a8aae;
+}
+
+body.night-mode .pac-item {
+  color: #1a2f40;
+  border-top-color: #b8cad6;
+}
+
+body.night-mode .pac-item:hover,
+body.night-mode .pac-item-selected {
+  background: #a0bece;
+}
+
+body.night-mode .pac-item-query {
+  color: #1a2f40;
+}
+
+body.night-mode .pac-matched {
+  color: #325470;
+}
+
 /* ── Planning dots ────────────────────────────────────── */
 
 @keyframes planning-bounce {

@@ -84,7 +84,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
     if (sunAltitude <= 0) {
       color = "#888888";
     } else if (preference === "shade") {
-      color = seg.shaded ? "#5E8FAD" : "#C8D8E4";
+      color = seg.shaded ? "#5E8FAD" : "#FFE082";
     } else {
       color = seg.shaded ? "#C8C8A0" : "#FFD700";
     }
@@ -439,7 +439,7 @@ export default function RouteMap() {
       startMarkerRef.current = null;
     }
     if (start) {
-      const pinColor = preference === "shade" ? "#7AB3CF" : "#FFD600";
+      const pinColor = isNighttime ? "#3D6E8C" : (preference === "shade" ? "#7AB3CF" : "#FFD600");
       startMarkerRef.current = new window.google.maps.Marker({
         position: start,
         map: mapRef.current,
@@ -450,7 +450,7 @@ export default function RouteMap() {
         },
       });
     }
-  }, [start, isLoaded, preference]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [start, isLoaded, preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync end marker
   useEffect(() => {
@@ -460,7 +460,7 @@ export default function RouteMap() {
       endMarkerRef.current = null;
     }
     if (end) {
-      const pinColor = preference === "shade" ? "#4A7090" : "#f5ae0a";
+      const pinColor = isNighttime ? "#2D5070" : (preference === "shade" ? "#4A7090" : "#f5ae0a");
       endMarkerRef.current = new window.google.maps.Marker({
         position: end,
         map: mapRef.current,
@@ -471,7 +471,7 @@ export default function RouteMap() {
         },
       });
     }
-  }, [end, isLoaded, preference]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [end, isLoaded, preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function togglePreference() {
     setPreference((p) => (p === "sun" ? "shade" : "sun"));
@@ -1378,7 +1378,7 @@ export default function RouteMap() {
                     style={{
                       width: 14,
                       height: 4,
-                      background: preference === "shade" ? "#C8D8E4" : "#C8C8A0",
+                      background: preference === "shade" ? "#FFE082" : "#C8C8A0",
                       display: "inline-block",
                       borderRadius: 2,
                     }}
