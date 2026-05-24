@@ -121,6 +121,8 @@ export default function RouteMap() {
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
   const placeNameAutocompleteRef = useRef(null);
+  const locationBiasRef = useRef(null);
+  const skipInitialPanRef = useRef(false);
   const autoCalculateRef = useRef(false);
   const currentLocationRef = useRef(null);
 
@@ -265,6 +267,7 @@ export default function RouteMap() {
     // Auto-open a spot navigated from My Spots
     const spot = location.state?.spot;
     if (spot) {
+      skipInitialPanRef.current = true;
       setMode("places");
       modeRef.current = "places";
       mapRef.current.setCenter({ lat: spot.lat, lng: spot.lng });
@@ -319,7 +322,9 @@ export default function RouteMap() {
       if (cancelled || !mapRef.current) return;
       setCurrentLocation({ lat, lng });
       if (!initialPanDone && !startRef.current) {
-        mapRef.current.panTo({ lat, lng });
+        if (!skipInitialPanRef.current) {
+          mapRef.current.panTo({ lat, lng });
+        }
         initialPanDone = true;
         fetchWeather(lat, lng);
       }
@@ -330,6 +335,7 @@ export default function RouteMap() {
           { lat: lat - 0.15, lng: lng - 0.15 },
           { lat: lat + 0.15, lng: lng + 0.15 },
         );
+        locationBiasRef.current = bias;
         startAutocompleteRef.current?.setBounds(bias);
         endAutocompleteRef.current?.setBounds(bias);
         placeNameAutocompleteRef.current?.setBounds(bias);
@@ -1179,7 +1185,7 @@ export default function RouteMap() {
         <div style={{ marginBottom: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
           {/* Name search */}
           <Autocomplete
-            onLoad={(a) => { placeNameAutocompleteRef.current = a; }}
+            onLoad={(a) => { placeNameAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
             onPlaceChanged={handlePlaceNameSearch}
           >
             <input
