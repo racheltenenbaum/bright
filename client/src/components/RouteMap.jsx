@@ -996,40 +996,37 @@ export default function RouteMap() {
         ))}
       </div>
 
-      {/* Sun / Shade toggle + Reset — or after-sunset notice in places mode */}
-      {mode === "places" && isNighttime ? (
-        <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "0.88em", color: colors.subtext }}>🌙 After sunset</span>
+      {/* Sun / Shade toggle + Reset */}
+      <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px", opacity: isNighttime ? 0.4 : 1 }}>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext }}>
+          <FontAwesomeIcon icon={faSun} /> Sun
+        </span>
+        <div
+          onClick={isNighttime ? undefined : togglePreference}
+          style={{
+            width: "48px", height: "26px", borderRadius: "13px",
+            background: preference === "sun" ? "#FFD600" : colors.accent,
+            position: "relative", cursor: isNighttime ? "default" : "pointer",
+            transition: "background 0.25s", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
+          }}
+        >
+          <div style={{
+            width: "20px", height: "20px", borderRadius: "50%",
+            background: "white", position: "absolute", top: "3px",
+            left: preference === "sun" ? "3px" : "25px",
+            transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+          }} />
         </div>
-      ) : (
-        <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext }}>
-            <FontAwesomeIcon icon={faSun} /> Sun
-          </span>
-          <div
-            onClick={togglePreference}
-            style={{
-              width: "48px", height: "26px", borderRadius: "13px",
-              background: preference === "sun" ? "#FFD600" : colors.accent,
-              position: "relative", cursor: "pointer",
-              transition: "background 0.25s", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
-            }}
-          >
-            <div style={{
-              width: "20px", height: "20px", borderRadius: "50%",
-              background: "white", position: "absolute", top: "3px",
-              left: preference === "sun" ? "3px" : "25px",
-              transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-            }} />
-          </div>
-          <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext }}>
-            <FontAwesomeIcon icon={faCloudSun} /> Shade
-          </span>
-          {mode === "route" && (start && !planning) && (
-            <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
-          )}
-        </div>
-      )}
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext }}>
+          <FontAwesomeIcon icon={faCloudSun} /> Shade
+        </span>
+        {isNighttime && (
+          <span style={{ fontSize: "0.82em", color: colors.subtext, marginLeft: "2px" }}>🌙 After sunset</span>
+        )}
+        {mode === "route" && (start && !planning) && (
+          <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
+        )}
+      </div>
 
       {/* Address inputs + action buttons — route mode only */}
       <div
