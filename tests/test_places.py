@@ -318,12 +318,10 @@ def test_search_places_empty_types(client, auth_headers):
 
 def test_search_places_sun_below_horizon(client, auth_headers):
     mock_buildings = MagicMock()
-    mock_roads = MagicMock()
     with patch("src.routers.places.get_sun_position", return_value=SUN_DOWN), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "22:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", mock_buildings), \
-         patch("src.routers.places._fetch_roads_for_bbox", mock_roads):
+         patch("src.routers.places._fetch_buildings_for_bbox", mock_buildings):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -335,15 +333,13 @@ def test_search_places_sun_below_horizon(client, auth_headers):
     assert all(not p["is_sunny"] for p in data["places"])
     # Overpass should not be called when sun is below horizon
     mock_buildings.assert_not_called()
-    mock_roads.assert_not_called()
 
 
 def test_search_places_no_buildings_no_roads_sunny(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -360,8 +356,7 @@ def test_search_places_deduplicates_by_place_id(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500,
             "preference": "sun", "types": ["cafe", "restaurant"]
@@ -374,8 +369,7 @@ def test_search_places_multiple_places_returned(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE, GOOGLE_PLACE_2]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -387,8 +381,7 @@ def test_search_places_no_api_key_returns_empty(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places.GOOGLE_MAPS_API_KEY", None), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -400,8 +393,7 @@ def test_search_places_result_has_expected_fields(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -421,8 +413,7 @@ def test_search_places_photo_reference_passed_through(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -434,8 +425,7 @@ def test_search_places_photo_reference_none_when_absent(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_no_photo]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -448,8 +438,7 @@ def test_search_places_place_without_rating(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_no_rating]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -458,14 +447,11 @@ def test_search_places_place_without_rating(client, auth_headers):
 
 
 def test_search_places_preference_sun_excludes_shaded(client, auth_headers):
-    # GOOGLE_PLACE_2 is shaded (no roads/buildings but mock which_side_sunny to shade it)
-    segments = [{"lat1": 51.49, "lng1": -0.10, "lat2": 51.51, "lng2": -0.10}]
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE, GOOGLE_PLACE_2]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=segments), \
-         patch("src.shadow.which_side_sunny", return_value="neither"):
+         patch("src.routers.places.is_point_shaded", return_value=True):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -474,32 +460,25 @@ def test_search_places_preference_sun_excludes_shaded(client, auth_headers):
 
 
 def test_search_places_preference_shade_excludes_sunny(client, auth_headers):
-    segments = [{"lat1": 51.49, "lng1": -0.10, "lat2": 51.51, "lng2": -0.10}]
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=segments), \
-         patch("src.shadow.which_side_sunny", return_value="both"):
+         patch("src.routers.places.is_point_shaded", return_value=False):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "shade", "types": ["cafe"]
         }, headers=auth_headers)
     assert response.status_code == 200
-    # place is sunny (both sides) but preference is shade → excluded
+    # place is not shaded (is_sunny=True) but preference is shade → excluded
     assert response.json()["places"] == []
 
 
-def test_search_places_with_road_side_analysis(client, auth_headers):
-    # Road goes south→north at lng=-0.101; place is to the east (right side when facing north)
-    segments = [{"lat1": 51.499, "lng1": -0.101, "lat2": 51.501, "lng2": -0.101}]
-    place_east = {**GOOGLE_PLACE, "geometry": {"location": {"lat": 51.5, "lng": -0.099}}}
-
+def test_search_places_sunny_when_not_shaded(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
-         patch("src.routers.places._fetch_places_from_google", return_value=[place_east]), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=segments), \
-         patch("src.shadow.which_side_sunny", return_value="right"):
+         patch("src.routers.places.is_point_shaded", return_value=False):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -530,8 +509,7 @@ def test_cafe_included_as_bar_at_or_after_20h(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "20:00:00")), \
          patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE]})), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["bar"]
         }, headers=auth_headers)
@@ -546,8 +524,7 @@ def test_cafe_not_included_as_bar_before_20h(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "19:59:00")), \
          patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE]})), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["bar"]
         }, headers=auth_headers)
@@ -560,8 +537,7 @@ def test_cafe_already_in_types_not_double_counted(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "21:00:00")), \
          patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE], "bar": []})), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe", "bar"]
         }, headers=auth_headers)
@@ -594,8 +570,7 @@ def test_venue_with_fewer_than_10_reviews_hidden(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[PLACE_FEW_REVIEWS]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -608,8 +583,7 @@ def test_venue_with_exactly_10_reviews_shown(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_10]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)
@@ -621,8 +595,7 @@ def test_park_with_fewer_than_10_reviews_shown(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[PARK_FEW_REVIEWS]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["park"]
         }, headers=auth_headers)
@@ -636,8 +609,7 @@ def test_venue_missing_ratings_total_shown(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_no_count]), \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
-         patch("src.routers.places._fetch_roads_for_bbox", return_value=[]):
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
             "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
         }, headers=auth_headers)

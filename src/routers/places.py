@@ -3,7 +3,6 @@ import os
 import sqlite3
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 import requests
@@ -14,7 +13,7 @@ from src.auth import get_current_user
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _bbox_key, _route_bbox
-from src.shadow import extract_roads_from_overpass, place_is_sunny
+from src.shadow import extract_roads_from_overpass, place_is_sunny, is_point_shaded
 from src.utils.astronomy import get_sun_position
 
 router = APIRouter(prefix="/places", tags=["places"])
@@ -285,15 +284,9 @@ def search_places(
         w = body.lng - padding
         n = body.lat + padding
         e = body.lng + padding
-
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            buildings_future = pool.submit(_fetch_buildings_for_bbox, s, w, n, e)
-            roads_future = pool.submit(_fetch_roads_for_bbox, s, w, n, e)
-            buildings = buildings_future.result()
-            road_segments = roads_future.result()
+        buildings = _fetch_buildings_for_bbox(s, w, n, e)
     else:
         buildings = []
-        road_segments = []
 
     local_hour = int(time_str.split(":")[0])
     evening = local_hour >= 20
@@ -328,7 +321,7 @@ def search_places(
         if is_nighttime:
             is_sunny = False
         else:
-            is_sunny = place_is_sunny(plat, plng, road_segments, buildings, sun_altitude, sun_azimuth)
+            is_sunny = not is_point_shaded(plat, plng, buildings, sun_altitude, sun_azimuth)
             if is_sunny != want_sunny:
                 continue
         photos = raw.get("photos", [])
