@@ -8,6 +8,7 @@ Create Date: 2026-05-24 12:00:00.000000
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import inspect
 
 
 revision: str = 'e7a3b1c4d890'
@@ -17,7 +18,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE spots ADD COLUMN IF NOT EXISTS place_id VARCHAR(255)")
+    bind = op.get_bind()
+    cols = {col['name'] for col in inspect(bind).get_columns('spots')}
+    if 'place_id' not in cols:
+        op.execute("ALTER TABLE spots ADD COLUMN place_id VARCHAR(255)")
 
 
 def downgrade() -> None:
