@@ -1,12 +1,16 @@
 import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Geolocation } from "@capacitor/geolocation";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faHouse, faBriefcase, faDumbbell, faMugHot, faGraduationCap, faStar,
+  faHouse, faBriefcase, faDumbbell, faMugHot, faMugSaucer, faGraduationCap, faStar,
   faMapPin, faUtensils, faShoppingCart, faHeart, faBicycle, faMusic,
   faTree, faPlane, faTrain, faBus, faBed, faCamera, faBook, faSun,
   faPlus, faTrash, faPen, faCheck, faXmark, faLocationCrosshairs,
+  faBeerMugEmpty, faWineGlass, faMartiniGlassCitrus, faGlassWhiskey, faChampagneGlasses,
+  faPizzaSlice, faBurger, faIceCream, faCookieBite, faBreadSlice,
+  faDrumstickBite, faFish, faBowlFood, faLeaf, faCarrot, faLemon, faCakeCandles, faEgg,
 } from "@fortawesome/free-solid-svg-icons";
 import api from "../api";
 
@@ -14,15 +18,37 @@ const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const LIBRARIES = ["places"];
 
 export const SPOT_ICONS = [
+  // Food & drink
+  { key: "faMugHot",             icon: faMugHot,             label: "Café" },
+  { key: "faMugSaucer",          icon: faMugSaucer,          label: "Coffee" },
+  { key: "faUtensils",           icon: faUtensils,           label: "Restaurant" },
+  { key: "faPizzaSlice",         icon: faPizzaSlice,         label: "Pizza" },
+  { key: "faBurger",             icon: faBurger,             label: "Burger" },
+  { key: "faDrumstickBite",      icon: faDrumstickBite,      label: "Chicken" },
+  { key: "faFish",               icon: faFish,               label: "Seafood" },
+  { key: "faBowlFood",           icon: faBowlFood,           label: "Bowl" },
+  { key: "faBreadSlice",         icon: faBreadSlice,         label: "Bakery" },
+  { key: "faCookieBite",         icon: faCookieBite,         label: "Bakery" },
+  { key: "faCakeCandles",        icon: faCakeCandles,        label: "Cake" },
+  { key: "faIceCream",           icon: faIceCream,           label: "Ice cream" },
+  { key: "faEgg",                icon: faEgg,                label: "Brunch" },
+  { key: "faCarrot",             icon: faCarrot,             label: "Vegan" },
+  { key: "faLeaf",               icon: faLeaf,               label: "Healthy" },
+  { key: "faLemon",              icon: faLemon,              label: "Juice" },
+  // Drinks
+  { key: "faBeerMugEmpty",       icon: faBeerMugEmpty,       label: "Pub" },
+  { key: "faWineGlass",          icon: faWineGlass,          label: "Wine bar" },
+  { key: "faMartiniGlassCitrus", icon: faMartiniGlassCitrus, label: "Cocktails" },
+  { key: "faGlassWhiskey",       icon: faGlassWhiskey,       label: "Bar" },
+  { key: "faChampagneGlasses",   icon: faChampagneGlasses,   label: "Celebrate" },
+  // Places & lifestyle
   { key: "faHouse",         icon: faHouse,         label: "Home" },
   { key: "faBriefcase",     icon: faBriefcase,     label: "Work" },
   { key: "faDumbbell",      icon: faDumbbell,      label: "Gym" },
-  { key: "faMugHot",        icon: faMugHot,        label: "Café" },
-  { key: "faUtensils",      icon: faUtensils,      label: "Restaurant" },
   { key: "faGraduationCap", icon: faGraduationCap, label: "School" },
   { key: "faShoppingCart",  icon: faShoppingCart,  label: "Shop" },
   { key: "faHeart",         icon: faHeart,         label: "Favourite" },
-  { key: "faStar",          icon: faStar,          label: "Favourite" },
+  { key: "faStar",          icon: faStar,          label: "Star" },
   { key: "faMapPin",        icon: faMapPin,        label: "Place" },
   { key: "faBicycle",       icon: faBicycle,       label: "Bike" },
   { key: "faMusic",         icon: faMusic,         label: "Music" },
@@ -45,10 +71,12 @@ const DEFAULT_CENTER = { lat: 51.505, lng: -0.09 };
 
 export default function MySpotsPage() {
   const { isLoaded } = useLoadScript({ googleMapsApiKey: MAP_KEY, libraries: LIBRARIES });
+  const navigate = useNavigate();
 
   const [spots, setSpots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [expandedSpotId, setExpandedSpotId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(BLANK_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -292,41 +320,66 @@ export default function MySpotsPage() {
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {spots.map((spot) => (
-          <div key={spot.id} style={{
-            border: "2.5px solid #ffffff", borderRadius: "14px",
-            padding: "12px 16px", background: "#FFFDF5",
-            boxShadow: "4px 4px 0 #E8C000",
-            display: "flex", alignItems: "center", gap: "14px",
-          }}>
-            <div style={{
-              width: "38px", height: "38px", borderRadius: "50%",
-              background: "#FFD600", display: "flex", alignItems: "center",
-              justifyContent: "center", flexShrink: 0,
-            }}>
-              <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ color: "#3D2C00", fontSize: "16px" }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <strong style={{ color: "#3D2C00", fontSize: "0.95em" }}>{spot.name}</strong>
-              <p style={{ margin: "2px 0 0", fontSize: "0.78em", color: "#A87500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {spot.address}
-              </p>
-              {spot.description && (
-                <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "#7B5800", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {spot.description}
-                </p>
+        {spots.map((spot) => {
+          const expanded = expandedSpotId === spot.id;
+          return (
+            <div
+              key={spot.id}
+              onClick={() => setExpandedSpotId(expanded ? null : spot.id)}
+              style={{
+                border: "2.5px solid #ffffff", borderRadius: "14px",
+                padding: "12px 16px", background: "#FFFDF5",
+                boxShadow: "4px 4px 0 #E8C000",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                <div style={{
+                  width: "38px", height: "38px", borderRadius: "50%",
+                  background: "#FFD600", display: "flex", alignItems: "center",
+                  justifyContent: "center", flexShrink: 0,
+                }}>
+                  <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ color: "#3D2C00", fontSize: "16px" }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ color: "#3D2C00", fontSize: "0.95em" }}>{spot.name}</strong>
+                  <p style={{ margin: "2px 0 0", fontSize: "0.78em", color: "#A87500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {spot.address}
+                  </p>
+                  {spot.description && !expanded && (
+                    <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "#7B5800", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {spot.description}
+                    </p>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                  <button onClick={(e) => { e.stopPropagation(); openEdit(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                    <FontAwesomeIcon icon={faPen} />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); setPendingDelete(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                    <FontAwesomeIcon icon={faTrash} />
+                  </button>
+                </div>
+              </div>
+
+              {expanded && (
+                <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #F5E070" }}>
+                  {spot.description && (
+                    <p style={{ margin: "0 0 10px", fontSize: "0.82em", color: "#7B5800", lineHeight: 1.4 }}>
+                      {spot.description}
+                    </p>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); navigate("/plan", { state: { spot } }); }}
+                    style={{ fontSize: "0.8em", padding: "0.35em 1em" }}
+                  >
+                    Open in Find Places →
+                  </button>
+                </div>
               )}
             </div>
-            <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-              <button onClick={() => openEdit(spot)} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
-                <FontAwesomeIcon icon={faPen} />
-              </button>
-              <button onClick={() => setPendingDelete(spot)} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
-                <FontAwesomeIcon icon={faTrash} />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Add / Edit modal */}

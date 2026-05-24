@@ -230,7 +230,27 @@ export default function RouteMap() {
       streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
       styles: [],
     });
-  }, [isLoaded]);
+
+    // Auto-open a spot navigated from My Spots
+    const spot = location.state?.spot;
+    if (spot) {
+      setMode("places");
+      modeRef.current = "places";
+      mapRef.current.setCenter({ lat: spot.lat, lng: spot.lng });
+      mapRef.current.setZoom(16);
+      const syntheticPlace = {
+        place_id: `spot-${spot.id}`,
+        name: spot.name,
+        address: spot.address,
+        lat: spot.lat,
+        lng: spot.lng,
+        is_sunny: null,
+      };
+      renderPlaceMarkers([syntheticPlace]);
+      setSelectedPlace(syntheticPlace);
+      window.history.replaceState({}, document.title);
+    }
+  }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pan to show both endpoints as soon as start, end and map are all ready
   useEffect(() => {
@@ -1339,7 +1359,7 @@ export default function RouteMap() {
                         {placeDetails.open_now ? "Open now" : "Closed"}
                       </span>
                     )}
-                    {!isNighttime && (
+                    {!isNighttime && selectedPlace.is_sunny != null && (
                       <span style={{ fontSize: "0.76em", fontWeight: 700,
                         color: selectedPlace.is_sunny ? "#C8A000" : "#4A7090" }}>
                         {selectedPlace.is_sunny ? "☀ Sunny now" : "☁ Shaded now"}
