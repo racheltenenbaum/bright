@@ -322,8 +322,8 @@ def search_places(
             is_sunny = False
         else:
             is_sunny = not is_point_shaded(plat, plng, buildings, sun_altitude, sun_azimuth)
-        if is_sunny != want_sunny:
-            continue
+            if is_sunny != want_sunny:
+                continue
         photos = raw.get("photos", [])
         photo_reference = photos[0].get("photo_reference") if photos else None
         results.append(PlaceResult(
