@@ -13,7 +13,7 @@ import {
   faShareNodes,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
-import { spotIcon } from "../pages/MySpotsPage";
+import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -134,7 +134,9 @@ export default function RouteMap() {
   const [placeDetails, setPlaceDetails] = useState(null);
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState(false);
   const [placeSaveSuccess, setPlaceSaveSuccess] = useState(null);
-  const [placeSaveError, setPlaceSaveError] = useState(null);
+  const [saveSpotModal, setSaveSpotModal] = useState(null); // null | { name, note, icon, place }
+  const [saveSpotIconOpen, setSaveSpotIconOpen] = useState(false);
+  const [saveSpotError, setSaveSpotError] = useState(null);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const [panelExpanded, setPanelExpanded] = useState(false);
 
@@ -733,10 +735,8 @@ export default function RouteMap() {
 
       setPlacesSunAltitude(res.data.sun_altitude);
       renderPlaceMarkers(places);
-      if (places.length > 0) {
-        const bounds = new window.google.maps.LatLngBounds();
-        places.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
-        mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 80, left: 20 });
+      if (places.length === 0) {
+        mapRef.current.setZoom(Math.max(mapRef.current.getZoom() - 1, 10));
       }
     } catch {
       setError("Could not search for places. Please try again.");
@@ -745,25 +745,39 @@ export default function RouteMap() {
     }
   }
 
-  async function savePlaceAsSpot(place) {
-    setPlaceSaveError(null);
+  function openSaveSpotModal(place) {
+    setSaveSpotModal({
+      name: place.name,
+      note: "",
+      icon: PLACE_SPOT_ICON[place.type] || "faMapPin",
+      place,
+    });
+    setSaveSpotIconOpen(false);
+    setSaveSpotError(null);
+  }
+
+  async function confirmSaveSpot() {
+    if (!saveSpotModal) return;
+    setSaveSpotError(null);
     try {
       const token = localStorage.getItem("token");
       await api.post(
         "/spots",
         {
-          name: place.name,
-          address: place.address,
-          lat: place.lat,
-          lng: place.lng,
-          icon: PLACE_SPOT_ICON[place.type] || "faMapPin",
+          name: saveSpotModal.name.trim() || saveSpotModal.place.name,
+          address: saveSpotModal.place.address,
+          lat: saveSpotModal.place.lat,
+          lng: saveSpotModal.place.lng,
+          icon: saveSpotModal.icon,
+          description: saveSpotModal.note.trim() || null,
         },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      setPlaceSaveSuccess(place.place_id);
+      setPlaceSaveSuccess(saveSpotModal.place.place_id);
+      setSaveSpotModal(null);
       setTimeout(() => setPlaceSaveSuccess(null), 2500);
     } catch {
-      setPlaceSaveError("Could not save spot.");
+      setSaveSpotError("Could not save spot.");
     }
   }
 
@@ -783,7 +797,6 @@ export default function RouteMap() {
       setShowAllReviews(false);
       setPanelExpanded(false);
       setPlaceSaveSuccess(null);
-      setPlaceSaveError(null);
     }
     setError(null);
     setMode(newMode);
@@ -811,7 +824,6 @@ export default function RouteMap() {
     setShowAllReviews(false);
     setPanelExpanded(false);
     setPlaceSaveSuccess(null);
-    setPlaceSaveError(null);
     if (weatherLocationRef.current)
       fetchWeather(
         weatherLocationRef.current.lat,
@@ -1408,15 +1420,10 @@ export default function RouteMap() {
                     {placeSaveSuccess === selectedPlace.place_id ? (
                       <span style={{ fontSize: "0.82em", fontWeight: 700, color: "#5A8F5A" }}>Saved to My Spots!</span>
                     ) : (
-                      <>
-                        <button onClick={() => savePlaceAsSpot(selectedPlace)}
-                          style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}>
-                          Save as Spot
-                        </button>
-                        {placeSaveError && (
-                          <span style={{ fontSize: "0.76em", color: "#C0392B", marginLeft: "8px" }}>{placeSaveError}</span>
-                        )}
-                      </>
+                      <button onClick={() => openSaveSpotModal(selectedPlace)}
+                        style={{ fontSize: "0.78em", padding: "0.3em 0.9em" }}>
+                        Save as Spot
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1487,6 +1494,104 @@ export default function RouteMap() {
           )}
         </div>
       </div>
+
+      {/* Save as Spot modal */}
+      {saveSpotModal && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)",
+          backdropFilter: "blur(2px)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 2000, padding: "20px",
+        }}>
+          <div style={{
+            background: "var(--color-surface)", border: "2.5px solid #fff",
+            borderRadius: "24px", padding: "24px", width: "100%", maxWidth: "340px",
+            boxShadow: "6px 6px 0 var(--color-accent-dim)",
+            display: "flex", flexDirection: "column", gap: "14px",
+          }}>
+            <h3 style={{ margin: 0, fontSize: "1.05em", color: colors.text }}>Save as Spot</h3>
+
+            {/* Name */}
+            <div>
+              <label style={{ fontSize: "0.75em", fontWeight: 800, color: colors.subtext, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "5px" }}>Name</label>
+              <input
+                type="text"
+                value={saveSpotModal.name}
+                onChange={(e) => setSaveSpotModal({ ...saveSpotModal, name: e.target.value })}
+              />
+            </div>
+
+            {/* Note */}
+            <div>
+              <label style={{ fontSize: "0.75em", fontWeight: 800, color: colors.subtext, textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: "5px" }}>Note <span style={{ fontWeight: 400, textTransform: "none" }}>(optional)</span></label>
+              <textarea
+                value={saveSpotModal.note}
+                onChange={(e) => setSaveSpotModal({ ...saveSpotModal, note: e.target.value })}
+                placeholder="Add a note to yourself…"
+                rows={2}
+                style={{
+                  display: "block", width: "100%", boxSizing: "border-box",
+                  background: "var(--color-input-bg)", border: "2px solid #fff",
+                  borderRadius: "10px", padding: "8px 12px", fontSize: "15px",
+                  fontFamily: "Nunito, sans-serif", fontWeight: 500,
+                  color: "var(--color-text)", outline: "none", resize: "none",
+                  boxShadow: "2px 2px 0 var(--color-accent-dim)",
+                }}
+              />
+            </div>
+
+            {/* Icon */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: saveSpotIconOpen ? "10px" : 0 }}>
+                <div style={{
+                  width: "36px", height: "36px", borderRadius: "50%",
+                  background: "var(--color-accent)", display: "flex",
+                  alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}>
+                  <FontAwesomeIcon icon={spotIcon(saveSpotModal.icon)} style={{ color: "var(--color-text)", fontSize: "15px" }} />
+                </div>
+                <button
+                  onClick={() => setSaveSpotIconOpen((v) => !v)}
+                  style={{ fontSize: "0.75em", padding: "0.3em 0.8em", background: "transparent", border: `1.5px solid ${colors.accentFaint}`, color: colors.subtext, boxShadow: "none" }}
+                >
+                  {saveSpotIconOpen ? "Close" : "Change"}
+                </button>
+              </div>
+              {saveSpotIconOpen && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {SPOT_ICONS.map(({ key, icon }) => (
+                    <button
+                      key={key}
+                      onClick={() => { setSaveSpotModal({ ...saveSpotModal, icon: key }); setSaveSpotIconOpen(false); }}
+                      style={{
+                        width: "36px", height: "36px", borderRadius: "50%", padding: 0,
+                        border: saveSpotModal.icon === key ? "2.5px solid var(--color-text)" : "2px solid var(--color-accent-dim)",
+                        background: saveSpotModal.icon === key ? "var(--color-accent)" : "transparent",
+                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "none",
+                      }}
+                    >
+                      <FontAwesomeIcon icon={icon} style={{ color: "var(--color-text)", fontSize: "14px" }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {saveSpotError && <p style={{ margin: 0, color: "#C0392B", fontSize: "0.82em", fontWeight: 700 }}>{saveSpotError}</p>}
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setSaveSpotModal(null)}
+                style={{ fontSize: "0.82em", background: "transparent", border: `1.5px solid ${colors.accentFaint}`, color: colors.subtext, boxShadow: "none" }}
+              >
+                Cancel
+              </button>
+              <button onClick={confirmSaveSpot} style={{ fontSize: "0.82em" }}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

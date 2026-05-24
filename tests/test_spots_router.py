@@ -10,6 +10,50 @@ SPOT_PAYLOAD = {
 }
 
 
+def test_create_spot_with_description(client, auth_headers):
+    payload = {**SPOT_PAYLOAD, "description": "Great coffee, go on weekday mornings"}
+    response = client.post("/spots", json=payload, headers=auth_headers)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["description"] == "Great coffee, go on weekday mornings"
+
+
+def test_create_spot_description_optional(client, auth_headers):
+    response = client.post("/spots", json=SPOT_PAYLOAD, headers=auth_headers)
+    assert response.status_code == 201
+    assert response.json()["description"] is None
+
+
+def test_update_spot_description(client, auth_headers, test_user, db):
+    spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    response = client.patch(
+        f"/spots/{spot.id}",
+        json={**SPOT_PAYLOAD, "description": "Best flat white in the area"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["description"] == "Best flat white in the area"
+
+
+def test_update_spot_clear_description(client, auth_headers, test_user, db):
+    spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", description="Old note", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    response = client.patch(
+        f"/spots/{spot.id}",
+        json={**SPOT_PAYLOAD, "description": None},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+
+
 def test_create_spot(client, auth_headers):
     response = client.post("/spots", json=SPOT_PAYLOAD, headers=auth_headers)
     assert response.status_code == 201

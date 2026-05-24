@@ -40,7 +40,7 @@ export function spotIcon(key) {
   return SPOT_ICONS.find((s) => s.key === key)?.icon ?? faMapPin;
 }
 
-const BLANK_FORM = { name: "", address: "", lat: null, lng: null, icon: "faHouse" };
+const BLANK_FORM = { name: "", address: "", lat: null, lng: null, icon: "faHouse", description: "" };
 const DEFAULT_CENTER = { lat: 51.505, lng: -0.09 };
 
 export default function MySpotsPage() {
@@ -232,7 +232,7 @@ export default function MySpotsPage() {
 
   function openEdit(spot) {
     setEditingId(spot.id);
-    setForm({ name: spot.name, address: spot.address, lat: spot.lat, lng: spot.lng, icon: spot.icon });
+    setForm({ name: spot.name, address: spot.address, lat: spot.lat, lng: spot.lng, icon: spot.icon, description: spot.description || "" });
     setSaveError(null);
     setShowForm(true);
   }
@@ -250,7 +250,7 @@ export default function MySpotsPage() {
     setSaveError(null);
     try {
       const token = localStorage.getItem("token");
-      const payload = { name: form.name.trim(), address: form.address, lat: form.lat, lng: form.lng, icon: form.icon };
+      const payload = { name: form.name.trim(), address: form.address, lat: form.lat, lng: form.lng, icon: form.icon, description: form.description.trim() || null };
       if (editingId) {
         const res = await api.patch(`/spots/${editingId}`, payload, { headers: { Authorization: `Bearer ${token}` } });
         setSpots((prev) => prev.map((s) => s.id === editingId ? res.data : s));
@@ -311,6 +311,11 @@ export default function MySpotsPage() {
               <p style={{ margin: "2px 0 0", fontSize: "0.78em", color: "#A87500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {spot.address}
               </p>
+              {spot.description && (
+                <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "#7B5800", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {spot.description}
+                </p>
+              )}
             </div>
             <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
               <button onClick={() => openEdit(spot)} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
@@ -344,6 +349,21 @@ export default function MySpotsPage() {
               type="text" placeholder="Name (e.g. Home) *"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Note (optional)"
+              rows={2}
+              style={{
+                display: "block", width: "100%", boxSizing: "border-box",
+                background: "var(--color-input-bg)", border: "2px solid #fff",
+                borderRadius: "10px", padding: "8px 12px", fontSize: "16px",
+                fontFamily: "Nunito, sans-serif", fontWeight: 500,
+                color: "var(--color-text)", outline: "none", resize: "none",
+                boxShadow: "2px 2px 0 var(--color-accent-dim)",
+              }}
             />
 
             {/* Address with autocomplete + inline location button */}

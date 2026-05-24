@@ -64,6 +64,7 @@ class SpotCreate(BaseModel):
     lat: float
     lng: float
     icon: str
+    description: str | None = None
 
 
 class SpotResponse(BaseModel):
@@ -73,6 +74,7 @@ class SpotResponse(BaseModel):
     lat: float
     lng: float
     icon: str
+    description: str | None
 
     model_config = {"from_attributes": True}
 
