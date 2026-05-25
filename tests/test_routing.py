@@ -2,8 +2,12 @@ import pytest
 from unittest.mock import patch, MagicMock
 import networkx as nx
 
+import src.routing as routing_module
 from src.routing import (
     _haversine_m,
+    _road_bbox_key,
+    _road_sqlite_get,
+    _road_sqlite_set,
     build_graph,
     nearest_node,
     compute_edge_weights,
@@ -12,6 +16,11 @@ from src.routing import (
     sample_waypoints,
     fetch_osm_road_network,
 )
+
+
+def _clear_road_cache(*keys):
+    for k in keys:
+        routing_module._road_cache.pop(k, None)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -232,30 +241,108 @@ def test_sample_waypoints_more_than_n():
     assert result[-1] == coords[-1]
 
 
+# ── _road_bbox_key / _road_sqlite_get / _road_sqlite_set ─────────────────────
+
+def test_road_bbox_key_format():
+    key = _road_bbox_key(40.0, -74.0, 40.5, -73.5)
+    assert key == "road:40.0,-74.0,40.5,-73.5"
+
+
+def test_road_sqlite_get_miss():
+    assert _road_sqlite_get("road:nonexistent_key_xyz") is None
+
+
+def test_road_sqlite_set_then_get():
+    key = "road:test_set_get"
+    data = {"elements": [{"type": "node", "id": 99}]}
+    _road_sqlite_set(key, data)
+    assert _road_sqlite_get(key) == data
+
+
+def test_road_sqlite_get_exception():
+    with patch("sqlite3.connect", side_effect=Exception("fail")):
+        assert _road_sqlite_get("road:any") is None
+
+
+def test_road_sqlite_set_exception():
+    with patch("sqlite3.connect", side_effect=Exception("fail")):
+        _road_sqlite_set("road:any", {"elements": []})  # must not raise
+
+
 # ── fetch_osm_road_network ────────────────────────────────────────────────────
 
+def test_fetch_osm_road_network_memory_cache_hit():
+    key = _road_bbox_key(40.0, -74.01, 40.01, -73.99)
+    cached = {"elements": [{"type": "node", "id": 42}]}
+    routing_module._road_cache[key] = cached
+    try:
+        with patch("src.routing.requests.post") as mock_post:
+            result = fetch_osm_road_network(40.0, -74.01, 40.01, -73.99)
+        assert result == cached
+        mock_post.assert_not_called()
+    finally:
+        _clear_road_cache(key)
+
+
+def test_fetch_osm_road_network_sqlite_cache_hit():
+    key = _road_bbox_key(41.0, -75.01, 41.01, -74.99)
+    _clear_road_cache(key)
+    cached = {"elements": [{"type": "node", "id": 7}]}
+    with patch("src.routing._road_sqlite_get", return_value=cached):
+        with patch("src.routing.requests.post") as mock_post:
+            result = fetch_osm_road_network(41.0, -75.01, 41.01, -74.99)
+    assert result == cached
+    mock_post.assert_not_called()
+    _clear_road_cache(key)
+
+
 def test_fetch_osm_road_network_returns_data():
+    key = _road_bbox_key(42.0, -76.01, 42.01, -75.99)
+    _clear_road_cache(key)
     mock_data = {"elements": [{"type": "node", "id": 1, "lat": 40.0, "lon": -74.0}]}
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = mock_data
-    with patch("src.routing.requests.post", return_value=mock_resp) as mock_post:
-        result = fetch_osm_road_network(40.0, -74.01, 40.01, -73.99)
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("src.routing.requests.post", return_value=mock_resp) as mock_post:
+            result = fetch_osm_road_network(42.0, -76.01, 42.01, -75.99)
     assert result == mock_data
     assert mock_post.called
+    _clear_road_cache(key)
+
+
+def test_fetch_osm_road_network_populates_memory_cache():
+    key = _road_bbox_key(43.0, -77.01, 43.01, -76.99)
+    _clear_road_cache(key)
+    mock_data = {"elements": []}
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = mock_data
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("src.routing._road_sqlite_set"):
+            with patch("src.routing.requests.post", return_value=mock_resp):
+                fetch_osm_road_network(43.0, -77.01, 43.01, -76.99)
+    assert routing_module._road_cache[key] == mock_data
+    _clear_road_cache(key)
 
 
 def test_fetch_osm_road_network_http_error_returns_empty():
+    key = _road_bbox_key(44.0, -78.01, 44.01, -77.99)
+    _clear_road_cache(key)
     mock_resp = MagicMock()
     mock_resp.status_code = 429
-    with patch("src.routing.requests.post", return_value=mock_resp):
-        result = fetch_osm_road_network(40.0, -74.01, 40.01, -73.99)
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("src.routing.requests.post", return_value=mock_resp):
+            result = fetch_osm_road_network(44.0, -78.01, 44.01, -77.99)
     assert result == {"elements": []}
 
 
 def test_fetch_osm_road_network_exception_returns_empty():
-    with patch("src.routing.requests.post", side_effect=Exception("timeout")):
-        result = fetch_osm_road_network(40.0, -74.01, 40.01, -73.99)
+    key = _road_bbox_key(45.0, -79.01, 45.01, -78.99)
+    _clear_road_cache(key)
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("src.routing.requests.post", side_effect=Exception("timeout")):
+            result = fetch_osm_road_network(45.0, -79.01, 45.01, -78.99)
     assert result == {"elements": []}
 
 
@@ -313,9 +400,11 @@ def test_optimized_route_endpoint_nighttime(client, auth_headers):
         )
     assert resp.status_code == 200
     body = resp.json()
-    # Nighttime: returns direct start→end line
-    assert body["waypoints"][0] == [40.000, -74.000]
-    assert body["waypoints"][-1] == [40.002, -74.000]
+    # Nighttime: still routes via OSM (distance-only weights), no straight line
+    assert len(body["waypoints"]) >= 2
+    assert body["waypoints"][0] == pytest.approx([40.000, -74.000], abs=0.01)
+    assert body["waypoints"][-1] == pytest.approx([40.002, -74.000], abs=0.01)
+    assert body["sun_altitude"] == pytest.approx(-5.0)
 
 
 def test_optimized_route_endpoint_requires_auth(client):

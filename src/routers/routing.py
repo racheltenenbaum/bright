@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -15,7 +18,6 @@ from src.routing import (
 )
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
 from src.utils.astronomy import get_sun_position
-from datetime import datetime
 
 router = APIRouter(prefix="/sun", tags=["sun"])
 
@@ -47,21 +49,18 @@ def optimized_route(
 
     mid_lat = (body.start[0] + body.end[0]) / 2
     mid_lng = (body.start[1] + body.end[1]) / 2
-    sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng, date_str, time_str)
-
-    if sun_altitude <= 0:
-        return OptimizedRouteResponse(
-            waypoints=[body.start, body.end],
-            sun_altitude=sun_altitude,
-            sun_azimuth=sun_azimuth,
-            date=date_str,
-        )
 
     all_coords = [body.start, body.end]
-    s, w, n, e = _route_bbox(all_coords, padding_m=500)
+    s, w, n, e = _route_bbox(all_coords, padding_m=100)
 
-    osm_data = fetch_osm_road_network(s, w, n, e)
-    buildings = _fetch_buildings_for_bbox(s, w, n, e)
+    # Fetch sun position, road network, and buildings in parallel
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        sun_future = pool.submit(get_sun_position, mid_lat, mid_lng, date_str, time_str)
+        road_future = pool.submit(fetch_osm_road_network, s, w, n, e)
+        bldg_future = pool.submit(_fetch_buildings_for_bbox, s, w, n, e)
+        sun_altitude, sun_azimuth = sun_future.result()
+        osm_data = road_future.result()
+        buildings = bldg_future.result() if sun_altitude > 0 else []
 
     graph = build_graph(osm_data)
     if graph.number_of_nodes() == 0:

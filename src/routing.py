@@ -1,5 +1,8 @@
+import json
 import math
 import os
+import sqlite3
+import threading
 
 import networkx as nx
 import requests
@@ -12,6 +15,57 @@ EXCLUDED_HIGHWAY_TYPES = {"motorway", "trunk", "motorway_link", "trunk_link"}
 
 EARTH_RADIUS_M = 6_371_000.0
 
+# L1: in-memory cache
+_road_cache: dict[str, dict] = {}
+
+# L2: SQLite cache (shared DB with building cache)
+_CACHE_DB = os.path.join(os.path.dirname(__file__), "../overpass_cache.db")
+_SQLITE_LOCK = threading.Lock()
+
+
+def _init_road_db():
+    with _SQLITE_LOCK:
+        conn = sqlite3.connect(_CACHE_DB)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS road_cache "
+            "(bbox_key TEXT PRIMARY KEY, roads_json TEXT)"
+        )
+        conn.commit()
+        conn.close()
+
+
+_init_road_db()
+
+
+def _road_bbox_key(s: float, w: float, n: float, e: float) -> str:
+    return f"road:{round(s,3)},{round(w,3)},{round(n,3)},{round(e,3)}"
+
+
+def _road_sqlite_get(key: str) -> dict | None:
+    try:
+        conn = sqlite3.connect(_CACHE_DB, check_same_thread=False)
+        row = conn.execute(
+            "SELECT roads_json FROM road_cache WHERE bbox_key=?", (key,)
+        ).fetchone()
+        conn.close()
+        return json.loads(row[0]) if row else None
+    except Exception:
+        return None
+
+
+def _road_sqlite_set(key: str, data: dict) -> None:
+    try:
+        with _SQLITE_LOCK:
+            conn = sqlite3.connect(_CACHE_DB, check_same_thread=False)
+            conn.execute(
+                "INSERT OR REPLACE INTO road_cache VALUES (?, ?)",
+                (key, json.dumps(data)),
+            )
+            conn.commit()
+            conn.close()
+    except Exception:
+        pass
+
 
 def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     φ1, φ2 = math.radians(lat1), math.radians(lat2)
@@ -22,6 +76,16 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
+    key = _road_bbox_key(s, w, n, e)
+
+    if key in _road_cache:
+        return _road_cache[key]
+
+    cached = _road_sqlite_get(key)
+    if cached is not None:
+        _road_cache[key] = cached
+        return cached
+
     query = (
         f'[out:json][timeout:30];'
         f'(way["highway"]'
@@ -36,7 +100,10 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
             timeout=30,
         )
         if resp.status_code == 200:
-            return resp.json()
+            data = resp.json()
+            _road_cache[key] = data
+            _road_sqlite_set(key, data)
+            return data
     except Exception:
         pass
     return {"elements": []}
