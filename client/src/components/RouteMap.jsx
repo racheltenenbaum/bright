@@ -64,14 +64,28 @@ function computeSunAltitude(lat, lng) {
   return Math.asin(Math.sin(latRad) * Math.sin(dec) + Math.cos(latRad) * Math.cos(dec) * Math.cos(ha)) * 180 / Math.PI;
 }
 
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
+
+function formatRouteStats(waypoints) {
+  const distKm = waypoints.reduce((sum, pt, i) => {
+    if (i === 0) return 0;
+    return sum + haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], pt[0], pt[1]);
+  }, 0);
+  const mins = Math.round((distKm / 5) * 60);
+  const distText = distKm >= 1 ? `${distKm.toFixed(1)} km` : `${Math.round(distKm * 1000)} m`;
+  const durText = mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} hr ${mins % 60} min`;
+  return { distance: distText, duration: durText };
+}
+
 function clearPolylines(ref) {
   ref.current.forEach((p) => p.setMap(null));
   ref.current = [];
-}
-
-function scoreRouteFromShadow(segments, preference) {
-  const shadedCount = segments.filter((s) => s.shaded).length;
-  return preference === "shade" ? shadedCount : segments.length - shadedCount;
 }
 
 function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, preference) {
@@ -538,27 +552,11 @@ export default function RouteMap() {
     setPlanning(true);
     clearPolylines(polylinesRef);
     try {
-      const directionsService = new window.google.maps.DirectionsService();
-      const result = await directionsService.route({
-        origin: start,
-        destination: end,
-        travelMode: window.google.maps.TravelMode.WALKING,
-        provideRouteAlternatives: true,
-      });
-
-      const shortestDistance = Math.min(
-        ...result.routes.map((r) => r.legs[0].distance.value),
-      );
-      if (shortestDistance > 5000) {
-        setError("Route is over 5 km — please choose a shorter journey.");
-        return;
-      }
-
       const token = localStorage.getItem("token");
-
-      // Resolve local time at the route's location, not the user's device timezone
       const midLat = (start.lat + end.lat) / 2;
       const midLng = (start.lng + end.lng) / 2;
+
+      // Resolve local time at the route's location, not the user's device timezone
       const tzRes = await api.get(
         "https://maps.googleapis.com/maps/api/timezone/json",
         {
@@ -574,70 +572,55 @@ export default function RouteMap() {
       const datetime = new Date()
         .toLocaleString("sv-SE", { timeZone: timeZoneId })
         .replace(" ", "T");
-      const allCoords = result.routes.map((r) =>
-        r.overview_path.map((p) => [p.lat(), p.lng()]),
-      );
 
-      const batchRes = await api.post(
-        "/sun/shadow-analyze-batch",
-        { routes: allCoords, datetime },
+      // Get OSM-optimized route weighted by sun/shade exposure
+      const routeRes = await api.post(
+        "/sun/optimized-route",
+        {
+          start: [start.lat, start.lng],
+          end: [end.lat, end.lng],
+          datetime,
+          preference,
+        },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      const {
-        sun_altitude,
-        sun_azimuth,
-        date,
-        routes: routeResults,
-      } = batchRes.data;
+      const { waypoints, sun_altitude, sun_azimuth, date } = routeRes.data;
 
-      let bestCoords = null;
-      let bestSegments = null;
-      let bestScore = -1;
-      let bestIndex = 0;
+      // Distance check before shadow analysis
+      const stats = formatRouteStats(waypoints);
+      const distKm = waypoints.reduce((sum, pt, i) => {
+        if (i === 0) return 0;
+        return sum + haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], pt[0], pt[1]);
+      }, 0);
+      if (distKm > 5) {
+        setError("Route is over 5 km — please choose a shorter journey.");
+        return;
+      }
 
-      allCoords.forEach((coords, i) => {
-        const score = scoreRouteFromShadow(
-          routeResults[i].segments,
-          preference,
-        );
-        if (score > bestScore) {
-          bestScore = score;
-          bestCoords = coords;
-          bestSegments = routeResults[i].segments;
-          bestIndex = i;
-        }
-      });
+      // Shade each segment of the optimized path
+      const shadowRes = await api.post(
+        "/sun/shadow-analyze",
+        { coordinates: waypoints, datetime },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const segments = shadowRes.data.segments;
 
-      if (bestCoords) {
-        const leg = result.routes[bestIndex].legs[0];
-        setRouteStats({
-          distance: leg.distance.text,
-          duration: leg.duration.text,
-        });
-        setSunData({ sun_altitude, sun_azimuth, date });
-        setPlacesSunAltitude(sun_altitude);
-        setRouteCoords(bestCoords);
-        setRouteSegments(bestSegments);
-        drawRoute(
-          mapRef.current,
-          polylinesRef,
-          bestCoords,
-          bestSegments,
-          sun_altitude,
-          preference,
-        );
+      setRouteStats(stats);
+      setSunData({ sun_altitude, sun_azimuth, date });
+      setPlacesSunAltitude(sun_altitude);
+      setRouteCoords(waypoints);
+      setRouteSegments(segments);
+      drawRoute(mapRef.current, polylinesRef, waypoints, segments, sun_altitude, preference);
 
-        const bounds = new window.google.maps.LatLngBounds();
-        bestCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
-        mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
+      const bounds = new window.google.maps.LatLngBounds();
+      waypoints.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+      mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
 
-        const midpoint = { lat: midLat, lng: midLng };
-        if (
-          !weatherLocationRef.current ||
-          roughDistanceKm(midpoint, weatherLocationRef.current) > 20
-        ) {
-          fetchWeather(midLat, midLng);
-        }
+      if (
+        !weatherLocationRef.current ||
+        roughDistanceKm({ lat: midLat, lng: midLng }, weatherLocationRef.current) > 20
+      ) {
+        fetchWeather(midLat, midLng);
       }
     } catch (err) {
       console.error("planRoute error:", err);

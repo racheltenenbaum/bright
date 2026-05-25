@@ -1,0 +1,87 @@
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+
+from src.auth import get_current_user
+from src.limiter import limiter, RATE_LIMIT_SHADOW
+from src.models import User
+from src.routing import (
+    build_graph,
+    compute_edge_weights,
+    fetch_osm_road_network,
+    find_optimized_path,
+    nearest_node,
+    nodes_to_coords,
+    sample_waypoints,
+)
+from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
+from src.utils.astronomy import get_sun_position
+from datetime import datetime
+
+router = APIRouter(prefix="/sun", tags=["sun"])
+
+
+class OptimizedRouteRequest(BaseModel):
+    start: list[float]   # [lat, lng]
+    end: list[float]     # [lat, lng]
+    datetime: str        # ISO string
+    preference: str      # "sun" or "shade"
+
+
+class OptimizedRouteResponse(BaseModel):
+    waypoints: list[list[float]]
+    sun_altitude: float
+    sun_azimuth: float
+    date: str
+
+
+@router.post("/optimized-route", response_model=OptimizedRouteResponse)
+@limiter.limit(RATE_LIMIT_SHADOW)
+def optimized_route(
+    request: Request,
+    body: OptimizedRouteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    dt = datetime.fromisoformat(body.datetime)
+    date_str = dt.strftime("%Y-%m-%d")
+    time_str = dt.strftime("%H:%M:%S")
+
+    mid_lat = (body.start[0] + body.end[0]) / 2
+    mid_lng = (body.start[1] + body.end[1]) / 2
+    sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng, date_str, time_str)
+
+    if sun_altitude <= 0:
+        return OptimizedRouteResponse(
+            waypoints=[body.start, body.end],
+            sun_altitude=sun_altitude,
+            sun_azimuth=sun_azimuth,
+            date=date_str,
+        )
+
+    all_coords = [body.start, body.end]
+    s, w, n, e = _route_bbox(all_coords, padding_m=500)
+
+    osm_data = fetch_osm_road_network(s, w, n, e)
+    buildings = _fetch_buildings_for_bbox(s, w, n, e)
+
+    graph = build_graph(osm_data)
+    if graph.number_of_nodes() == 0:
+        raise HTTPException(status_code=400, detail="No road network found for this area")
+
+    compute_edge_weights(graph, buildings, sun_altitude, sun_azimuth, body.preference)
+
+    start_node = nearest_node(graph, body.start[0], body.start[1])
+    end_node = nearest_node(graph, body.end[0], body.end[1])
+    path_nodes = find_optimized_path(graph, start_node, end_node)
+
+    if not path_nodes:
+        raise HTTPException(status_code=400, detail="No path found between these locations")
+
+    coords = nodes_to_coords(graph, path_nodes)
+    waypoints = sample_waypoints(coords, n=25)
+
+    return OptimizedRouteResponse(
+        waypoints=[list(c) for c in waypoints],
+        sun_altitude=sun_altitude,
+        sun_azimuth=sun_azimuth,
+        date=date_str,
+    )
