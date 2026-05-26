@@ -1334,7 +1334,7 @@ export default function RouteMap() {
       )}
 
       {/* Map — fills remaining height */}
-      <div style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
           {currentLocation && (

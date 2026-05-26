@@ -1,4 +1,7 @@
 import { useState } from "react";
+const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const MAP_PREVIEW_URL = (type) =>
+  `https://maps.googleapis.com/maps/api/staticmap?center=47.2,11.5&zoom=9&size=200x120&maptype=${type}&key=${MAPS_KEY}`;
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -466,36 +469,10 @@ export default function MyAccountPage() {
                   </div>
                   <div style={{ display: "flex", gap: "8px" }}>
                     {[
-                      {
-                        value: "roadmap",
-                        label: "Standard",
-                        preview: (
-                          <div style={{ width: "100%", height: "40px", borderRadius: "6px", overflow: "hidden", position: "relative", background: "#f2efe9" }}>
-                            <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: "5px", background: "#fff", transform: "translateY(-50%)" }} />
-                            <div style={{ position: "absolute", top: "30%", left: 0, right: 0, height: "2px", background: "#e0dbd0" }} />
-                            <div style={{ position: "absolute", top: "70%", left: 0, right: 0, height: "2px", background: "#e0dbd0" }} />
-                          </div>
-                        ),
-                      },
-                      {
-                        value: "satellite",
-                        label: "Satellite",
-                        preview: (
-                          <div style={{ width: "100%", height: "40px", borderRadius: "6px", background: "linear-gradient(135deg, #2a3d2a 0%, #3a5030 40%, #253525 70%, #1e2e1e 100%)" }} />
-                        ),
-                      },
-                      {
-                        value: "terrain",
-                        label: "Terrain",
-                        preview: (
-                          <div style={{ width: "100%", height: "40px", borderRadius: "6px", overflow: "hidden", position: "relative", background: "linear-gradient(160deg, #e8dfc8 0%, #c8b898 50%, #d4c8a8 100%)" }}>
-                            <div style={{ position: "absolute", top: "35%", left: "10%", right: "20%", height: "1px", background: "rgba(0,0,0,0.15)", borderRadius: "1px" }} />
-                            <div style={{ position: "absolute", top: "55%", left: "20%", right: "10%", height: "1px", background: "rgba(0,0,0,0.12)", borderRadius: "1px" }} />
-                            <div style={{ position: "absolute", top: "70%", left: "5%", right: "30%", height: "1px", background: "rgba(0,0,0,0.1)", borderRadius: "1px" }} />
-                          </div>
-                        ),
-                      },
-                    ].map(({ value, label, preview }) => (
+                      { value: "roadmap",  label: "Standard"  },
+                      { value: "satellite", label: "Satellite" },
+                      { value: "terrain",  label: "Terrain"   },
+                    ].map(({ value, label }) => (
                       <button
                         key={value}
                         onClick={() => !mapTypeSaving && saveMapType(value)}
@@ -517,7 +494,11 @@ export default function MyAccountPage() {
                           cursor: mapTypeSaving ? "not-allowed" : "pointer",
                         }}
                       >
-                        {preview}
+                        <img
+                          src={MAP_PREVIEW_URL(value)}
+                          alt={label}
+                          style={{ width: "100%", height: "50px", objectFit: "cover", borderRadius: "6px", display: "block" }}
+                        />
                         <span style={{ textAlign: "center", paddingTop: "2px" }}>{label}</span>
                       </button>
                     ))}
