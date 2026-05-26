@@ -292,9 +292,9 @@ export default function RouteMap() {
         { label: "↓", col: 2, row: 3, dx: 0, dy: 100 },
       ];
       arrows.forEach(({ label, col, row, dx, dy }) => {
-        const btn = document.createElement("button");
+        const btn = document.createElement("div");
         btn.textContent = label;
-        btn.style.cssText = `grid-column:${col};grid-row:${row};background:#fff;border:none;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;font-size:14px;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;`;
+        btn.style.cssText = `grid-column:${col};grid-row:${row};background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;font-size:14px;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;user-select:none;`;
         btn.addEventListener("click", () => mapRef.current.panBy(dx, dy));
         panDiv.appendChild(btn);
       });
