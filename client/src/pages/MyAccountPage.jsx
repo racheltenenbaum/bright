@@ -2,6 +2,11 @@ import { useState } from "react";
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const MAP_PREVIEW_URL = (type) =>
   `https://maps.googleapis.com/maps/api/staticmap?center=47.2,11.5&zoom=9&size=200x120&maptype=${type}&key=${MAPS_KEY}`;
+const MAP_PREVIEW_FALLBACK = {
+  roadmap:   "#f2efe9",
+  satellite: "linear-gradient(160deg, #2a4020 0%, #1a3015 30%, #354a28 55%, #1e2e18 80%, #2a3d20 100%)",
+  terrain:   "linear-gradient(135deg, #c8d4a0 0%, #a8b880 25%, #d4c898 50%, #b0a068 75%, #c8d4a8 100%)",
+};
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -494,11 +499,14 @@ export default function MyAccountPage() {
                           cursor: mapTypeSaving ? "not-allowed" : "pointer",
                         }}
                       >
-                        <img
-                          src={MAP_PREVIEW_URL(value)}
-                          alt={label}
-                          style={{ width: "100%", height: "50px", objectFit: "cover", borderRadius: "6px", display: "block" }}
-                        />
+                        <div style={{ width: "100%", height: "50px", borderRadius: "6px", overflow: "hidden", position: "relative", background: MAP_PREVIEW_FALLBACK[value] }}>
+                          <img
+                            src={MAP_PREVIEW_URL(value)}
+                            alt={label}
+                            onError={(e) => { e.target.style.display = "none"; }}
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          />
+                        </div>
                         <span style={{ textAlign: "center", paddingTop: "2px" }}>{label}</span>
                       </button>
                     ))}

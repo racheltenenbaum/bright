@@ -12,6 +12,7 @@ import {
   faTriangleExclamation,
   faLocationCrosshairs,
   faShareNodes,
+  faCompass,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -173,6 +174,7 @@ export default function RouteMap() {
   const [planning, setPlanning] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [weather, setWeather] = useState(null);
+  const [mapHeading, setMapHeading] = useState(0);
   const [spots, setSpots] = useState([]);
   const [mode, setMode] = useState("route");
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
@@ -300,6 +302,10 @@ export default function RouteMap() {
       });
       mapRef.current.controls[window.google.maps.ControlPosition.LEFT_BOTTOM].push(panDiv);
     }
+
+    mapRef.current.addListener("heading_changed", () => {
+      setMapHeading(mapRef.current.getHeading() || 0);
+    });
 
     // Auto-open a spot navigated from My Spots
     const spot = location.state?.spot;
@@ -1671,6 +1677,31 @@ export default function RouteMap() {
               </div>
             );
           })()}
+          <button
+            onClick={() => { mapRef.current.setHeading(0); setMapHeading(0); }}
+            title="Reset to north"
+            style={{
+              position: "absolute", top: weather ? "56px" : "10px", right: "10px", zIndex: 10,
+              width: "36px", height: "36px", borderRadius: "50%",
+              background: colors.surface,
+              border: `1.5px solid ${mapHeading !== 0 ? colors.accent : colors.accentFaint}`,
+              boxShadow: `0 2px 8px ${colors.accentGlow}`,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 0,
+              transition: "border-color 0.2s",
+            }}
+          >
+            <FontAwesomeIcon
+              icon={faCompass}
+              style={{
+                fontSize: "18px",
+                color: mapHeading !== 0 ? colors.accent : colors.subtext,
+                transform: `rotate(${-mapHeading}deg)`,
+                transition: "transform 0.3s, color 0.2s",
+              }}
+            />
+          </button>
+
           {weather && (
             <div
               style={{
