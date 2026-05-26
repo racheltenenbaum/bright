@@ -437,10 +437,12 @@ export default function RouteMap() {
         setStart(coords);
         setStartAddress(address);
         setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
-      } else if (!endRef.current || !sunDataRef.current) {
+      } else {
         setEnd(coords);
         setEndAddress(address);
         setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
+        clearPolylines(polylinesRef);
+        setSunData(null);
         setSavedRouteName(null);
         setRouteSaved(false);
       }
@@ -520,6 +522,8 @@ export default function RouteMap() {
     } else {
       setEnd(coords);
       setEndAddress(address);
+      clearPolylines(polylinesRef);
+      setSunData(null);
       setSavedRouteName(null);
       setRouteSaved(false);
     }

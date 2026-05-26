@@ -87,9 +87,9 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
         return cached
 
     query = (
-        f'[out:json][timeout:30];'
-        f'(way["highway"]'
-        f'["highway"!~"^(motorway|trunk|motorway_link|trunk_link)$"]'
+        f'[out:json][timeout:25][maxsize:8388608];'
+        f'(way["highway"~"^(footway|path|pedestrian|living_street|residential|'
+        f'service|unclassified|tertiary|secondary|primary|cycleway|steps|track)$"]'
         f'({s},{w},{n},{e}););out body;>;out skel qt;'
     )
     try:
