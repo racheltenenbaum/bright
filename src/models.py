@@ -12,6 +12,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     pref_max_detour = Column(Integer, nullable=False, default=30, server_default="30")
+    pref_mode = Column(String(10), nullable=False, default="sun", server_default="sun")
 
     routes = relationship("Route", back_populates="user")
     spots = relationship("Spot", back_populates="user")

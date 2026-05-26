@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUser, faEnvelope, faCalendarDays, faPen, faCheck, faXmark, faSlidersH } from "@fortawesome/free-solid-svg-icons";
+import { faUser, faEnvelope, faCalendarDays, faPen, faCheck, faXmark, faSlidersH, faSun, faCloud } from "@fortawesome/free-solid-svg-icons";
 
 const DETOUR_STEPS = [10, 30, 50, 70, 100];
 const DETOUR_LABELS = {
@@ -150,6 +150,10 @@ export default function MyAccountPage() {
   const [detourSaving, setDetourSaving] = useState(false);
   const [detourError, setDetourError] = useState(null);
 
+  const [mode, setMode] = useState(user?.pref_mode ?? "sun");
+  const [modeSaving, setModeSaving] = useState(false);
+  const [modeError, setModeError] = useState(null);
+
   const joined = user?.created_at
     ? new Date(user.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : "—";
@@ -198,6 +202,24 @@ export default function MyAccountPage() {
       setDetour(user?.pref_max_detour ?? 30); // revert
     } finally {
       setDetourSaving(false);
+    }
+  }
+
+  async function saveMode(value) {
+    setMode(value);
+    setModeSaving(true);
+    setModeError(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.patch("/users/me", { pref_mode: value }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      updateUser({ pref_mode: res.data.pref_mode });
+    } catch {
+      setModeError("Could not save. Please try again.");
+      setMode(user?.pref_mode ?? "sun"); // revert
+    } finally {
+      setModeSaving(false);
     }
   }
 
@@ -273,6 +295,58 @@ export default function MyAccountPage() {
             saving={detourSaving}
             error={detourError}
           />
+
+          <hr style={{ border: "none", borderTop: "2px solid var(--color-border, #e0e0e0)", margin: "0" }} />
+
+          {/* Default mode preference */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div>
+              <span style={{
+                fontSize: "0.72em", fontWeight: 800, textTransform: "uppercase",
+                letterSpacing: "0.06em", color: "var(--color-subtext)",
+              }}>
+                Default Route Preference
+              </span>
+              <p style={{ margin: "4px 0 0", fontSize: "0.84em", color: "var(--color-subtext)", fontWeight: 500 }}>
+                Whether routes and place searches default to sun or shade.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {[
+                { value: "sun", icon: faSun, label: "Sun" },
+                { value: "shade", icon: faCloud, label: "Shade" },
+              ].map(({ value, icon, label }) => (
+                <button
+                  key={value}
+                  onClick={() => !modeSaving && saveMode(value)}
+                  disabled={modeSaving}
+                  style={{
+                    flex: 1,
+                    padding: "10px 0",
+                    fontWeight: 700,
+                    fontSize: "0.88em",
+                    borderRadius: "12px",
+                    background: mode === value ? "var(--color-accent)" : "var(--color-surface)",
+                    color: mode === value ? "#fff" : "var(--color-subtext)",
+                    border: mode === value ? "none" : "2px solid var(--color-border, #e0e0e0)",
+                    boxShadow: mode === value ? "2px 2px 0 var(--color-accent-dim)" : "none",
+                    cursor: modeSaving ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <FontAwesomeIcon icon={icon} style={{ marginRight: "6px" }} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            {modeSaving && (
+              <p style={{ margin: 0, fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 600 }}>
+                Saving…
+              </p>
+            )}
+            {modeError && (
+              <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{modeError}</p>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -50,6 +50,8 @@ def update_me(
         current_user.first_name = body.first_name
     if body.pref_max_detour is not None:
         current_user.pref_max_detour = body.pref_max_detour
+    if body.pref_mode is not None:
+        current_user.pref_mode = body.pref_mode
     db.commit()
     db.refresh(current_user)
     return current_user

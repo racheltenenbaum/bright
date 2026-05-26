@@ -82,3 +82,22 @@ def test_update_name_and_pref_max_detour(client, auth_headers):
 def test_update_pref_max_detour_out_of_range(client, auth_headers):
     response = client.patch("/users/me", json={"pref_max_detour": 150}, headers=auth_headers)
     assert response.status_code == 422
+
+
+def test_register_default_pref_mode(client):
+    response = client.post("/users/register", json={
+        "first_name": "Alice", "email": "alice@example.com", "password": "secret123"
+    })
+    assert response.status_code == 201
+    assert response.json()["user"]["pref_mode"] == "sun"
+
+
+def test_update_pref_mode_shade(client, auth_headers):
+    response = client.patch("/users/me", json={"pref_mode": "shade"}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["pref_mode"] == "shade"
+
+
+def test_update_pref_mode_invalid(client, auth_headers):
+    response = client.patch("/users/me", json={"pref_mode": "cloudy"}, headers=auth_headers)
+    assert response.status_code == 422

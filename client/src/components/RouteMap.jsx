@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useAuth } from "../context/AuthContext";
 import { Geolocation } from "@capacitor/geolocation";
 import { useLocation } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
@@ -117,6 +118,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
 }
 
 export default function RouteMap() {
+  const { user } = useAuth();
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: API_KEY,
     libraries: LIBRARIES,
@@ -149,7 +151,7 @@ export default function RouteMap() {
   const placeMarkersMapRef = useRef({});
   const touchStartYRef = useRef(null);
 
-  const [preference, setPreference] = useState("sun");
+  const [preference, setPreference] = useState(user?.pref_mode ?? "sun");
   const [start, setStart] = useState(null);
   const [end, setEnd] = useState(null);
   const [startAddress, setStartAddress] = useState("");

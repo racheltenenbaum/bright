@@ -14,6 +14,7 @@ class UserResponse(BaseModel):
     email: str
     created_at: datetime
     pref_max_detour: int = 30
+    pref_mode: str = "sun"
 
     model_config = {"from_attributes": True}
 
@@ -26,6 +27,7 @@ class LoginRequest(BaseModel):
 class UpdateUserRequest(BaseModel):
     first_name: str | None = None
     pref_max_detour: int | None = None
+    pref_mode: str | None = None
 
     @field_validator("first_name")
     @classmethod
@@ -41,6 +43,13 @@ class UpdateUserRequest(BaseModel):
     def valid_detour(cls, v):
         if v is not None and not (1 <= v <= 100):
             raise ValueError("pref_max_detour must be between 1 and 100")
+        return v
+
+    @field_validator("pref_mode")
+    @classmethod
+    def valid_mode(cls, v):
+        if v is not None and v not in ("sun", "shade"):
+            raise ValueError("pref_mode must be 'sun' or 'shade'")
         return v
 
 
