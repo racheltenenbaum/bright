@@ -101,7 +101,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
     } else if (preference === "shade") {
       color = seg.shaded ? "#5E8FAD" : "#FFE082";
     } else {
-      color = seg.shaded ? "#BBBBBB" : "#FFD700";
+      color = seg.shaded ? "#BBBBBB" : "#FFE500";
     }
 
     const polyline = new window.google.maps.Polyline({
@@ -110,7 +110,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
         { lat: coords[i + 1][0], lng: coords[i + 1][1] },
       ],
       strokeColor: color,
-      strokeWeight: 4,
+      strokeWeight: 5,
       map: mapInstance,
     });
     polylinesRef.current.push(polyline);
@@ -275,10 +275,10 @@ export default function RouteMap() {
       center: MAP_CENTER,
       zoom: 15,
       disableDefaultUI: true,
-      mapTypeControl: true,
       streetViewControl: true,
       streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
       zoomControl: user?.pref_map_controls ?? false,
+      mapTypeId: user?.pref_map_type ?? "roadmap",
       styles: [],
     });
 

@@ -16,6 +16,7 @@ class UserResponse(BaseModel):
     pref_max_detour: int = 30
     pref_mode: str = "sun"
     pref_map_controls: bool = False
+    pref_map_type: str = "roadmap"
 
     model_config = {"from_attributes": True}
 
@@ -30,6 +31,7 @@ class UpdateUserRequest(BaseModel):
     pref_max_detour: int | None = None
     pref_mode: str | None = None
     pref_map_controls: bool | None = None
+    pref_map_type: str | None = None
 
     @field_validator("first_name")
     @classmethod
@@ -52,6 +54,13 @@ class UpdateUserRequest(BaseModel):
     def valid_mode(cls, v):
         if v is not None and v not in ("sun", "shade"):
             raise ValueError("pref_mode must be 'sun' or 'shade'")
+        return v
+
+    @field_validator("pref_map_type")
+    @classmethod
+    def valid_map_type(cls, v):
+        if v is not None and v not in ("roadmap", "satellite", "terrain", "hybrid"):
+            raise ValueError("pref_map_type must be roadmap, satellite, terrain, or hybrid")
         return v
 
 

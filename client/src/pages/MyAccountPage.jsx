@@ -133,6 +133,10 @@ export default function MyAccountPage() {
   const [mapControlsError, setMapControlsError] = useState(null);
   const [mapControlsOpen, setMapControlsOpen] = useState(false);
 
+  const [mapType, setMapType] = useState(user?.pref_map_type ?? "roadmap");
+  const [mapTypeSaving, setMapTypeSaving] = useState(false);
+  const [mapTypeError, setMapTypeError] = useState(null);
+
   const joined = user?.created_at
     ? new Date(user.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : "—";
@@ -199,6 +203,24 @@ export default function MyAccountPage() {
       setMode(user?.pref_mode ?? "sun"); // revert
     } finally {
       setModeSaving(false);
+    }
+  }
+
+  async function saveMapType(value) {
+    setMapType(value);
+    setMapTypeSaving(true);
+    setMapTypeError(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.patch("/users/me", { pref_map_type: value }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      updateUser({ pref_map_type: res.data.pref_map_type });
+    } catch {
+      setMapTypeError("Could not save. Please try again.");
+      setMapType(user?.pref_map_type ?? "roadmap");
+    } finally {
+      setMapTypeSaving(false);
     }
   }
 
@@ -387,7 +409,7 @@ export default function MyAccountPage() {
               <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: "0.7em", color: "var(--color-subtext)", transform: mapControlsOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
             </button>
             {mapControlsOpen && (
-              <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
                 {/* Accessible Navigation sub-preference */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", background: "var(--color-bg, #f8f8f8)", borderRadius: "12px" }}>
                   <div>
@@ -429,6 +451,82 @@ export default function MyAccountPage() {
                   )}
                   {mapControlsError && (
                     <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{mapControlsError}</p>
+                  )}
+                </div>
+
+                {/* Map Type sub-preference */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", background: "var(--color-bg, #f8f8f8)", borderRadius: "12px" }}>
+                  <div>
+                    <span style={{ fontSize: "0.72em", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-subtext)" }}>
+                      Map Style
+                    </span>
+                    <p style={{ margin: "3px 0 0", fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 500 }}>
+                      Choose how the map is rendered.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    {[
+                      {
+                        value: "roadmap",
+                        label: "Standard",
+                        preview: (
+                          <div style={{ width: "100%", height: "40px", borderRadius: "6px", overflow: "hidden", position: "relative", background: "#f2efe9" }}>
+                            <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: "5px", background: "#fff", transform: "translateY(-50%)" }} />
+                            <div style={{ position: "absolute", top: "30%", left: 0, right: 0, height: "2px", background: "#e0dbd0" }} />
+                            <div style={{ position: "absolute", top: "70%", left: 0, right: 0, height: "2px", background: "#e0dbd0" }} />
+                          </div>
+                        ),
+                      },
+                      {
+                        value: "satellite",
+                        label: "Satellite",
+                        preview: (
+                          <div style={{ width: "100%", height: "40px", borderRadius: "6px", background: "linear-gradient(135deg, #2a3d2a 0%, #3a5030 40%, #253525 70%, #1e2e1e 100%)" }} />
+                        ),
+                      },
+                      {
+                        value: "terrain",
+                        label: "Terrain",
+                        preview: (
+                          <div style={{ width: "100%", height: "40px", borderRadius: "6px", overflow: "hidden", position: "relative", background: "linear-gradient(160deg, #e8dfc8 0%, #c8b898 50%, #d4c8a8 100%)" }}>
+                            <div style={{ position: "absolute", top: "35%", left: "10%", right: "20%", height: "1px", background: "rgba(0,0,0,0.15)", borderRadius: "1px" }} />
+                            <div style={{ position: "absolute", top: "55%", left: "20%", right: "10%", height: "1px", background: "rgba(0,0,0,0.12)", borderRadius: "1px" }} />
+                            <div style={{ position: "absolute", top: "70%", left: "5%", right: "30%", height: "1px", background: "rgba(0,0,0,0.1)", borderRadius: "1px" }} />
+                          </div>
+                        ),
+                      },
+                    ].map(({ value, label, preview }) => (
+                      <button
+                        key={value}
+                        onClick={() => !mapTypeSaving && saveMapType(value)}
+                        disabled={mapTypeSaving}
+                        style={{
+                          flex: 1,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "stretch",
+                          gap: "5px",
+                          padding: "6px",
+                          fontWeight: 700,
+                          fontSize: "0.78em",
+                          borderRadius: "10px",
+                          background: mapType === value ? "var(--color-accent)" : "var(--color-surface)",
+                          color: mapType === value ? "#fff" : "var(--color-subtext)",
+                          border: mapType === value ? "none" : "2px solid var(--color-border, #e0e0e0)",
+                          boxShadow: mapType === value ? "2px 2px 0 var(--color-accent-dim)" : "none",
+                          cursor: mapTypeSaving ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {preview}
+                        <span style={{ textAlign: "center", paddingTop: "2px" }}>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {mapTypeSaving && (
+                    <p style={{ margin: 0, fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 600 }}>Saving…</p>
+                  )}
+                  {mapTypeError && (
+                    <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{mapTypeError}</p>
                   )}
                 </div>
               </div>

@@ -54,6 +54,8 @@ def update_me(
         current_user.pref_mode = body.pref_mode
     if body.pref_map_controls is not None:
         current_user.pref_map_controls = body.pref_map_controls
+    if body.pref_map_type is not None:
+        current_user.pref_map_type = body.pref_map_type
     db.commit()
     db.refresh(current_user)
     return current_user

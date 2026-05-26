@@ -123,3 +123,28 @@ def test_update_pref_map_controls_disabled(client, auth_headers):
     response = client.patch("/users/me", json={"pref_map_controls": False}, headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["pref_map_controls"] is False
+
+
+def test_register_default_pref_map_type(client):
+    response = client.post("/users/register", json={
+        "first_name": "Alice", "email": "alice@example.com", "password": "secret123"
+    })
+    assert response.status_code == 201
+    assert response.json()["user"]["pref_map_type"] == "roadmap"
+
+
+def test_update_pref_map_type_satellite(client, auth_headers):
+    response = client.patch("/users/me", json={"pref_map_type": "satellite"}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["pref_map_type"] == "satellite"
+
+
+def test_update_pref_map_type_terrain(client, auth_headers):
+    response = client.patch("/users/me", json={"pref_map_type": "terrain"}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["pref_map_type"] == "terrain"
+
+
+def test_update_pref_map_type_invalid(client, auth_headers):
+    response = client.patch("/users/me", json={"pref_map_type": "moonmap"}, headers=auth_headers)
+    assert response.status_code == 422
