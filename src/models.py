@@ -11,6 +11,7 @@ class User(Base):
     email = Column(String(255), nullable=False)
     hashed_password = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    pref_max_detour = Column(Integer, nullable=False, default=30, server_default="30")
 
     routes = relationship("Route", back_populates="user")
     spots = relationship("Spot", back_populates="user")

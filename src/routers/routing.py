@@ -25,11 +25,10 @@ router = APIRouter(prefix="/sun", tags=["sun"])
 
 
 class OptimizedRouteRequest(BaseModel):
-    start: list[float]        # [lat, lng]
-    end: list[float]          # [lat, lng]
-    datetime: str             # ISO string
-    preference: str           # "sun" or "shade"
-    max_detour: float = 0.30  # max fraction longer than shortest path (0.30 = 30%)
+    start: list[float]   # [lat, lng]
+    end: list[float]     # [lat, lng]
+    datetime: str        # ISO string
+    preference: str      # "sun" or "shade"
 
 
 class OptimizedRouteResponse(BaseModel):
@@ -78,11 +77,12 @@ def optimized_route(
     if not path_nodes:
         raise HTTPException(status_code=400, detail="No path found between these locations")
 
+    max_detour = current_user.pref_max_detour / 100
     dist_path_nodes = find_distance_path(graph, start_node, end_node)
     if dist_path_nodes:
         sun_len = _path_length_m(graph, path_nodes)
         dist_len = _path_length_m(graph, dist_path_nodes)
-        if dist_len > 0 and sun_len > dist_len * (1 + body.max_detour):
+        if dist_len > 0 and sun_len > dist_len * (1 + max_detour):
             path_nodes = dist_path_nodes
 
     coords = nodes_to_coords(graph, path_nodes)

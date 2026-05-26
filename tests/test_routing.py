@@ -520,6 +520,30 @@ def test_optimized_route_detour_within_cap(client, auth_headers):
     assert len(resp.json()["waypoints"]) == 3
 
 
+def test_optimized_route_uses_user_pref_max_detour(client, auth_headers):
+    """Routing applies the user's stored pref_max_detour, not a hard-coded default."""
+    # Set user preference to 10% via API
+    assert client.patch("/users/me", json={"pref_max_detour": 10}, headers=auth_headers).status_code == 200
+
+    # sun_len=300 > dist_len*1.10=220 → cap exceeded → distance path (2 waypoints)
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
+        patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
+        patch("src.routers.routing._path_length_m", side_effect=[300.0, 200.0]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={"start": [40.0, -74.0], "end": [40.002, -74.0],
+                  "datetime": "2026-05-24T14:00:00", "preference": "sun"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert len(resp.json()["waypoints"]) == 2
+
+
 def test_optimized_route_endpoint_no_road_network(client, auth_headers):
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),

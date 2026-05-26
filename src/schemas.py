@@ -13,6 +13,7 @@ class UserResponse(BaseModel):
     first_name: str
     email: str
     created_at: datetime
+    pref_max_detour: int = 30
 
     model_config = {"from_attributes": True}
 
@@ -23,14 +24,24 @@ class LoginRequest(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
-    first_name: str
+    first_name: str | None = None
+    pref_max_detour: int | None = None
 
     @field_validator("first_name")
     @classmethod
     def not_blank(cls, v):
+        if v is None:
+            return v
         if not v.strip():
             raise ValueError("first_name cannot be blank")
         return v.strip()
+
+    @field_validator("pref_max_detour")
+    @classmethod
+    def valid_detour(cls, v):
+        if v is not None and not (1 <= v <= 100):
+            raise ValueError("pref_max_detour must be between 1 and 100")
+        return v
 
 
 class TokenResponse(BaseModel):

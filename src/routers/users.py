@@ -46,7 +46,10 @@ def update_me(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    current_user.first_name = body.first_name
+    if body.first_name is not None:
+        current_user.first_name = body.first_name
+    if body.pref_max_detour is not None:
+        current_user.pref_max_detour = body.pref_max_detour
     db.commit()
     db.refresh(current_user)
     return current_user
