@@ -8,9 +8,11 @@ from src.auth import get_current_user
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routing import (
+    _path_length_m,
     build_graph,
     compute_edge_weights,
     fetch_osm_road_network,
+    find_distance_path,
     find_optimized_path,
     nearest_node,
     nodes_to_coords,
@@ -23,10 +25,11 @@ router = APIRouter(prefix="/sun", tags=["sun"])
 
 
 class OptimizedRouteRequest(BaseModel):
-    start: list[float]   # [lat, lng]
-    end: list[float]     # [lat, lng]
-    datetime: str        # ISO string
-    preference: str      # "sun" or "shade"
+    start: list[float]        # [lat, lng]
+    end: list[float]          # [lat, lng]
+    datetime: str             # ISO string
+    preference: str           # "sun" or "shade"
+    max_detour: float = 0.30  # max fraction longer than shortest path (0.30 = 30%)
 
 
 class OptimizedRouteResponse(BaseModel):
@@ -74,6 +77,13 @@ def optimized_route(
 
     if not path_nodes:
         raise HTTPException(status_code=400, detail="No path found between these locations")
+
+    dist_path_nodes = find_distance_path(graph, start_node, end_node)
+    if dist_path_nodes:
+        sun_len = _path_length_m(graph, path_nodes)
+        dist_len = _path_length_m(graph, dist_path_nodes)
+        if dist_len > 0 and sun_len > dist_len * (1 + body.max_detour):
+            path_nodes = dist_path_nodes
 
     coords = nodes_to_coords(graph, path_nodes)
     waypoints = sample_waypoints(coords, n=25)

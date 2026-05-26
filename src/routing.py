@@ -10,7 +10,7 @@ import requests
 from src.shadow import is_point_shaded
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-SUN_PENALTY = 2.0
+SUN_PENALTY = 1.5
 EXCLUDED_HIGHWAY_TYPES = {"motorway", "trunk", "motorway_link", "trunk_link"}
 
 EARTH_RADIUS_M = 6_371_000.0
@@ -175,6 +175,19 @@ def compute_edge_weights(
             data["weight"] = data["distance_m"] * (SUN_PENALTY if shaded else 1.0)
         else:
             data["weight"] = data["distance_m"] * (SUN_PENALTY if not shaded else 1.0)
+
+
+def _path_length_m(graph: nx.DiGraph, path: list[int]) -> float:
+    if len(path) < 2:
+        return 0.0
+    return sum(graph.edges[path[i], path[i + 1]]["distance_m"] for i in range(len(path) - 1))
+
+
+def find_distance_path(graph: nx.DiGraph, start_node: int, end_node: int) -> list[int]:
+    try:
+        return nx.shortest_path(graph, start_node, end_node, weight="distance_m")
+    except (nx.NetworkXNoPath, nx.NodeNotFound):
+        return []
 
 
 def find_optimized_path(graph: nx.DiGraph, start_node: int, end_node: int) -> list[int]:

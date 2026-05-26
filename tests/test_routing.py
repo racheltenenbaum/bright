@@ -5,12 +5,14 @@ import networkx as nx
 import src.routing as routing_module
 from src.routing import (
     _haversine_m,
+    _path_length_m,
     _road_bbox_key,
     _road_sqlite_get,
     _road_sqlite_set,
     build_graph,
     nearest_node,
     compute_edge_weights,
+    find_distance_path,
     find_optimized_path,
     nodes_to_coords,
     sample_waypoints,
@@ -180,7 +182,7 @@ def test_compute_edge_weights_penalty_factor():
     # All edges shaded, sun preference → all penalized × SUN_PENALTY
     with patch("src.routing.is_point_shaded", return_value=True):
         compute_edge_weights(g, [], 45.0, 180.0, "sun")
-    assert g.edges[1, 2]["weight"] == pytest.approx(dist_12 * 2.0)
+    assert g.edges[1, 2]["weight"] == pytest.approx(dist_12 * 1.5)
 
 
 # ── find_optimized_path ───────────────────────────────────────────────────────
@@ -210,6 +212,54 @@ def test_find_optimized_path_picks_lower_weight():
     g.add_edge(3, 2, distance_m=150, mid_lat=40.0015, mid_lng=-73.9995, weight=150)
     path = find_optimized_path(g, 1, 2)
     assert path == [1, 3, 2]
+
+
+# ── _path_length_m ───────────────────────────────────────────────────────────
+
+def test_path_length_m_simple():
+    g = build_graph(_simple_osm())
+    expected = g.edges[1, 2]["distance_m"] + g.edges[2, 3]["distance_m"]
+    assert _path_length_m(g, [1, 2, 3]) == pytest.approx(expected)
+
+
+def test_path_length_m_single_node():
+    g = build_graph(_simple_osm())
+    assert _path_length_m(g, [1]) == 0.0
+
+
+def test_path_length_m_empty():
+    g = build_graph(_simple_osm())
+    assert _path_length_m(g, []) == 0.0
+
+
+# ── find_distance_path ────────────────────────────────────────────────────────
+
+def test_find_distance_path_simple():
+    g = build_graph(_simple_osm())
+    path = find_distance_path(g, 1, 3)
+    assert path[0] == 1 and path[-1] == 3
+
+
+def test_find_distance_path_no_path():
+    g = nx.DiGraph()
+    g.add_node(1, lat=40.0, lng=-74.0)
+    g.add_node(2, lat=40.001, lng=-74.0)
+    assert find_distance_path(g, 1, 2) == []
+
+
+def test_find_distance_path_picks_shorter_distance():
+    # Triangle: direct A→B (distance_m=200, weight=300 penalized)
+    #           detour A→C→B (distance_m=300, weight=300 sunny)
+    # find_distance_path must pick direct (shorter distance_m), ignoring weights
+    g = nx.DiGraph()
+    g.add_node(1, lat=40.0, lng=-74.0)
+    g.add_node(2, lat=40.002, lng=-74.0)
+    g.add_node(3, lat=40.001, lng=-74.001)
+    g.add_edge(1, 2, distance_m=200, mid_lat=40.001, mid_lng=-74.0, weight=300)
+    g.add_edge(1, 3, distance_m=150, mid_lat=40.0005, mid_lng=-74.0005, weight=150)
+    g.add_edge(3, 2, distance_m=150, mid_lat=40.0015, mid_lng=-74.0005, weight=150)
+    path = find_distance_path(g, 1, 2)
+    assert path == [1, 2]
 
 
 # ── nodes_to_coords ───────────────────────────────────────────────────────────
@@ -418,6 +468,56 @@ def test_optimized_route_endpoint_requires_auth(client):
         },
     )
     assert resp.status_code == 401
+
+
+def test_optimized_route_detour_cap_exceeded(client, auth_headers):
+    """Sun path >30% longer than direct → fall back to distance path (fewer waypoints)."""
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
+        patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
+        patch("src.routers.routing._path_length_m", side_effect=[400.0, 200.0]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": [40.000, -74.000],
+                "end": [40.002, -74.000],
+                "datetime": "2026-05-24T14:00:00",
+                "preference": "sun",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    # Distance path [1, 2] → 2 coords; sun path [1, 3, 2] → 3 coords
+    assert len(resp.json()["waypoints"]) == 2
+
+
+def test_optimized_route_detour_within_cap(client, auth_headers):
+    """Sun path ≤30% longer than direct → keep sun path (more waypoints)."""
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
+        patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
+        patch("src.routers.routing._path_length_m", side_effect=[230.0, 200.0]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": [40.000, -74.000],
+                "end": [40.002, -74.000],
+                "datetime": "2026-05-24T14:00:00",
+                "preference": "sun",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    # Sun path [1, 3, 2] → 3 coords kept (230 is not >200*1.3=260)
+    assert len(resp.json()["waypoints"]) == 3
 
 
 def test_optimized_route_endpoint_no_road_network(client, auth_headers):

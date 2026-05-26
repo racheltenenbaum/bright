@@ -100,7 +100,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
     } else if (preference === "shade") {
       color = seg.shaded ? "#5E8FAD" : "#FFE082";
     } else {
-      color = seg.shaded ? "#C8C8A0" : "#FFD700";
+      color = seg.shaded ? "#BBBBBB" : "#FFD700";
     }
 
     const polyline = new window.google.maps.Polyline({
@@ -1379,7 +1379,7 @@ export default function RouteMap() {
                     style={{
                       width: 14,
                       height: 4,
-                      background: preference === "shade" ? "#FFE082" : "#C8C8A0",
+                      background: preference === "shade" ? "#FFE082" : "#BBBBBB",
                       display: "inline-block",
                       borderRadius: 2,
                     }}
