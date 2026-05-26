@@ -124,6 +124,15 @@ def test_is_point_shaded_in_shadow():
     result = is_point_shaded(51.0, 0.0, [building], 10, 0, 0.0)
     assert isinstance(result, bool)
 
+def test_is_point_shaded_sunny_side_no_false_positive():
+    """Point near a building's sun-facing wall must not be marked as shaded."""
+    # Building south wall at lat=51.001; sun from south (azimuth=180°) → shadow goes north
+    fp = [[51.001, -0.001], [51.001, 0.001], [51.002, 0.001], [51.002, -0.001]]
+    building = {"footprint": fp, "height": 20.0, "base_elevation": 0.0}
+    # 5 m south of the building's sunny (south-facing) wall — clearly in direct sunlight
+    point_lat = 51.001 - 5 / 111_000
+    assert is_point_shaded(point_lat, 0.0, [building], 45.0, 180.0) is False
+
 # ── which_side_sunny ───────────────────────────────────────────────────────────
 
 def test_which_side_sunny_night():

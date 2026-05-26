@@ -60,17 +60,13 @@ def is_point_shaded(
     if sun_altitude <= 0:
         return True
 
-    # 8m buffer in degrees (~0.000072°) so that street-centreline route points
-    # register as shaded when they run alongside a building's shadow zone.
-    BUFFER_DEG = 8 / 111_000
-
     pt = Point(lat, lng)
     for building in buildings:
         effective_height = building["height"] + building.get("base_elevation", 0.0) - point_elevation
         if effective_height <= 0:
             continue
         poly = cast_shadow_polygon(building["footprint"], effective_height, sun_altitude, sun_azimuth)
-        if poly is not None and poly.buffer(BUFFER_DEG).contains(pt):
+        if poly is not None and poly.contains(pt):
             return True
     return False
 
