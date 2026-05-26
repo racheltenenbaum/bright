@@ -384,48 +384,53 @@ export default function MyAccountPage() {
               <span style={{ fontSize: "0.72em", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-subtext)" }}>
                 <FontAwesomeIcon icon={faMap} style={{ marginRight: "5px" }} />Map View
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "0.82em", fontWeight: 700, color: "var(--color-accent)" }}>{mapControls ? "On" : "Off"}</span>
-                <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: "0.7em", color: "var(--color-subtext)", transform: mapControlsOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-              </span>
+              <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: "0.7em", color: "var(--color-subtext)", transform: mapControlsOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
             </button>
             {mapControlsOpen && (
               <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                <p style={{ margin: 0, fontSize: "0.84em", color: "var(--color-subtext)", fontWeight: 500 }}>
-                  Show zoom and directional navigation buttons on the map.
-                </p>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  {[
-                    { value: true, label: "On" },
-                    { value: false, label: "Off" },
-                  ].map(({ value, label }) => (
-                    <button
-                      key={label}
-                      onClick={() => !mapControlsSaving && saveMapControls(value)}
-                      disabled={mapControlsSaving}
-                      style={{
-                        flex: 1,
-                        padding: "10px 0",
-                        fontWeight: 700,
-                        fontSize: "0.88em",
-                        borderRadius: "12px",
-                        background: mapControls === value ? "var(--color-accent)" : "var(--color-surface)",
-                        color: mapControls === value ? "#fff" : "var(--color-subtext)",
-                        border: mapControls === value ? "none" : "2px solid var(--color-border, #e0e0e0)",
-                        boxShadow: mapControls === value ? "2px 2px 0 var(--color-accent-dim)" : "none",
-                        cursor: mapControlsSaving ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                {/* Accessible Navigation sub-preference */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "12px", background: "var(--color-bg, #f8f8f8)", borderRadius: "12px" }}>
+                  <div>
+                    <span style={{ fontSize: "0.72em", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-subtext)" }}>
+                      Accessible Navigation
+                    </span>
+                    <p style={{ margin: "3px 0 0", fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 500 }}>
+                      Show zoom and directional arrow buttons on the map.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    {[
+                      { value: false, label: "Off" },
+                      { value: true, label: "On" },
+                    ].map(({ value, label }) => (
+                      <button
+                        key={label}
+                        onClick={() => !mapControlsSaving && saveMapControls(value)}
+                        disabled={mapControlsSaving}
+                        style={{
+                          flex: 1,
+                          padding: "9px 0",
+                          fontWeight: 700,
+                          fontSize: "0.88em",
+                          borderRadius: "10px",
+                          background: mapControls === value ? "var(--color-accent)" : "var(--color-surface)",
+                          color: mapControls === value ? "#fff" : "var(--color-subtext)",
+                          border: mapControls === value ? "none" : "2px solid var(--color-border, #e0e0e0)",
+                          boxShadow: mapControls === value ? "2px 2px 0 var(--color-accent-dim)" : "none",
+                          cursor: mapControlsSaving ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {mapControlsSaving && (
+                    <p style={{ margin: 0, fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 600 }}>Saving…</p>
+                  )}
+                  {mapControlsError && (
+                    <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{mapControlsError}</p>
+                  )}
                 </div>
-                {mapControlsSaving && (
-                  <p style={{ margin: 0, fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 600 }}>Saving…</p>
-                )}
-                {mapControlsError && (
-                  <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{mapControlsError}</p>
-                )}
               </div>
             )}
           </div>
