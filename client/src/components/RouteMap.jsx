@@ -175,6 +175,7 @@ export default function RouteMap() {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [weather, setWeather] = useState(null);
   const [mapHeading, setMapHeading] = useState(0);
+  const [streetViewActive, setStreetViewActive] = useState(false);
   const [spots, setSpots] = useState([]);
   const [mode, setMode] = useState("route");
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
@@ -277,8 +278,7 @@ export default function RouteMap() {
       center: MAP_CENTER,
       zoom: 15,
       disableDefaultUI: true,
-      streetViewControl: true,
-      streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
+      streetViewControl: false,
       zoomControl: user?.pref_map_controls ?? false,
       mapTypeId: user?.pref_map_type ?? "roadmap",
       styles: [],
@@ -306,6 +306,33 @@ export default function RouteMap() {
     mapRef.current.addListener("heading_changed", () => {
       setMapHeading(mapRef.current.getHeading() || 0);
     });
+
+    const pano = mapRef.current.getStreetView();
+    pano.addListener("visible_changed", () => {
+      setStreetViewActive(pano.getVisible());
+    });
+
+    // Two-finger rotation gesture
+    let rotStartAngle = null;
+    let rotStartHeading = 0;
+    const getAngle = (t1, t2) =>
+      Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * (180 / Math.PI);
+    const onRotStart = (e) => {
+      if (e.touches.length === 2) {
+        rotStartAngle = getAngle(e.touches[0], e.touches[1]);
+        rotStartHeading = mapRef.current.getHeading() || 0;
+      }
+    };
+    const onRotMove = (e) => {
+      if (e.touches.length === 2 && rotStartAngle !== null) {
+        const delta = getAngle(e.touches[0], e.touches[1]) - rotStartAngle;
+        mapRef.current.setHeading(rotStartHeading - delta);
+      }
+    };
+    const onRotEnd = () => { rotStartAngle = null; };
+    containerRef.current.addEventListener("touchstart", onRotStart, { passive: true });
+    containerRef.current.addEventListener("touchmove",  onRotMove,  { passive: true });
+    containerRef.current.addEventListener("touchend",   onRotEnd,   { passive: true });
 
     // Auto-open a spot navigated from My Spots
     const spot = location.state?.spot;
@@ -1188,17 +1215,12 @@ export default function RouteMap() {
             ))}
           </div>
         )}
-        {/* Plan Route + Save row — below inputs, right-aligned */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px" }}>
-          {!planning && start && end && !sunData && (
-            <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800, marginLeft: "auto" }}>Plan Route</button>
-          )}
-          {sunData && !saveForm && !routeSaved && (
-            <button onClick={() => setSaveForm({ name: "", description: "" })} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}>
-              Save Route
-            </button>
-          )}
-        </div>
+        {/* Plan Route row — below inputs, right-aligned */}
+        {!planning && start && end && !sunData && (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}>Plan Route</button>
+          </div>
+        )}
         {saveForm && (
           <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
@@ -1284,9 +1306,9 @@ export default function RouteMap() {
         </div>
       )}
 
-      {(savedRouteName || routeStats || planning) && (
+      {(savedRouteName || routeStats || planning || (sunData && !saveForm && !routeSaved)) && (
         <div style={{ margin: "0 0 6px", display: mode === "route" ? "flex" : "none", alignItems: "center", justifyContent: "space-between" }}>
-          {savedRouteName && (
+          {savedRouteName ? (
             <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
               <FontAwesomeIcon icon={faHeart} /> {savedRouteName}
               <button
@@ -1297,7 +1319,14 @@ export default function RouteMap() {
                 {shareCopied ? <span style={{ fontSize: "0.75em", fontWeight: 700 }}>Copied!</span> : <FontAwesomeIcon icon={faShareNodes} />}
               </button>
             </span>
-          )}
+          ) : sunData && !saveForm && !routeSaved ? (
+            <button
+              onClick={() => setSaveForm({ name: "", description: "" })}
+              style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}
+            >
+              Save Route
+            </button>
+          ) : null}
           {planning ? (
             <div className="planning-dots" style={{ marginLeft: "auto" }}>
               <span className="planning-label">planning</span>
@@ -1343,6 +1372,34 @@ export default function RouteMap() {
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+          <button
+            onClick={() => {
+              const pano = mapRef.current?.getStreetView();
+              if (!pano) return;
+              if (streetViewActive) {
+                pano.setVisible(false);
+              } else {
+                pano.setPosition(mapRef.current.getCenter());
+                pano.setVisible(true);
+              }
+            }}
+            title="Street View"
+            style={{
+              position: "absolute", bottom: currentLocation ? "58px" : "10px", right: "10px", zIndex: 10,
+              width: "40px", height: "40px", borderRadius: "50%",
+              background: streetViewActive ? colors.accent : colors.surface,
+              border: `1.5px solid ${streetViewActive ? colors.accent : colors.accentFaint}`,
+              boxShadow: `0 2px 8px ${colors.accentGlow}`,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 0, transition: "background 0.2s, border-color 0.2s",
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill={streetViewActive ? colors.surface : colors.subtext}>
+              <circle cx="12" cy="5" r="2.5" />
+              <path d="M12 9c-2 0-3.5 1-4 2.5L6 17h2.5l1-3h5l1 3H18l-2-5.5C15.5 10 14 9 12 9z" />
+              <path d="M9.5 14.5l-1 2.5h7l-1-2.5h-5z" opacity="0.4" />
+            </svg>
+          </button>
           {currentLocation && (
             <button
               onClick={() => mapRef.current?.panTo(currentLocation)}
