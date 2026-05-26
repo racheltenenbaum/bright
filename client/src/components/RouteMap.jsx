@@ -577,21 +577,31 @@ export default function RouteMap() {
         .toLocaleString("sv-SE", { timeZone: timeZoneId })
         .replace(" ", "T");
 
-      // Get OSM-optimized route weighted by sun/shade exposure
-      const routeRes = await api.post(
-        "/sun/optimized-route",
-        {
-          start: [start.lat, start.lng],
-          end: [end.lat, end.lng],
-          datetime,
-          preference,
-        },
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      const { waypoints, sun_altitude, sun_azimuth, date } = routeRes.data;
+      // Try OSM-optimized routing; fall back to Google Directions if unavailable
+      let waypoints;
+      try {
+        const routeRes = await api.post(
+          "/sun/optimized-route",
+          { start: [start.lat, start.lng], end: [end.lat, end.lng], datetime, preference },
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 35000 },
+        );
+        waypoints = routeRes.data.waypoints;
+      } catch {
+        const directionsService = new window.google.maps.DirectionsService();
+        const result = await directionsService.route({
+          origin: start,
+          destination: end,
+          travelMode: window.google.maps.TravelMode.WALKING,
+        });
+        if (!result.routes?.length) throw new Error("No route found");
+        if (result.routes[0].legs[0].distance.value > 5000) {
+          setError("Route is over 5 km — please choose a shorter journey.");
+          return;
+        }
+        waypoints = result.routes[0].overview_path.map((p) => [p.lat(), p.lng()]);
+      }
 
-      // Distance check before shadow analysis
-      const stats = formatRouteStats(waypoints);
+      // Distance check (covers OSM path which may differ from straight-line)
       const distKm = waypoints.reduce((sum, pt, i) => {
         if (i === 0) return 0;
         return sum + haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], pt[0], pt[1]);
@@ -601,15 +611,15 @@ export default function RouteMap() {
         return;
       }
 
-      // Shade each segment of the optimized path
+      // Shadow-analyze the path — sun_altitude/azimuth come from this response
       const shadowRes = await api.post(
         "/sun/shadow-analyze",
         { coordinates: waypoints, datetime },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      const segments = shadowRes.data.segments;
+      const { sun_altitude, sun_azimuth, date, segments } = shadowRes.data;
 
-      setRouteStats(stats);
+      setRouteStats(formatRouteStats(waypoints));
       setSunData({ sun_altitude, sun_azimuth, date });
       setPlacesSunAltitude(sun_altitude);
       setRouteCoords(waypoints);
