@@ -286,19 +286,19 @@ export default function RouteMap() {
       const panDiv = document.createElement("div");
       panDiv.style.cssText = "display:grid;grid-template-columns:repeat(3,32px);grid-template-rows:repeat(3,32px);gap:2px;margin:10px;";
       const arrows = [
-        { label: "▲", col: 2, row: 1, dx: 0, dy: -100 },
-        { label: "◀", col: 1, row: 2, dx: -100, dy: 0 },
-        { label: "▶", col: 3, row: 2, dx: 100, dy: 0 },
-        { label: "▼", col: 2, row: 3, dx: 0, dy: 100 },
+        { label: "↑", col: 2, row: 1, dx: 0, dy: -100 },
+        { label: "←", col: 1, row: 2, dx: -100, dy: 0 },
+        { label: "→", col: 3, row: 2, dx: 100, dy: 0 },
+        { label: "↓", col: 2, row: 3, dx: 0, dy: 100 },
       ];
       arrows.forEach(({ label, col, row, dx, dy }) => {
         const btn = document.createElement("button");
         btn.textContent = label;
-        btn.style.cssText = `grid-column:${col};grid-row:${row};background:#fff;border:none;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;`;
+        btn.style.cssText = `grid-column:${col};grid-row:${row};background:#fff;border:none;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;font-size:14px;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;`;
         btn.addEventListener("click", () => mapRef.current.panBy(dx, dy));
         panDiv.appendChild(btn);
       });
-      mapRef.current.controls[window.google.maps.ControlPosition.LEFT_CENTER].push(panDiv);
+      mapRef.current.controls[window.google.maps.ControlPosition.LEFT_BOTTOM].push(panDiv);
     }
 
     // Auto-open a spot navigated from My Spots
