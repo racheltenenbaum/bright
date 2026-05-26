@@ -61,15 +61,15 @@ function TabBar({ active, onChange }) {
 }
 
 function DetourSlider({ value, onChange, saving, error }) {
-  const idx = DETOUR_STEPS.indexOf(value);
-  const safeIdx = idx === -1 ? 1 : idx; // fallback to 30 (index 1) if value not in steps
+  const idx = Math.max(0, DETOUR_STEPS.indexOf(value) === -1 ? 1 : DETOUR_STEPS.indexOf(value));
 
-  function selectStep(step) {
+  function handleSlider(e) {
+    const step = DETOUR_STEPS[parseInt(e.target.value, 10)];
     if (step !== value) onChange(step);
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <div>
         <span style={{
           fontSize: "0.72em", fontWeight: 800, textTransform: "uppercase",
@@ -82,39 +82,45 @@ function DetourSlider({ value, onChange, saving, error }) {
         </p>
       </div>
 
-      {/* Step selector */}
-      <div style={{ display: "flex", gap: "6px" }}>
-        {DETOUR_STEPS.map((step) => {
-          const selected = step === value || (idx === -1 && step === DETOUR_STEPS[safeIdx]);
-          return (
-            <button
-              key={step}
-              onClick={() => selectStep(step)}
-              disabled={saving}
-              style={{
-                flex: 1,
-                padding: "10px 4px",
-                borderRadius: "10px",
-                fontWeight: 700,
-                fontSize: "0.82em",
-                background: selected ? "var(--color-accent)" : "var(--color-surface)",
-                color: selected ? "#fff" : "var(--color-text)",
-                border: selected ? "none" : "2px solid var(--color-border, #e0e0e0)",
-                boxShadow: selected ? "2px 2px 0 var(--color-accent-dim)" : "none",
-                cursor: saving ? "not-allowed" : "pointer",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "3px",
-              }}
-            >
-              <span style={{ fontSize: "1.05em" }}>{step}%</span>
-              <span style={{ fontSize: "0.75em", opacity: selected ? 0.9 : 0.6, fontWeight: 600 }}>
-                {DETOUR_LABELS[step]}
-              </span>
-            </button>
-          );
-        })}
+      {/* Current value badge */}
+      <div style={{ textAlign: "center" }}>
+        <span style={{
+          fontSize: "2em", fontWeight: 800, color: "var(--color-accent)",
+          lineHeight: 1,
+        }}>
+          {value}%
+        </span>
+        <span style={{
+          display: "block", fontSize: "0.82em", fontWeight: 600,
+          color: "var(--color-subtext)", marginTop: "2px",
+        }}>
+          {DETOUR_LABELS[value] ?? ""} detour
+        </span>
+      </div>
+
+      {/* Slider */}
+      <div style={{ padding: "0 4px" }}>
+        <input
+          type="range"
+          min="0"
+          max={DETOUR_STEPS.length - 1}
+          step="1"
+          value={idx}
+          onChange={handleSlider}
+          disabled={saving}
+          style={{ width: "100%", accentColor: "var(--color-accent)", cursor: saving ? "not-allowed" : "pointer" }}
+        />
+        {/* Step labels */}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
+          {DETOUR_STEPS.map((step) => (
+            <span key={step} style={{
+              fontSize: "0.72em", fontWeight: 700,
+              color: step === value ? "var(--color-accent)" : "var(--color-subtext)",
+            }}>
+              {step}%
+            </span>
+          ))}
+        </div>
       </div>
 
       {saving && (
