@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUser, faEnvelope, faCalendarDays, faPen, faCheck, faXmark, faSlidersH, faSun, faCloud, faChevronDown } from "@fortawesome/free-solid-svg-icons";
+import { faUser, faEnvelope, faCalendarDays, faPen, faCheck, faXmark, faSlidersH, faSun, faCloud, faChevronDown, faMap } from "@fortawesome/free-solid-svg-icons";
 
 const DETOUR_STEPS = [10, 30, 50, 70, 100];
 const DETOUR_LABELS = {
@@ -128,6 +128,11 @@ export default function MyAccountPage() {
   const [modeError, setModeError] = useState(null);
   const [modeOpen, setModeOpen] = useState(false);
 
+  const [mapControls, setMapControls] = useState(user?.pref_map_controls ?? false);
+  const [mapControlsSaving, setMapControlsSaving] = useState(false);
+  const [mapControlsError, setMapControlsError] = useState(null);
+  const [mapControlsOpen, setMapControlsOpen] = useState(false);
+
   const joined = user?.created_at
     ? new Date(user.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : "—";
@@ -194,6 +199,24 @@ export default function MyAccountPage() {
       setMode(user?.pref_mode ?? "sun"); // revert
     } finally {
       setModeSaving(false);
+    }
+  }
+
+  async function saveMapControls(value) {
+    setMapControls(value);
+    setMapControlsSaving(true);
+    setMapControlsError(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.patch("/users/me", { pref_map_controls: value }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      updateUser({ pref_map_controls: res.data.pref_map_controls });
+    } catch {
+      setMapControlsError("Could not save. Please try again.");
+      setMapControls(user?.pref_map_controls ?? false);
+    } finally {
+      setMapControlsSaving(false);
     }
   }
 
@@ -346,6 +369,63 @@ export default function MyAccountPage() {
                   saving={detourSaving}
                   error={detourError}
                 />
+              </div>
+            )}
+          </div>
+
+          <hr style={{ border: "none", borderTop: "2px solid var(--color-border, #e0e0e0)", margin: "0" }} />
+
+          {/* Map View — collapsible */}
+          <div>
+            <button
+              onClick={() => setMapControlsOpen((o) => !o)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", boxShadow: "none", padding: 0, cursor: "pointer" }}
+            >
+              <span style={{ fontSize: "0.72em", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-subtext)" }}>
+                <FontAwesomeIcon icon={faMap} style={{ marginRight: "5px" }} />Map View
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "0.82em", fontWeight: 700, color: "var(--color-accent)" }}>{mapControls ? "On" : "Off"}</span>
+                <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: "0.7em", color: "var(--color-subtext)", transform: mapControlsOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+              </span>
+            </button>
+            {mapControlsOpen && (
+              <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                <p style={{ margin: 0, fontSize: "0.84em", color: "var(--color-subtext)", fontWeight: 500 }}>
+                  Show zoom and directional navigation buttons on the map.
+                </p>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  {[
+                    { value: true, label: "On" },
+                    { value: false, label: "Off" },
+                  ].map(({ value, label }) => (
+                    <button
+                      key={label}
+                      onClick={() => !mapControlsSaving && saveMapControls(value)}
+                      disabled={mapControlsSaving}
+                      style={{
+                        flex: 1,
+                        padding: "10px 0",
+                        fontWeight: 700,
+                        fontSize: "0.88em",
+                        borderRadius: "12px",
+                        background: mapControls === value ? "var(--color-accent)" : "var(--color-surface)",
+                        color: mapControls === value ? "#fff" : "var(--color-subtext)",
+                        border: mapControls === value ? "none" : "2px solid var(--color-border, #e0e0e0)",
+                        boxShadow: mapControls === value ? "2px 2px 0 var(--color-accent-dim)" : "none",
+                        cursor: mapControlsSaving ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {mapControlsSaving && (
+                  <p style={{ margin: 0, fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 600 }}>Saving…</p>
+                )}
+                {mapControlsError && (
+                  <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{mapControlsError}</p>
+                )}
               </div>
             )}
           </div>

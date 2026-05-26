@@ -52,6 +52,8 @@ def update_me(
         current_user.pref_max_detour = body.pref_max_detour
     if body.pref_mode is not None:
         current_user.pref_mode = body.pref_mode
+    if body.pref_map_controls is not None:
+        current_user.pref_map_controls = body.pref_map_controls
     db.commit()
     db.refresh(current_user)
     return current_user

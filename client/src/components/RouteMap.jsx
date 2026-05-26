@@ -278,6 +278,7 @@ export default function RouteMap() {
       mapTypeControl: true,
       streetViewControl: true,
       streetViewControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
+      zoomControl: user?.pref_map_controls ?? false,
       styles: [],
     });
 

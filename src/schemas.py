@@ -15,6 +15,7 @@ class UserResponse(BaseModel):
     created_at: datetime
     pref_max_detour: int = 30
     pref_mode: str = "sun"
+    pref_map_controls: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -28,6 +29,7 @@ class UpdateUserRequest(BaseModel):
     first_name: str | None = None
     pref_max_detour: int | None = None
     pref_mode: str | None = None
+    pref_map_controls: bool | None = None
 
     @field_validator("first_name")
     @classmethod

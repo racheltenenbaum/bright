@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.database import Base
@@ -13,6 +13,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     pref_max_detour = Column(Integer, nullable=False, default=30, server_default="30")
     pref_mode = Column(String(10), nullable=False, default="sun", server_default="sun")
+    pref_map_controls = Column(Boolean, nullable=False, default=False, server_default="0")
 
     routes = relationship("Route", back_populates="user")
     spots = relationship("Spot", back_populates="user")
