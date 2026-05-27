@@ -225,10 +225,6 @@ button.btn-danger:active {
   transform-origin: bottom right;
 }
 
-.map-wrapper .gm-svpc {
-  display: none !important;
-}
-
 .map-wrapper .gm-style-mtc,
 .map-wrapper .gm-style-mtc-bb {
   zoom: 0.75;
