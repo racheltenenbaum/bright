@@ -13,7 +13,6 @@ import {
   faLocationCrosshairs,
   faShareNodes,
   faCompass,
-  faStreetView,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -177,7 +176,7 @@ export default function RouteMap() {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [weather, setWeather] = useState(null);
   const [mapHeading, setMapHeading] = useState(0);
-  const [streetViewActive, setStreetViewActive] = useState(false);
+
   const [spots, setSpots] = useState([]);
   const [mode, setMode] = useState("route");
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
@@ -310,42 +309,23 @@ export default function RouteMap() {
       setMapHeading(mapRef.current.getHeading() || 0);
     });
 
-    const pano = mapRef.current.getStreetView();
-    pano.addListener("visible_changed", () => {
-      setStreetViewActive(pano.getVisible());
-    });
-
-    // Two-finger rotation gesture (does not interfere with pinch-to-zoom)
-    let gesture = null; // 'rotate' | 'zoom' | null — classified on first significant movement
+    // Two-finger rotation gesture
     let rotStartAngle = null;
-    let rotStartDist = null;
     let rotStartHeading = 0;
     const getAngle = (t1, t2) =>
       Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * (180 / Math.PI);
-    const getDist = (t1, t2) =>
-      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
     const onRotStart = (e) => {
       if (e.touches.length === 2) {
         rotStartAngle = getAngle(e.touches[0], e.touches[1]);
-        rotStartDist = getDist(e.touches[0], e.touches[1]);
         rotStartHeading = mapRef.current.getHeading() || 0;
-        gesture = null;
       }
     };
     const onRotMove = (e) => {
-      if (e.touches.length !== 2 || rotStartAngle === null) return;
-      const currAngle = getAngle(e.touches[0], e.touches[1]);
-      const currDist = getDist(e.touches[0], e.touches[1]);
-      const angleDelta = Math.abs(currAngle - rotStartAngle);
-      const distDelta = Math.abs(currDist - rotStartDist);
-      if (!gesture && (angleDelta > 8 || distDelta > 10)) {
-        gesture = distDelta > angleDelta * 2 ? "zoom" : "rotate";
-      }
-      if (gesture === "rotate") {
-        mapRef.current.setHeading(rotStartHeading - (currAngle - rotStartAngle));
+      if (e.touches.length === 2 && rotStartAngle !== null) {
+        mapRef.current.setHeading(rotStartHeading - (getAngle(e.touches[0], e.touches[1]) - rotStartAngle));
       }
     };
-    const onRotEnd = () => { rotStartAngle = null; rotStartDist = null; gesture = null; };
+    const onRotEnd = () => { rotStartAngle = null; };
     containerRef.current.addEventListener("touchstart", onRotStart, { passive: true });
     containerRef.current.addEventListener("touchmove",  onRotMove,  { passive: true });
     containerRef.current.addEventListener("touchend",   onRotEnd,   { passive: true });
@@ -1388,41 +1368,6 @@ export default function RouteMap() {
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
-          <button
-            onClick={() => {
-              const pano = mapRef.current?.getStreetView();
-              if (!pano) return;
-              if (streetViewActive) {
-                pano.setVisible(false);
-              } else {
-                const sv = new window.google.maps.StreetViewService();
-                sv.getPanorama(
-                  { location: mapRef.current.getCenter(), radius: 150 },
-                  (data, status) => {
-                    if (status === window.google.maps.StreetViewStatus.OK) {
-                      pano.setPosition(data.location.latLng);
-                      pano.setVisible(true);
-                    }
-                  }
-                );
-              }
-            }}
-            title="Street View"
-            style={{
-              position: "absolute", bottom: currentLocation ? "58px" : "10px", right: "10px", zIndex: 10,
-              width: "40px", height: "40px", borderRadius: "50%",
-              background: streetViewActive ? colors.accent : colors.surface,
-              border: `1.5px solid ${streetViewActive ? colors.accent : colors.accentFaint}`,
-              boxShadow: `0 2px 8px ${colors.accentGlow}`,
-              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-              padding: 0, transition: "background 0.2s, border-color 0.2s",
-            }}
-          >
-            <FontAwesomeIcon
-              icon={faStreetView}
-              style={{ fontSize: "18px", color: streetViewActive ? colors.surface : colors.subtext }}
-            />
-          </button>
           {currentLocation && (
             <button
               onClick={() => mapRef.current?.panTo(currentLocation)}
