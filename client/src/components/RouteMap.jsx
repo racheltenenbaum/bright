@@ -20,6 +20,7 @@ import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const MAP_ID  = import.meta.env.VITE_GOOGLE_MAPS_ID;
 
 const LIBRARIES = ["places"];
 
@@ -278,12 +279,12 @@ export default function RouteMap() {
     mapRef.current = new window.google.maps.Map(containerRef.current, {
       center: MAP_CENTER,
       zoom: 15,
+      mapId: MAP_ID,
       disableDefaultUI: true,
       streetViewControl: true,
       zoomControl: user?.pref_map_controls ?? false,
       gestureHandling: "greedy",
       mapTypeId: user?.pref_map_type ?? "roadmap",
-      styles: [],
     });
 
     if (user?.pref_map_controls) {
@@ -1394,8 +1395,16 @@ export default function RouteMap() {
               if (streetViewActive) {
                 pano.setVisible(false);
               } else {
-                pano.setPosition(mapRef.current.getCenter());
-                pano.setVisible(true);
+                const sv = new window.google.maps.StreetViewService();
+                sv.getPanorama(
+                  { location: mapRef.current.getCenter(), radius: 150 },
+                  (data, status) => {
+                    if (status === window.google.maps.StreetViewStatus.OK) {
+                      pano.setPosition(data.location.latLng);
+                      pano.setVisible(true);
+                    }
+                  }
+                );
               }
             }}
             title="Street View"
