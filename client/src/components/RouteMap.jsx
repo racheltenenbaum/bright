@@ -213,8 +213,8 @@ export default function RouteMap() {
     accent:      "#5b9ec8",
     accentFaint: "#2d6898",
     accentGlow:  "rgba(91,158,200,0.2)",
-    text:        "#ddeaf5",
-    subtext:     "#7899b8",
+    text:        "#eef4fb",
+    subtext:     "#9ab5cc",
     surface:     "rgba(13,26,39,0.96)",
   } : preference === "shade" ? {
     accent:      "#5E8FAD",
@@ -1715,70 +1715,73 @@ export default function RouteMap() {
               </div>
             );
           })()}
-          <button
-            onClick={() => { mapRef.current.setHeading(0); setMapHeading(0); }}
-            title="Reset to north"
-            style={{
-              position: "absolute", top: weather ? "56px" : "10px", right: "10px", zIndex: 10,
-              width: "36px", height: "36px", borderRadius: "50%",
-              background: colors.surface,
-              border: `1.5px solid ${mapHeading !== 0 ? colors.accent : colors.accentFaint}`,
-              boxShadow: `0 2px 8px ${colors.accentGlow}`,
-              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-              padding: 0,
-              transition: "border-color 0.2s",
-            }}
-          >
-            <FontAwesomeIcon
-              icon={faCompass}
+          <div style={{
+            position: "absolute", top: "10px", right: "10px", zIndex: 5,
+            display: "flex",
+            flexDirection: (sunData && !planning) ? "row-reverse" : "column",
+            alignItems: "center",
+            gap: "8px",
+          }}>
+            {weather && (
+              <div
+                style={{
+                  background: colors.surface,
+                  padding: "6px 12px",
+                  borderRadius: "20px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: colors.text,
+                  border: `1.5px solid ${colors.accentFaint}`,
+                  boxShadow: `0 2px 8px ${colors.accentGlow}`,
+                }}
+              >
+                {weather.icon_url && (
+                  <img
+                    src={weather.icon_url}
+                    alt={weather.condition || ""}
+                    style={{ width: 20, height: 20 }}
+                  />
+                )}
+                {weather.temperature != null && (
+                  <span>{Math.round(weather.temperature)}°C</span>
+                )}
+                {weather.uv_index != null && (
+                  <span style={{ color: colors.subtext }}>UV {weather.uv_index}</span>
+                )}
+                {weather.uv_index >= 6 && !isNighttime && (
+                  <span style={{ color: "#C0392B", fontWeight: 700 }}>
+                    sunscreen!
+                  </span>
+                )}
+              </div>
+            )}
+            <button
+              onClick={() => { mapRef.current.setHeading(0); setMapHeading(0); }}
+              title="Reset to north"
               style={{
-                fontSize: "18px",
-                color: mapHeading !== 0 ? colors.accent : colors.subtext,
-                transform: `rotate(${-mapHeading}deg)`,
-                transition: "transform 0.3s, color 0.2s",
-              }}
-            />
-          </button>
-
-          {weather && (
-            <div
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
+                width: "36px", height: "36px", borderRadius: "50%",
                 background: colors.surface,
-                padding: "6px 12px",
-                borderRadius: "20px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                fontSize: "12px",
-                fontWeight: 500,
-                color: colors.text,
-                border: `1.5px solid ${colors.accentFaint}`,
+                border: `1.5px solid ${mapHeading !== 0 ? colors.accent : colors.accentFaint}`,
                 boxShadow: `0 2px 8px ${colors.accentGlow}`,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                padding: 0,
+                transition: "border-color 0.2s",
               }}
             >
-              {weather.icon_url && (
-                <img
-                  src={weather.icon_url}
-                  alt={weather.condition || ""}
-                  style={{ width: 20, height: 20 }}
-                />
-              )}
-              {weather.temperature != null && (
-                <span>{Math.round(weather.temperature)}°C</span>
-              )}
-              {weather.uv_index != null && (
-                <span style={{ color: colors.subtext }}>UV {weather.uv_index}</span>
-              )}
-              {weather.uv_index >= 6 && !isNighttime && (
-                <span style={{ color: "#C0392B", fontWeight: 700 }}>
-                  sunscreen!
-                </span>
-              )}
-            </div>
-          )}
+              <FontAwesomeIcon
+                icon={faCompass}
+                style={{
+                  fontSize: "18px",
+                  color: mapHeading !== 0 ? colors.accent : colors.subtext,
+                  transform: `rotate(${-mapHeading}deg)`,
+                  transition: "transform 0.3s, color 0.2s",
+                }}
+              />
+            </button>
+          </div>
         </div>
       </div>
 

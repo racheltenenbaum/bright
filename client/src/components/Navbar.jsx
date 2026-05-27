@@ -35,7 +35,8 @@ export default function Navbar() {
         justifyContent: "space-between",
         alignItems: "center",
       }}>
-      <img src="/logo.gif" alt="bright" onClick={() => navigate("/plan")} style={{ height: "40px", cursor: "pointer" }} />
+      <img src="/logo.gif"      className="logo-light" alt="bright" onClick={() => navigate("/plan")} style={{ height: "40px", cursor: "pointer" }} />
+      <img src="/logo-dark.gif" className="logo-dark"  alt="bright" onClick={() => navigate("/plan")} style={{ height: "40px", cursor: "pointer" }} />
 
       <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "0px" }}>
         <span style={{ color: "var(--color-subtext)", fontSize: "0.88em", fontWeight: 700 }}>

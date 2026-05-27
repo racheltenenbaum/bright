@@ -67,12 +67,12 @@ body.night-mode {
   --color-bg: #0d1a27;
   --color-surface: #162536;
   --color-input-bg: #111f2e;
-  --color-text: #ddeaf5;
+  --color-text: #eef4fb;
   --color-accent: #5b9ec8;
   --color-accent-dim: #2d6898;
   --color-accent-hover: #1a3a56;
-  --color-placeholder: #4a7a9e;
-  --color-subtext: #7899b8;
+  --color-placeholder: #6a98b8;
+  --color-subtext: #9ab5cc;
   --color-link: #6ab4dc;
   --color-link-hover: #88ccf0;
   --color-card-border: rgba(255,255,255,0.14);
@@ -222,6 +222,10 @@ body.night-mode input[type="password"] {
   box-shadow: 2px 2px 0 var(--color-accent-dim);
 }
 body.night-mode input:focus { box-shadow: 3px 3px 0 var(--color-accent); }
+
+.logo-dark { display: none; }
+body.night-mode .logo-light { display: none; }
+body.night-mode .logo-dark { display: inline; }
 
 body.night-mode .map-wrapper {
   border-color: var(--color-card-border);
