@@ -26,7 +26,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav style={{ flexShrink: 0 }}>
+    <nav style={{ flexShrink: 0, background: "var(--color-bg)", transition: "background-color 0.3s" }}>
       <div style={{
         maxWidth: "700px",
         margin: "0 auto",
