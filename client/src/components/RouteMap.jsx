@@ -259,7 +259,6 @@ export default function RouteMap() {
   useEffect(() => {
     document.body.classList.toggle("shade-mode", !isNighttime && preference === "shade");
     document.body.classList.toggle("night-mode", isNighttime);
-    localStorage.setItem("bright_nightmode", isNighttime ? "1" : "0");
   }, [preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -400,6 +399,8 @@ export default function RouteMap() {
     function handlePosition(lat, lng) {
       if (cancelled || !mapRef.current) return;
       setCurrentLocation({ lat, lng });
+      localStorage.setItem("bright_lat", lat);
+      localStorage.setItem("bright_lng", lng);
       if (!initialPanDone && !startRef.current) {
         if (!skipInitialPanRef.current) {
           mapRef.current.panTo({ lat, lng });

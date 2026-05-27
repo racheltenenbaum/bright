@@ -22,12 +22,41 @@ ProtectedRoute.propTypes = {
   children: PropTypes.node.isRequired,
 };
 
+function sunAltitude(lat, lng) {
+  const now = new Date();
+  const jd = now / 86400000 + 2440587.5;
+  const n = jd - 2451545.0;
+  const L = (280.46 + 0.9856474 * n) % 360;
+  const g = ((357.528 + 0.9856003 * n) % 360) * Math.PI / 180;
+  const lam = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * Math.PI / 180;
+  const obliquity = 23.439 * Math.PI / 180;
+  const dec = Math.asin(Math.sin(obliquity) * Math.sin(lam));
+  const ra = Math.atan2(Math.cos(obliquity) * Math.sin(lam), Math.cos(lam)) * (12 / Math.PI);
+  const gmst = ((18.697374558 + 24.06570982441908 * n) % 24 + 24) % 24;
+  const lha = (((gmst + lng / 15 - ra) % 24) + 24) % 24;
+  const ha = lha * 15 * Math.PI / 180;
+  const latRad = lat * Math.PI / 180;
+  return Math.asin(Math.sin(latRad) * Math.sin(dec) + Math.cos(latRad) * Math.cos(dec) * Math.cos(ha)) * 180 / Math.PI;
+}
+
 function Layout() {
   const { isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (localStorage.getItem("bright_nightmode") === "1") {
-      document.body.classList.add("night-mode");
+    function applyTheme(lat, lng) {
+      document.body.classList.toggle("night-mode", sunAltitude(lat, lng) <= 0);
+    }
+
+    const lat = parseFloat(localStorage.getItem("bright_lat") || "51.505");
+    const lng = parseFloat(localStorage.getItem("bright_lng") || "-0.09");
+    applyTheme(lat, lng);
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => applyTheme(coords.latitude, coords.longitude),
+        null,
+        { timeout: 5000 },
+      );
     }
   }, []);
 

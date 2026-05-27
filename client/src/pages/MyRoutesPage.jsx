@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Share } from "@capacitor/share";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faSun, faArrowRight, faTrash, faShareNodes } from "@fortawesome/free-solid-svg-icons";
+import { faArrowRight, faTrash, faShareNodes } from "@fortawesome/free-solid-svg-icons";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -116,7 +116,7 @@ export default function MyRoutesPage() {
 
   return (
     <div className="page-container" style={{ maxWidth: "600px" }}>
-      <h2>Routes <FontAwesomeIcon icon={faSun} style={{ color: "#FFD600", fontSize: "0.85em" }} /></h2>
+      <h2>Routes</h2>
       {error && <p style={{ color: "#C0392B", fontSize: "0.88em" }}>{error}</p>}
       {loading && <p style={{ color: "var(--color-subtext)", fontSize: "0.92em" }}>Loading routes...</p>}
       {!loading && routes.length === 0 && !error && (

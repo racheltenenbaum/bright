@@ -397,7 +397,7 @@ export default function MySpotsPage() {
   return (
     <div className="page-container" style={{ maxWidth: "600px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-        <h2 style={{ margin: 0 }}>Spots <FontAwesomeIcon icon={faMapPin} style={{ color: "#FFD600", fontSize: "0.85em" }} /></h2>
+        <h2 style={{ margin: 0 }}>Spots</h2>
         <button onClick={openAdd} style={{ fontSize: "0.82em", padding: "0.4em 1em", display: "flex", alignItems: "center", gap: "6px" }}>
           <FontAwesomeIcon icon={faPlus} /> Add spot
         </button>

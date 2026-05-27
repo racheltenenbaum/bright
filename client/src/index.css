@@ -242,6 +242,7 @@ body.night-mode .auth-card {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
+  background-color: var(--color-bg);
 }
 
 .plan-layout {
