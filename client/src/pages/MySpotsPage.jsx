@@ -404,19 +404,19 @@ export default function MySpotsPage() {
       </div>
 
       {error && <p style={{ color: "#C0392B", fontSize: "0.88em" }}>{error}</p>}
-      {loading && <p style={{ color: "#A87500", fontSize: "0.92em" }}>Loading spots...</p>}
+      {loading && <p style={{ color: "var(--color-subtext)", fontSize: "0.92em" }}>Loading spots...</p>}
       {!loading && spots.length === 0 && !error && (
-        <p style={{ color: "#A87500", fontSize: "0.92em" }}>No spots saved yet. Add your first one!</p>
+        <p style={{ color: "var(--color-subtext)", fontSize: "0.92em" }}>No spots saved yet. Add your first one!</p>
       )}
 
       {!loading && spots.length > 0 && (() => {
         const cities = [...new Set(spots.map((s) => s.city).filter(Boolean))].sort();
         const chipBase = {
           fontSize: "0.76em", fontWeight: 700, padding: "0.3em 0.85em",
-          borderRadius: "999px", cursor: "pointer", border: "2px solid #E8C000",
-          background: "#FFF8DC", color: "#7B5800", boxShadow: "none",
+          borderRadius: "999px", cursor: "pointer", border: "2px solid var(--color-accent-dim)",
+          background: "var(--color-accent-hover)", color: "var(--color-subtext)", boxShadow: "none",
         };
-        const chipActive = { ...chipBase, background: "#FFD600", color: "#3D2C00", border: "2px solid #3D2C00" };
+        const chipActive = { ...chipBase, background: "var(--color-accent)", color: "var(--color-text)", border: "2px solid var(--color-text)" };
         return (
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "14px" }}>
             <button style={!filterGroup ? chipActive : chipBase} onClick={() => setFilterGroup(null)}>All</button>
@@ -453,41 +453,41 @@ export default function MySpotsPage() {
               key={spot.id}
               onClick={() => setExpandedSpotId(expanded ? null : spot.id)}
               style={{
-                border: "2.5px solid #ffffff", borderRadius: "14px",
-                padding: "12px 16px", background: "#FFFDF5",
-                boxShadow: "4px 4px 0 #E8C000",
+                border: "2.5px solid var(--color-card-border)", borderRadius: "14px",
+                padding: "12px 16px", background: "var(--color-surface)",
+                boxShadow: "4px 4px 0 var(--color-card-shadow)",
                 cursor: "pointer",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                 <div style={{
                   width: "38px", height: "38px", borderRadius: "50%",
-                  background: "#FFD600", display: "flex", alignItems: "center",
+                  background: "var(--color-accent)", display: "flex", alignItems: "center",
                   justifyContent: "center", flexShrink: 0,
                 }}>
-                  <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ color: "#3D2C00", fontSize: "16px" }} />
+                  <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ color: "var(--color-text)", fontSize: "16px" }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ color: "#3D2C00", fontSize: "0.95em" }}>{spot.name}</strong>
-                  <p style={{ margin: "2px 0 0", fontSize: "0.78em", color: "#A87500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <strong style={{ color: "var(--color-text)", fontSize: "0.95em" }}>{spot.name}</strong>
+                  <p style={{ margin: "2px 0 0", fontSize: "0.78em", color: "var(--color-subtext)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {spot.address}
                   </p>
                   {spot.description && !expanded && (
-                    <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "#7B5800", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "var(--color-subtext)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {spot.description}
                     </p>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-                  <button onClick={(e) => { e.stopPropagation(); shareSpot(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                  <button onClick={(e) => { e.stopPropagation(); shareSpot(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-placeholder)", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                     <FontAwesomeIcon icon={faShareNodes} />
                   </button>
                   {expanded && (
                     <>
-                      <button onClick={(e) => { e.stopPropagation(); openEdit(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                      <button onClick={(e) => { e.stopPropagation(); openEdit(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-placeholder)", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                         <FontAwesomeIcon icon={faPen} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); setPendingDelete(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#C8A84B", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
+                      <button onClick={(e) => { e.stopPropagation(); setPendingDelete(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-placeholder)", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                         <FontAwesomeIcon icon={faTrash} />
                       </button>
                     </>
@@ -496,13 +496,13 @@ export default function MySpotsPage() {
               </div>
 
               {expanded && (
-                <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid #F5E070" }}>
+                <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--color-divider)" }}>
                   {/* Read-only mini-map */}
-                  <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid #E8C000", height: "160px", marginBottom: "10px" }}>
+                  <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid var(--color-accent-dim)", height: "160px", marginBottom: "10px" }}>
                     <div ref={expandedSpotId === spot.id ? previewMapContainerRef : null} style={{ height: "100%", width: "100%" }} />
                   </div>
                   {spot.description && (
-                    <p style={{ margin: "0 0 10px", fontSize: "0.82em", color: "#7B5800", lineHeight: 1.4 }}>
+                    <p style={{ margin: "0 0 10px", fontSize: "0.82em", color: "var(--color-subtext)", lineHeight: 1.4 }}>
                       {spot.description}
                     </p>
                   )}
@@ -522,14 +522,14 @@ export default function MySpotsPage() {
       {/* Add / Edit modal */}
       {showForm && (
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(61,44,0,0.25)",
+          position: "fixed", inset: 0, background: "var(--color-overlay)",
           backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-start",
           justifyContent: "center", zIndex: 1000, overflowY: "auto", padding: "20px 0",
         }}>
           <div style={{
-            background: "#FFFDF5", border: "2.5px solid #ffffff",
+            background: "var(--color-surface)", border: "2.5px solid var(--color-card-border)",
             borderRadius: "24px", padding: "24px", maxWidth: "400px",
-            width: "90%", boxShadow: "6px 6px 0 #E8C000",
+            width: "90%", boxShadow: "6px 6px 0 var(--color-card-shadow)",
             display: "flex", flexDirection: "column", gap: "14px",
             margin: "auto",
           }}>
@@ -548,7 +548,7 @@ export default function MySpotsPage() {
               rows={2}
               style={{
                 display: "block", width: "100%", boxSizing: "border-box",
-                background: "var(--color-input-bg)", border: "2px solid #fff",
+                background: "var(--color-input-bg)", border: "2px solid var(--color-card-border)",
                 borderRadius: "10px", padding: "8px 12px", fontSize: "16px",
                 fontFamily: "Nunito, sans-serif", fontWeight: 500,
                 color: "var(--color-text)", outline: "none", resize: "none",
@@ -580,8 +580,8 @@ export default function MySpotsPage() {
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
                   fontSize: "10px", padding: "2px 7px", display: "flex", alignItems: "center",
-                  gap: "4px", background: "rgba(255,193,7,0.15)", border: "1.5px solid #FFD600",
-                  color: "#A87500", fontWeight: 700, whiteSpace: "nowrap", boxShadow: "none",
+                  gap: "4px", background: "var(--color-accent-hover)", border: "1.5px solid var(--color-accent)",
+                  color: "var(--color-subtext)", fontWeight: 700, whiteSpace: "nowrap", boxShadow: "none",
                 }}
               >
                 <FontAwesomeIcon icon={faLocationCrosshairs} />
@@ -590,18 +590,18 @@ export default function MySpotsPage() {
             </div>
 
             {/* Mini map */}
-            <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid #E8C000", height: "200px" }}>
+            <div style={{ borderRadius: "12px", overflow: "hidden", border: "2px solid var(--color-accent-dim)", height: "200px" }}>
               <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} />
             </div>
             {!form.lat && (
-              <p style={{ margin: "-8px 0 0", fontSize: "0.75em", color: "#A87500" }}>
+              <p style={{ margin: "-8px 0 0", fontSize: "0.75em", color: "var(--color-subtext)" }}>
                 Search an address, use your location, or tap the map to set a spot.
               </p>
             )}
 
             {/* Icon picker */}
             <div>
-              <p style={{ margin: "0 0 8px", fontSize: "0.82em", color: "#7B5800", fontWeight: 600 }}>Icon</p>
+              <p style={{ margin: "0 0 8px", fontSize: "0.82em", color: "var(--color-subtext)", fontWeight: 600 }}>Icon</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {SPOT_ICONS.map(({ key, icon }) => (
                   <button
@@ -609,13 +609,13 @@ export default function MySpotsPage() {
                     onClick={() => setForm({ ...form, icon: key })}
                     style={{
                       width: "36px", height: "36px", borderRadius: "50%",
-                      border: form.icon === key ? "2.5px solid #3D2C00" : "2px solid #E8C000",
-                      background: form.icon === key ? "#FFD600" : "#FFF8DC",
+                      border: form.icon === key ? "2.5px solid var(--color-text)" : "2px solid var(--color-accent-dim)",
+                      background: form.icon === key ? "var(--color-accent)" : "var(--color-accent-hover)",
                       cursor: "pointer", display: "flex", alignItems: "center",
                       justifyContent: "center", padding: 0, boxShadow: "none",
                     }}
                   >
-                    <FontAwesomeIcon icon={icon} style={{ color: "#3D2C00", fontSize: "14px" }} />
+                    <FontAwesomeIcon icon={icon} style={{ color: "var(--color-text)", fontSize: "14px" }} />
                   </button>
                 ))}
               </div>
@@ -640,16 +640,16 @@ export default function MySpotsPage() {
         const cities = [...new Set(spots.map((s) => s.city).filter(Boolean))].sort();
         return (
           <div
-            style={{ position: "fixed", inset: 0, background: "rgba(61,44,0,0.25)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+            style={{ position: "fixed", inset: 0, background: "var(--color-overlay)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
             onClick={() => setShowCityModal(false)}
           >
             <div
-              style={{ background: "#FFFDF5", border: "2.5px solid #fff", borderRadius: "24px", padding: "24px", maxWidth: "320px", width: "90%", boxShadow: "6px 6px 0 #E8C000", display: "flex", flexDirection: "column", gap: "10px" }}
+              style={{ background: "var(--color-surface)", border: "2.5px solid var(--color-card-border)", borderRadius: "24px", padding: "24px", maxWidth: "320px", width: "90%", boxShadow: "6px 6px 0 var(--color-card-shadow)", display: "flex", flexDirection: "column", gap: "10px" }}
               onClick={(e) => e.stopPropagation()}
             >
               <h3 style={{ margin: 0, fontSize: "1em" }}>Filter by city</h3>
               <button
-                style={{ textAlign: "left", background: filterCity === null ? "#FFD600" : "#FFF8DC", border: filterCity === null ? "2px solid #3D2C00" : "2px solid #E8C000", borderRadius: "10px", padding: "10px 14px", cursor: "pointer", fontWeight: 700, color: "#3D2C00", fontSize: "0.9em", boxShadow: "none" }}
+                style={{ textAlign: "left", background: filterCity === null ? "var(--color-accent)" : "var(--color-accent-hover)", border: filterCity === null ? "2px solid var(--color-text)" : "2px solid var(--color-accent-dim)", borderRadius: "10px", padding: "10px 14px", cursor: "pointer", fontWeight: 700, color: "var(--color-text)", fontSize: "0.9em", boxShadow: "none" }}
                 onClick={() => { setFilterCity(null); setShowCityModal(false); }}
               >
                 All cities
@@ -657,7 +657,7 @@ export default function MySpotsPage() {
               {cities.map((c) => (
                 <button
                   key={c}
-                  style={{ textAlign: "left", background: filterCity === c ? "#FFD600" : "#FFF8DC", border: filterCity === c ? "2px solid #3D2C00" : "2px solid #E8C000", borderRadius: "10px", padding: "10px 14px", cursor: "pointer", fontWeight: 700, color: "#3D2C00", fontSize: "0.9em", boxShadow: "none" }}
+                  style={{ textAlign: "left", background: filterCity === c ? "var(--color-accent)" : "var(--color-accent-hover)", border: filterCity === c ? "2px solid var(--color-text)" : "2px solid var(--color-accent-dim)", borderRadius: "10px", padding: "10px 14px", cursor: "pointer", fontWeight: 700, color: "var(--color-text)", fontSize: "0.9em", boxShadow: "none" }}
                   onClick={() => { setFilterCity(c); setShowCityModal(false); }}
                 >
                   {c}
@@ -671,18 +671,18 @@ export default function MySpotsPage() {
       {/* Delete confirm */}
       {pendingDelete && (
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(61,44,0,0.25)",
+          position: "fixed", inset: 0, background: "var(--color-overlay)",
           backdropFilter: "blur(2px)", display: "flex", alignItems: "center",
           justifyContent: "center", zIndex: 1000,
         }}>
           <div style={{
-            background: "#FFFDF5", border: "2.5px solid #ffffff",
+            background: "var(--color-surface)", border: "2.5px solid var(--color-card-border)",
             borderRadius: "24px", padding: "32px", maxWidth: "340px",
-            width: "90%", boxShadow: "6px 6px 0 #E8C000",
+            width: "90%", boxShadow: "6px 6px 0 var(--color-card-shadow)",
             display: "flex", flexDirection: "column", gap: "12px",
           }}>
             <h3 style={{ margin: 0, fontSize: "1.1em" }}>Delete spot?</h3>
-            <p style={{ margin: 0, color: "#7B5800", fontSize: "0.9em" }}>
+            <p style={{ margin: 0, color: "var(--color-subtext)", fontSize: "0.9em" }}>
               <strong>{pendingDelete.name}</strong> will be permanently deleted.
             </p>
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>

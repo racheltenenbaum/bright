@@ -72,7 +72,7 @@ export default function RegisterPage() {
             Register
           </button>
         </form>
-        <p style={{ margin: "18px 0 0", textAlign: "center", fontSize: "0.88em", color: "#7B5800" }}>
+        <p style={{ margin: "18px 0 0", textAlign: "center", fontSize: "0.88em", color: "var(--color-subtext)" }}>
           Already have an account? <Link to="/login">Log in</Link>
         </p>
       </div>

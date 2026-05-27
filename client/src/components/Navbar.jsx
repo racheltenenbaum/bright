@@ -38,14 +38,14 @@ export default function Navbar() {
       <img src="/logo.gif" alt="bright" onClick={() => navigate("/plan")} style={{ height: "40px", cursor: "pointer" }} />
 
       <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "0px" }}>
-        <span style={{ color: "#A87500", fontSize: "0.88em", fontWeight: 700 }}>
+        <span style={{ color: "var(--color-subtext)", fontSize: "0.88em", fontWeight: 700 }}>
           Hi, {user.first_name}! <FontAwesomeIcon icon={faHand} />
         </span>
         <button
           onClick={() => setOpen(o => !o)}
           style={{
             background: "none", border: "none", boxShadow: "none",
-            padding: "4px 0 4px 4px", fontSize: "1.1em", color: "#A87500",
+            padding: "4px 0 4px 4px", fontSize: "1.1em", color: "var(--color-subtext)",
           }}
         >
           <FontAwesomeIcon icon={faEllipsisVertical} />
@@ -54,10 +54,10 @@ export default function Navbar() {
         {open && (
           <div style={{
             position: "absolute", top: "calc(100% + 8px)", right: 0,
-            background: "#FFFDF5",
-            border: "2.5px solid #ffffff",
+            background: "var(--color-surface)",
+            border: "2.5px solid var(--color-card-border)",
             borderRadius: "16px",
-            boxShadow: "4px 4px 0 #E8C000",
+            boxShadow: "4px 4px 0 var(--color-card-shadow)",
             minWidth: "150px",
             zIndex: 1000,
             overflow: "hidden",
@@ -75,8 +75,8 @@ export default function Navbar() {
                   display: "block", width: "100%", textAlign: "left",
                   background: "none", border: "none", boxShadow: "none",
                   borderRadius: 0, padding: "12px 18px",
-                  fontSize: "0.9em", fontWeight: 700, color: "#3D2C00",
-                  borderBottom: "1px solid #F5E070",
+                  fontSize: "0.9em", fontWeight: 700, color: "var(--color-text)",
+                  borderBottom: "1px solid var(--color-divider)",
                 }}
               >
                 {label}

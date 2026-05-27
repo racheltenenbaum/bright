@@ -46,7 +46,7 @@ export default function LoginPage() {
             Log in
           </button>
         </form>
-        <p style={{ margin: "18px 0 0", textAlign: "center", fontSize: "0.88em", color: "#7B5800" }}>
+        <p style={{ margin: "18px 0 0", textAlign: "center", fontSize: "0.88em", color: "var(--color-subtext)" }}>
           Don't have an account? <Link to="/register">Register</Link>
         </p>
       </div>

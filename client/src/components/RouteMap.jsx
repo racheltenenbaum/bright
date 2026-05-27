@@ -210,12 +210,12 @@ export default function RouteMap() {
   const PLACE_SPOT_ICON = { cafe: "faMugHot", restaurant: "faUtensils", bar: "faMugHot", park: "faTree" };
 
   const colors = isNighttime ? {
-    accent:      "#3D6E8C",
-    accentFaint: "#8AB0C8",
-    accentGlow:  "rgba(61,110,140,0.15)",
-    text:        "#1A2F40",
-    subtext:     "#2D5070",
-    surface:     "rgba(184,202,214,0.95)",
+    accent:      "#5b9ec8",
+    accentFaint: "#2d6898",
+    accentGlow:  "rgba(91,158,200,0.2)",
+    text:        "#ddeaf5",
+    subtext:     "#7899b8",
+    surface:     "rgba(13,26,39,0.96)",
   } : preference === "shade" ? {
     accent:      "#5E8FAD",
     accentFaint: "#B0CCDE",
