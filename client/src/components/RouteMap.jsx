@@ -309,23 +309,36 @@ export default function RouteMap() {
       setMapHeading(mapRef.current.getHeading() || 0);
     });
 
-    // Two-finger rotation gesture
+    // Two-finger rotation gesture — only fires setHeading when rotation arc dominates
+    // over pinch distance, so native pinch-to-zoom is unaffected.
     let rotStartAngle = null;
+    let rotStartDist  = null;
     let rotStartHeading = 0;
     const getAngle = (t1, t2) =>
       Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * (180 / Math.PI);
+    const getDist = (t1, t2) =>
+      Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
     const onRotStart = (e) => {
       if (e.touches.length === 2) {
-        rotStartAngle = getAngle(e.touches[0], e.touches[1]);
+        rotStartAngle   = getAngle(e.touches[0], e.touches[1]);
+        rotStartDist    = getDist(e.touches[0], e.touches[1]);
         rotStartHeading = mapRef.current.getHeading() || 0;
       }
     };
     const onRotMove = (e) => {
-      if (e.touches.length === 2 && rotStartAngle !== null) {
-        mapRef.current.setHeading(rotStartHeading - (getAngle(e.touches[0], e.touches[1]) - rotStartAngle));
+      if (e.touches.length !== 2 || rotStartAngle === null) return;
+      const currAngle  = getAngle(e.touches[0], e.touches[1]);
+      const currDist   = getDist(e.touches[0], e.touches[1]);
+      const angleDelta = Math.abs(currAngle - rotStartAngle);
+      const distDelta  = Math.abs(currDist - rotStartDist);
+      // Convert angle to equivalent arc length (pixels) so both are comparable units.
+      // Only update heading when the rotational arc clearly dominates the pinch delta.
+      const arcLen = angleDelta * (Math.PI / 180) * rotStartDist;
+      if (arcLen > distDelta * 1.5) {
+        mapRef.current.setHeading(rotStartHeading - (currAngle - rotStartAngle));
       }
     };
-    const onRotEnd = () => { rotStartAngle = null; };
+    const onRotEnd = () => { rotStartAngle = null; rotStartDist = null; };
     containerRef.current.addEventListener("touchstart", onRotStart, { passive: true });
     containerRef.current.addEventListener("touchmove",  onRotMove,  { passive: true });
     containerRef.current.addEventListener("touchend",   onRotEnd,   { passive: true });
