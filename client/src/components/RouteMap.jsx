@@ -259,7 +259,7 @@ export default function RouteMap() {
   useEffect(() => {
     document.body.classList.toggle("shade-mode", !isNighttime && preference === "shade");
     document.body.classList.toggle("night-mode", isNighttime);
-    return () => { document.body.classList.remove("shade-mode"); document.body.classList.remove("night-mode"); };
+    localStorage.setItem("bright_nightmode", isNighttime ? "1" : "0");
   }, [preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -1078,7 +1078,7 @@ export default function RouteMap() {
 
       {/* Sun / Shade toggle + Reset */}
       <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext, opacity: isNighttime ? 0.4 : 1 }}>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1 }}>
           <FontAwesomeIcon icon={faSun} /> Sun
         </span>
         <div
@@ -1088,7 +1088,7 @@ export default function RouteMap() {
             background: preference === "sun" ? "#FFD600" : colors.accent,
             position: "relative", cursor: isNighttime ? "default" : "pointer",
             transition: "background 0.25s", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
-            opacity: isNighttime ? 0.4 : 1,
+            opacity: isNighttime ? 0.22 : 1,
           }}
         >
           <div style={{
@@ -1098,11 +1098,11 @@ export default function RouteMap() {
             transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
           }} />
         </div>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext, opacity: isNighttime ? 0.4 : 1 }}>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1 }}>
           <FontAwesomeIcon icon={faCloudSun} /> Shade
         </span>
         {isNighttime && (
-          <span style={{ fontSize: "0.82em", color: colors.subtext, marginLeft: "2px" }}>🌙 After sunset</span>
+          <span style={{ fontSize: "0.85em", fontWeight: 700, color: colors.text, marginLeft: "2px" }}>🌙 After sunset</span>
         )}
         {mode === "route" && (start && !planning) && (
           <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
@@ -1719,7 +1719,7 @@ export default function RouteMap() {
             position: "absolute", top: "10px", right: "10px", zIndex: 5,
             display: "flex",
             flexDirection: (sunData && !planning) ? "row-reverse" : "column",
-            alignItems: "center",
+            alignItems: "flex-end",
             gap: "8px",
           }}>
             {weather && (

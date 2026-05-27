@@ -67,12 +67,13 @@ export default function SharedRoutePage() {
   return (
     <div className="page-container" style={{ maxWidth: "560px", margin: "0 auto" }}>
       <div style={{ textAlign: "center", marginBottom: "24px" }}>
-        <img src="/logo.gif" alt="bright" style={{ height: "52px" }} />
+        <img src="/logo.gif"      className="logo-light" alt="bright" style={{ height: "52px" }} />
+        <img src="/logo-dark.gif" className="logo-dark"  alt="bright" style={{ height: "52px" }} />
       </div>
 
       <div style={{
         background: "var(--color-surface)",
-        border: "2.5px solid #ffffff",
+        border: "2.5px solid var(--color-card-border)",
         borderRadius: "20px",
         overflow: "hidden",
         boxShadow: "4px 4px 0 var(--color-accent-dim)",
@@ -89,8 +90,8 @@ export default function SharedRoutePage() {
               <span style={{
                 fontSize: "0.78em", fontWeight: 700, padding: "3px 10px",
                 borderRadius: "999px",
-                background: route.preference === "shade" ? "#7AB3CF" : "#FFD600",
-                color: route.preference === "shade" ? "#ffffff" : "#3D2C00",
+                background: route.preference === "shade" ? "var(--color-accent)" : "#FFD600",
+                color: route.preference === "shade" ? "var(--color-text)" : "#3D2C00",
               }}>
                 <FontAwesomeIcon icon={route.preference === "shade" ? faCloudSun : faSun} style={{ marginRight: "4px" }} />
                 {route.preference === "shade" ? "Shade" : "Sun"}

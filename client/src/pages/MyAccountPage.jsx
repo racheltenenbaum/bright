@@ -257,7 +257,7 @@ export default function MyAccountPage() {
 
   const cardStyle = {
     background: "var(--color-surface)",
-    border: "2.5px solid #ffffff",
+    border: "2.5px solid var(--color-card-border)",
     borderRadius: "20px",
     padding: "28px 24px",
     boxShadow: "4px 4px 0 var(--color-accent-dim)",

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -24,6 +24,13 @@ ProtectedRoute.propTypes = {
 
 function Layout() {
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (localStorage.getItem("bright_nightmode") === "1") {
+      document.body.classList.add("night-mode");
+    }
+  }, []);
+
   return (
     <>
       {isAuthenticated && <Navbar />}
