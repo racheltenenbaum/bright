@@ -33,7 +33,7 @@ def analyze_sun(
     date_str = dt.strftime("%Y-%m-%d")
     time_str = dt.strftime("%H:%M:%S")
 
-    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1], date_str, time_str)
+    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1])
 
     return SunAnalyzeResponse(
         sun_altitude=sun_altitude,

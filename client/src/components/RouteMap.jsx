@@ -13,6 +13,7 @@ import {
   faLocationCrosshairs,
   faShareNodes,
   faCompass,
+  faStreetView,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -1394,11 +1395,10 @@ export default function RouteMap() {
               padding: 0, transition: "background 0.2s, border-color 0.2s",
             }}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill={streetViewActive ? colors.surface : colors.subtext}>
-              <circle cx="12" cy="5" r="2.5" />
-              <path d="M12 9c-2 0-3.5 1-4 2.5L6 17h2.5l1-3h5l1 3H18l-2-5.5C15.5 10 14 9 12 9z" />
-              <path d="M9.5 14.5l-1 2.5h7l-1-2.5h-5z" opacity="0.4" />
-            </svg>
+            <FontAwesomeIcon
+              icon={faStreetView}
+              style={{ fontSize: "18px", color: streetViewActive ? colors.surface : colors.subtext }}
+            />
           </button>
           {currentLocation && (
             <button

@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
 import src.routers.places as places_module
-from src.routers.places import _get_local_datetime, _road_sqlite_get, _road_sqlite_set
+from src.routers.places import _road_sqlite_get, _road_sqlite_set
 from src.shadow import (
     extract_roads_from_overpass,
     find_nearest_road_segment,
@@ -321,7 +322,6 @@ def test_search_places_empty_types(client, auth_headers):
 def test_search_places_sun_below_horizon(client, auth_headers):
     mock_buildings = MagicMock()
     with patch("src.routers.places.get_sun_position", return_value=SUN_DOWN), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "22:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", mock_buildings):
         response = client.post("/places/search", json={
@@ -339,7 +339,6 @@ def test_search_places_sun_below_horizon(client, auth_headers):
 
 def test_search_places_no_buildings_no_roads_sunny(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -356,7 +355,6 @@ def test_search_places_no_buildings_no_roads_sunny(client, auth_headers):
 def test_search_places_deduplicates_by_place_id(client, auth_headers):
     # Same place returned for both types — should appear only once
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -369,7 +367,6 @@ def test_search_places_deduplicates_by_place_id(client, auth_headers):
 
 def test_search_places_multiple_places_returned(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE, GOOGLE_PLACE_2]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -381,7 +378,6 @@ def test_search_places_multiple_places_returned(client, auth_headers):
 
 def test_search_places_no_api_key_returns_empty(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places.GOOGLE_MAPS_API_KEY", None), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -393,7 +389,6 @@ def test_search_places_no_api_key_returns_empty(client, auth_headers):
 
 def test_search_places_result_has_expected_fields(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -413,7 +408,6 @@ def test_search_places_result_has_expected_fields(client, auth_headers):
 
 def test_search_places_photo_reference_passed_through(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -425,7 +419,6 @@ def test_search_places_photo_reference_passed_through(client, auth_headers):
 def test_search_places_photo_reference_none_when_absent(client, auth_headers):
     place_no_photo = {k: v for k, v in GOOGLE_PLACE.items() if k != "photos"}
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_no_photo]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -438,7 +431,6 @@ def test_search_places_place_without_rating(client, auth_headers):
     place_no_rating = {**GOOGLE_PLACE, "place_id": "xyz999"}
     place_no_rating.pop("rating", None)
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_no_rating]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -450,7 +442,6 @@ def test_search_places_place_without_rating(client, auth_headers):
 
 def test_search_places_preference_sun_excludes_shaded(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE, GOOGLE_PLACE_2]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
          patch("src.routers.places.is_point_shaded", return_value=True):
@@ -463,7 +454,6 @@ def test_search_places_preference_sun_excludes_shaded(client, auth_headers):
 
 def test_search_places_preference_shade_excludes_sunny(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
          patch("src.routers.places.is_point_shaded", return_value=False):
@@ -477,7 +467,6 @@ def test_search_places_preference_shade_excludes_sunny(client, auth_headers):
 
 def test_search_places_sunny_when_not_shaded(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
          patch("src.routers.places.is_point_shaded", return_value=False):
@@ -507,13 +496,21 @@ def _make_fetch(by_type: dict):
 
 # ── Café-to-bar evening logic ─────────────────────────────────────────────────
 
+def _mock_utc_hour(hour):
+    """Return a MagicMock for datetime.now(timezone.utc) returning the given UTC hour (lng=0)."""
+    m = MagicMock()
+    m.now.return_value = datetime(2025, 6, 1, hour, 0, 0, tzinfo=timezone.utc)
+    return m
+
+
 def test_cafe_included_as_bar_at_or_after_20h(client, auth_headers):
-    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "20:00:00")), \
+    # LNG=0 so local_hour == UTC hour; 20 UTC → evening == True
+    with patch("src.routers.places.datetime", _mock_utc_hour(20)), \
+         patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE]})), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
-            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["bar"]
+            "lat": LAT, "lng": 0.0, "radius": 500, "preference": "sun", "types": ["bar"]
         }, headers=auth_headers)
     assert response.status_code == 200
     places = response.json()["places"]
@@ -523,12 +520,13 @@ def test_cafe_included_as_bar_at_or_after_20h(client, auth_headers):
 
 
 def test_cafe_not_included_as_bar_before_20h(client, auth_headers):
-    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "19:59:00")), \
+    # 19 UTC at lng=0 → local_hour=19 → not evening
+    with patch("src.routers.places.datetime", _mock_utc_hour(19)), \
+         patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE]})), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
-            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["bar"]
+            "lat": LAT, "lng": 0.0, "radius": 500, "preference": "sun", "types": ["bar"]
         }, headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["places"] == []
@@ -536,12 +534,12 @@ def test_cafe_not_included_as_bar_before_20h(client, auth_headers):
 
 def test_cafe_already_in_types_not_double_counted(client, auth_headers):
     """When both cafe and bar are requested, the cafe is not counted twice."""
-    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "21:00:00")), \
+    with patch("src.routers.places.datetime", _mock_utc_hour(21)), \
+         patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
          patch("src.routers.places._fetch_places_from_google", side_effect=_make_fetch({"cafe": [CAFE_LATE], "bar": []})), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
-            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe", "bar"]
+            "lat": LAT, "lng": 0.0, "radius": 500, "preference": "sun", "types": ["cafe", "bar"]
         }, headers=auth_headers)
     assert response.status_code == 200
     assert len(response.json()["places"]) == 1
@@ -570,7 +568,6 @@ PARK_FEW_REVIEWS = {
 
 def test_venue_with_fewer_than_10_reviews_hidden(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[PLACE_FEW_REVIEWS]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -583,7 +580,6 @@ def test_venue_with_fewer_than_10_reviews_hidden(client, auth_headers):
 def test_venue_with_exactly_10_reviews_hidden(client, auth_headers):
     place_10 = {**PLACE_FEW_REVIEWS, "user_ratings_total": 10}
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_10]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -595,7 +591,6 @@ def test_venue_with_exactly_10_reviews_hidden(client, auth_headers):
 
 def test_park_with_fewer_than_10_reviews_shown(client, auth_headers):
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[PARK_FEW_REVIEWS]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -609,7 +604,6 @@ def test_venue_missing_ratings_total_hidden(client, auth_headers):
     """Places with no user_ratings_total field are filtered out (treated as 0 reviews)."""
     place_no_count = {k: v for k, v in GOOGLE_PLACE.items() if k != "user_ratings_total"}
     with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._get_local_datetime", return_value=("2025-06-01", "12:00:00")), \
          patch("src.routers.places._fetch_places_from_google", return_value=[place_no_count]), \
          patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
         response = client.post("/places/search", json={
@@ -641,40 +635,6 @@ def test_road_sqlite_set_then_get():
     _road_sqlite_set(key, roads)
     assert _road_sqlite_get(key) == roads
 
-
-# ── Unit tests: _get_local_datetime ───────────────────────────────────────────
-
-def test_get_local_datetime_uses_timezone_api():
-    mock_tz = MagicMock()
-    mock_tz.status_code = 200
-    mock_tz.json.return_value = {"timeZoneId": "Europe/London"}
-    with patch("src.routers.places.requests.get", return_value=mock_tz):
-        date_str, time_str = _get_local_datetime(51.5, -0.1)
-    assert len(date_str) == 10   # "YYYY-MM-DD"
-    assert len(time_str) == 8    # "HH:MM:SS"
-
-
-def test_get_local_datetime_falls_back_to_utc_on_api_failure():
-    with patch("src.routers.places.requests.get", side_effect=Exception("network")):
-        date_str, time_str = _get_local_datetime(51.5, -0.1)
-    assert len(date_str) == 10
-    assert len(time_str) == 8
-
-
-def test_get_local_datetime_falls_back_to_utc_on_non_200():
-    mock_resp = MagicMock()
-    mock_resp.status_code = 500
-    with patch("src.routers.places.requests.get", return_value=mock_resp):
-        date_str, time_str = _get_local_datetime(51.5, -0.1)
-    assert len(date_str) == 10
-    assert len(time_str) == 8
-
-
-def test_get_local_datetime_no_api_key_uses_utc():
-    with patch("src.routers.places.GOOGLE_MAPS_API_KEY", None):
-        date_str, time_str = _get_local_datetime(51.5, -0.1)
-    assert len(date_str) == 10
-    assert len(time_str) == 8
 
 
 # ── Unit tests: _point_to_segment_dist_sq degenerate case ─────────────────────

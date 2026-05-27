@@ -26,8 +26,7 @@ def test_login_rate_limit(client, test_user):
 
 def test_weather_rate_limit(client, auth_headers):
     with patch("src.routers.weather.requests.get", return_value=_mock_weather_ok()), \
-         patch("src.routers.weather.get_sun_position", return_value=(45.0, 180.0)), \
-         patch("src.routers.weather._get_local_datetime", return_value=("2025-06-01", "12:00:00")):
+         patch("src.routers.weather.get_sun_position", return_value=(45.0, 180.0)):
         for _ in range(3):
             r = client.post("/weather/current", json={"lat": 51.5, "lng": -0.1}, headers=auth_headers)
             assert r.status_code == 200

@@ -1,10 +1,7 @@
 import os
-import time
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
-from zoneinfo import ZoneInfo
-from datetime import datetime
 
 from src.auth import get_current_user
 from src.limiter import limiter, RATE_LIMIT_WEATHER
@@ -14,7 +11,6 @@ from src.utils.astronomy import get_sun_position
 router = APIRouter(prefix="/weather", tags=["weather"])
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-GOOGLE_TIMEZONE_URL = "https://maps.googleapis.com/maps/api/timezone/json"
 
 
 class WeatherRequest(BaseModel):
@@ -45,24 +41,6 @@ class WeatherResponse(BaseModel):
     sun_altitude: float
 
 
-def _get_local_datetime(lat: float, lng: float) -> tuple[str, str]:
-    timestamp = int(time.time())
-    tz_id = "UTC"
-    if GOOGLE_API_KEY:
-        try:
-            resp = requests.get(
-                GOOGLE_TIMEZONE_URL,
-                params={"location": f"{lat},{lng}", "timestamp": timestamp, "key": GOOGLE_API_KEY},
-                timeout=5,
-            )
-            if resp.status_code == 200:
-                tz_id = resp.json().get("timeZoneId", "UTC")
-        except Exception:
-            pass
-    dt = datetime.now(ZoneInfo(tz_id))
-    return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M:%S")
-
-
 @router.post("/current", response_model=WeatherResponse)
 @limiter.limit(RATE_LIMIT_WEATHER)
 def get_current_weather(
@@ -83,8 +61,7 @@ def get_current_weather(
     if not resp.ok:
         raise HTTPException(status_code=502, detail="Weather API error")
 
-    date_str, time_str = _get_local_datetime(body.lat, body.lng)
-    sun_altitude, _ = get_sun_position(body.lat, body.lng, date_str, time_str)
+    sun_altitude, _ = get_sun_position(body.lat, body.lng)
 
     data = resp.json()
     weather_condition = data.get("weatherCondition", {})

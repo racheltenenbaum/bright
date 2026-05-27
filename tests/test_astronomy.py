@@ -1,53 +1,56 @@
-import pytest
-from unittest.mock import patch, MagicMock
-from fastapi import HTTPException
+from datetime import datetime, timezone
 
 from src.utils.astronomy import get_sun_position
 
 
-def _mock_resp(status=200, body=None):
-    m = MagicMock()
-    m.status_code = status
-    m.json.return_value = body or {}
-    return m
+def test_returns_two_floats():
+    alt, az = get_sun_position(51.5, 0.0)
+    assert isinstance(alt, float)
+    assert isinstance(az, float)
 
 
-def test_get_sun_position_success_nested():
-    resp = _mock_resp(200, {"astronomy": {"sun_altitude": "45.5", "sun_azimuth": "180.0"}})
-    with patch("requests.get", return_value=resp):
-        alt, az = get_sun_position(51.0, 0.0, "2025-06-01", "12:00:00")
-    assert alt == 45.5
-    assert az == 180.0
+def test_altitude_in_valid_range():
+    alt, az = get_sun_position(51.5, 0.0)
+    assert -90.0 <= alt <= 90.0
 
 
-def test_get_sun_position_success_flat():
-    # Data at root level (no "astronomy" wrapper)
-    resp = _mock_resp(200, {"sun_altitude": "30.0", "sun_azimuth": "90.0"})
-    with patch("requests.get", return_value=resp):
-        alt, az = get_sun_position(51.0, 0.0, "2025-06-01", "09:00:00")
-    assert alt == 30.0
-    assert az == 90.0
+def test_azimuth_in_valid_range():
+    alt, az = get_sun_position(51.5, 0.0)
+    assert 0.0 <= az < 360.0
 
 
-def test_get_sun_position_api_error():
-    resp = _mock_resp(500)
-    with patch("requests.get", return_value=resp):
-        with pytest.raises(HTTPException) as exc:
-            get_sun_position(51.0, 0.0, "2025-06-01", "12:00:00")
-    assert exc.value.status_code == 502
+def test_sun_above_horizon_at_noon_london_summer():
+    # London, solar noon on June 21 — sun should be well above horizon
+    noon = datetime(2025, 6, 21, 12, 0, 0, tzinfo=timezone.utc)
+    alt, _ = get_sun_position(51.5, 0.0, noon)
+    assert alt > 30.0
 
 
-def test_get_sun_position_missing_keys():
-    resp = _mock_resp(200, {"astronomy": {}})
-    with patch("requests.get", return_value=resp):
-        with pytest.raises(HTTPException) as exc:
-            get_sun_position(51.0, 0.0, "2025-06-01", "12:00:00")
-    assert exc.value.status_code == 502
+def test_sun_below_horizon_at_midnight_london_winter():
+    # London at midnight in January — definitely dark
+    midnight = datetime(2025, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
+    alt, _ = get_sun_position(51.5, 0.0, midnight)
+    assert alt < 0.0
 
 
-def test_get_sun_position_bad_value_type():
-    resp = _mock_resp(200, {"astronomy": {"sun_altitude": None, "sun_azimuth": "90"}})
-    with patch("requests.get", return_value=resp):
-        with pytest.raises(HTTPException) as exc:
-            get_sun_position(51.0, 0.0, "2025-06-01", "12:00:00")
-    assert exc.value.status_code == 502
+def test_sun_above_horizon_at_noon_equator():
+    # Equator at noon UTC — sun should be very high
+    noon = datetime(2025, 3, 20, 12, 0, 0, tzinfo=timezone.utc)
+    alt, _ = get_sun_position(0.0, 0.0, noon)
+    assert alt > 60.0
+
+
+def test_default_dt_runs_without_error():
+    # Should not raise and return valid values using current UTC time
+    alt, az = get_sun_position(51.5, 0.0)
+    assert -90.0 <= alt <= 90.0
+    assert 0.0 <= az < 360.0
+
+
+def test_naive_dt_treated_as_utc():
+    naive = datetime(2025, 6, 21, 12, 0, 0)
+    aware = datetime(2025, 6, 21, 12, 0, 0, tzinfo=timezone.utc)
+    alt_naive, az_naive = get_sun_position(51.5, 0.0, naive)
+    alt_aware, az_aware = get_sun_position(51.5, 0.0, aware)
+    assert abs(alt_naive - alt_aware) < 0.001
+    assert abs(az_naive - az_aware) < 0.001

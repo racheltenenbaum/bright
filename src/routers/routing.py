@@ -47,20 +47,18 @@ def optimized_route(
 ):
     dt = datetime.fromisoformat(body.datetime)
     date_str = dt.strftime("%Y-%m-%d")
-    time_str = dt.strftime("%H:%M:%S")
 
     mid_lat = (body.start[0] + body.end[0]) / 2
     mid_lng = (body.start[1] + body.end[1]) / 2
+    sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng)
 
     all_coords = [body.start, body.end]
     s, w, n, e = _route_bbox(all_coords, padding_m=100)
 
-    # Fetch sun position, road network, and buildings in parallel
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        sun_future = pool.submit(get_sun_position, mid_lat, mid_lng, date_str, time_str)
+    # Fetch road network and buildings in parallel
+    with ThreadPoolExecutor(max_workers=2) as pool:
         road_future = pool.submit(fetch_osm_road_network, s, w, n, e)
         bldg_future = pool.submit(_fetch_buildings_for_bbox, s, w, n, e)
-        sun_altitude, sun_azimuth = sun_future.result()
         osm_data = road_future.result()
         buildings = bldg_future.result() if sun_altitude > 0 else []
 

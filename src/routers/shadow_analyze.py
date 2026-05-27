@@ -188,7 +188,7 @@ def shadow_analyze(
     date_str = dt.strftime("%Y-%m-%d")
     time_str = dt.strftime("%H:%M:%S")
 
-    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1], date_str, time_str)
+    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1])
 
     n = len(body.coordinates)
 
@@ -328,12 +328,8 @@ def shadow_analyze_batch(
 
     s, w, north, e = _route_bbox(all_coords)
 
-    # Astronomy and Overpass are independent — run them in parallel
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        sun_future = pool.submit(get_sun_position, mid[0], mid[1], date_str, time_str)
-        buildings_future = pool.submit(_fetch_buildings_for_bbox, s, w, north, e)
-        sun_altitude, sun_azimuth = sun_future.result()
-        buildings = buildings_future.result()
+    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1])
+    buildings = _fetch_buildings_for_bbox(s, w, north, e)
 
     if sun_altitude <= 0:
         return ShadowBatchResponse(

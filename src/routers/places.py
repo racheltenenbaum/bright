@@ -2,8 +2,7 @@ import json
 import os
 import sqlite3
 import threading
-import time
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -21,7 +20,6 @@ router = APIRouter(prefix="/places", tags=["places"])
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 GOOGLE_PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 GOOGLE_PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
-GOOGLE_TIMEZONE_URL = "https://maps.googleapis.com/maps/api/timezone/json"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 VALID_TYPES = {"cafe", "restaurant", "bar", "park"}
@@ -149,24 +147,6 @@ def _fetch_places_from_google(lat: float, lng: float, radius: int, place_type: s
     return []
 
 
-def _get_local_datetime(lat: float, lng: float) -> tuple[str, str]:
-    """Return (date_str, time_str) in the local timezone at (lat, lng)."""
-    timestamp = int(time.time())
-    tz_id = "UTC"
-    if GOOGLE_MAPS_API_KEY:
-        try:
-            resp = requests.get(
-                GOOGLE_TIMEZONE_URL,
-                params={"location": f"{lat},{lng}", "timestamp": timestamp, "key": GOOGLE_MAPS_API_KEY},
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                tz_id = resp.json().get("timeZoneId", "UTC")
-        except Exception:
-            pass
-    from datetime import datetime
-    dt = datetime.now(ZoneInfo(tz_id))
-    return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M:%S")
 
 
 class PlaceSearchRequest(BaseModel):
@@ -251,8 +231,7 @@ def check_place_sun(
     body: PlaceSunCheckRequest,
     current_user: User = Depends(get_current_user),
 ):
-    date_str, time_str = _get_local_datetime(body.lat, body.lng)
-    sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng, date_str, time_str)
+    sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng)
 
     if sun_altitude <= 0:
         return PlaceSunCheckResponse(is_sunny=False, sun_altitude=sun_altitude)
@@ -273,8 +252,7 @@ def search_places(
     body: PlaceSearchRequest,
     current_user: User = Depends(get_current_user),
 ):
-    date_str, time_str = _get_local_datetime(body.lat, body.lng)
-    sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng, date_str, time_str)
+    sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng)
 
     is_nighttime = sun_altitude <= 0
 
@@ -288,7 +266,8 @@ def search_places(
     else:
         buildings = []
 
-    local_hour = int(time_str.split(":")[0])
+    utc_now = datetime.now(timezone.utc)
+    local_hour = (utc_now.hour + body.lng / 15) % 24
     evening = local_hour >= 20
 
     # If bar is requested and it's evening, also fetch cafes and promote them to bar type
