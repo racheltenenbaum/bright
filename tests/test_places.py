@@ -229,6 +229,56 @@ def test_fetch_roads_api_exception_returns_empty():
 
 # ── Unit tests: _fetch_places_from_google ─────────────────────────────────────
 
+def test_fetch_places_passes_keyword_to_google():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"results": [GOOGLE_PLACE]}
+    with patch("src.routers.places.requests.get", return_value=mock_resp) as mock_get:
+        places_module._fetch_places_from_google(LAT, LNG, 500, "cafe", "pret")
+    assert mock_get.call_args[1]["params"]["keyword"] == "pret"
+
+
+def test_fetch_places_no_keyword_omits_param():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"results": [GOOGLE_PLACE]}
+    with patch("src.routers.places.requests.get", return_value=mock_resp) as mock_get:
+        places_module._fetch_places_from_google(LAT, LNG, 500, "cafe", None)
+    assert "keyword" not in mock_get.call_args[1]["params"]
+
+
+def test_keyword_search_returns_all_results_regardless_of_sun_shade(client, auth_headers):
+    """When keyword is set, both sunny and shaded places are returned (no preference filter)."""
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE, GOOGLE_PLACE_2]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places.is_point_shaded", side_effect=[False, True]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500,
+            "preference": "sun", "types": ["cafe"], "keyword": "pret"
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    places = response.json()["places"]
+    assert len(places) == 2
+    assert places[0]["is_sunny"] is True
+    assert places[1]["is_sunny"] is False
+
+
+def test_no_keyword_still_filters_by_preference(client, auth_headers):
+    """Without keyword, the original preference filter applies."""
+    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE, GOOGLE_PLACE_2]), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places.is_point_shaded", side_effect=[False, True]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        }, headers=auth_headers)
+    assert response.status_code == 200
+    places = response.json()["places"]
+    assert len(places) == 1
+    assert places[0]["is_sunny"] is True
+
+
 def test_fetch_places_from_google_success():
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -489,7 +539,7 @@ CAFE_LATE = {
 
 def _make_fetch(by_type: dict):
     """Return a side_effect callable that dispatches on place_type."""
-    def _fetch(lat, lng, radius, place_type):
+    def _fetch(lat, lng, radius, place_type, keyword=None):
         return by_type.get(place_type, [])
     return _fetch
 

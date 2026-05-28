@@ -139,6 +139,7 @@ export default function RouteMap() {
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
   const placeNameAutocompleteRef = useRef(null);
+  const placeNameSelectedRef = useRef(false);
   const locationBiasRef = useRef(null);
   const skipInitialPanRef = useRef(false);
   const autoCalculateRef = useRef(false);
@@ -877,7 +878,8 @@ export default function RouteMap() {
 
     try {
       const token = localStorage.getItem("token");
-      const body = { lat: center.lat, lng: center.lng, radius, preference, types: placeTypes };
+      const keyword = placeNameQuery.trim() || null;
+      const body = { lat: center.lat, lng: center.lng, radius, preference, types: placeTypes, ...(keyword && { keyword }) };
       let res = await api.post("/places/search", body, { headers: { Authorization: `Bearer ${token}` } });
       let places = res.data.places;
 
@@ -955,6 +957,7 @@ export default function RouteMap() {
   async function handlePlaceNameSearch() {
     const place = placeNameAutocompleteRef.current?.getPlace();
     if (!place?.geometry) return;
+    placeNameSelectedRef.current = true;
     const lat = place.geometry.location.lat();
     const lng = place.geometry.location.lng();
     const syntheticPlace = {
@@ -1019,6 +1022,7 @@ export default function RouteMap() {
       setPanelExpanded(false);
       setPlaceSaveSuccess(null);
       setPlaceNameQuery("");
+      placeNameSelectedRef.current = false;
     }
     setError(null);
     setMode(newMode);
@@ -1272,7 +1276,10 @@ export default function RouteMap() {
               type="text"
               placeholder="Search by name…"
               value={placeNameQuery}
-              onChange={(e) => setPlaceNameQuery(e.target.value)}
+              onChange={(e) => {
+                setPlaceNameQuery(e.target.value);
+                placeNameSelectedRef.current = false;
+              }}
             />
           </Autocomplete>
 
