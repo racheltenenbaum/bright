@@ -138,6 +138,7 @@ export default function RouteMap() {
   const weatherLocationRef = useRef(null);
   const startAutocompleteRef = useRef(null);
   const endAutocompleteRef = useRef(null);
+  const placeNameAutocompleteRef = useRef(null);
   const locationBiasRef = useRef(null);
   const skipInitialPanRef = useRef(false);
   const autoCalculateRef = useRef(false);
@@ -417,6 +418,7 @@ export default function RouteMap() {
         locationBiasRef.current = bias;
         startAutocompleteRef.current?.setBounds(bias);
         endAutocompleteRef.current?.setBounds(bias);
+        placeNameAutocompleteRef.current?.setBounds(bias);
       }
       if (currentLocationMarkerRef.current) {
         currentLocationMarkerRef.current.setPosition({ lat, lng });
@@ -875,8 +877,7 @@ export default function RouteMap() {
 
     try {
       const token = localStorage.getItem("token");
-      const keyword = placeNameQuery.trim() || null;
-      const body = { lat: center.lat, lng: center.lng, radius, preference, types: placeTypes, ...(keyword && { keyword }) };
+      const body = { lat: center.lat, lng: center.lng, radius, preference, types: placeTypes };
       let res = await api.post("/places/search", body, { headers: { Authorization: `Bearer ${token}` } });
       let places = res.data.places;
 
@@ -951,6 +952,31 @@ export default function RouteMap() {
     }
   }
 
+  async function handlePlaceNameSearch() {
+    const place = placeNameAutocompleteRef.current?.getPlace();
+    if (!place?.geometry) return;
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
+    const syntheticPlace = {
+      place_id: place.place_id,
+      name: place.name || place.formatted_address?.split(",")[0] || "",
+      address: place.formatted_address || "",
+      lat,
+      lng,
+      is_sunny: null,
+      type: null,
+      googleTypes: place.types || [],
+    };
+    clearPlaceMarkers();
+    renderPlaceMarkers([syntheticPlace]);
+    setSelectedPlace(syntheticPlace);
+    mapRef.current?.setCenter({ lat, lng });
+    mapRef.current?.setZoom(16);
+    const token = localStorage.getItem("token");
+    api.post("/places/sun-check", { lat, lng }, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => { setSelectedPlaceIsSunny(res.data.is_sunny); setPlacesSunAltitude(res.data.sun_altitude); })
+      .catch(() => {});
+  }
 
   function planRouteToPlace(place) {
     clearPlaceMarkers();
@@ -1238,12 +1264,17 @@ export default function RouteMap() {
       {mode === "places" && (
         <div style={{ marginBottom: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
           {/* Name search */}
-          <input
-            type="text"
-            placeholder="Search by name…"
-            value={placeNameQuery}
-            onChange={(e) => setPlaceNameQuery(e.target.value)}
-          />
+          <Autocomplete
+            onLoad={(a) => { placeNameAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
+            onPlaceChanged={handlePlaceNameSearch}
+          >
+            <input
+              type="text"
+              placeholder="Search by name…"
+              value={placeNameQuery}
+              onChange={(e) => setPlaceNameQuery(e.target.value)}
+            />
+          </Autocomplete>
 
           {/* Place type chips */}
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>

@@ -229,47 +229,6 @@ def test_fetch_roads_api_exception_returns_empty():
 
 # ── Unit tests: _fetch_places_from_google ─────────────────────────────────────
 
-def test_fetch_places_passes_keyword_to_google():
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"results": [GOOGLE_PLACE]}
-    with patch("src.routers.places.requests.get", return_value=mock_resp) as mock_get:
-        places_module._fetch_places_from_google(LAT, LNG, 500, "cafe", "pret")
-    params = mock_get.call_args[1]["params"]
-    assert params["keyword"] == "pret"
-
-
-def test_fetch_places_no_keyword_omits_param():
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"results": [GOOGLE_PLACE]}
-    with patch("src.routers.places.requests.get", return_value=mock_resp) as mock_get:
-        places_module._fetch_places_from_google(LAT, LNG, 500, "cafe", None)
-    params = mock_get.call_args[1]["params"]
-    assert "keyword" not in params
-
-
-def test_search_places_keyword_forwarded_to_fetch(client, auth_headers):
-    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]) as mock_fetch, \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
-        client.post("/places/search", json={
-            "lat": LAT, "lng": LNG, "radius": 500,
-            "preference": "sun", "types": ["cafe"], "keyword": "pret"
-        }, headers=auth_headers)
-    mock_fetch.assert_called_with(LAT, LNG, 500, "cafe", "pret")
-
-
-def test_search_places_no_keyword_passes_none(client, auth_headers):
-    with patch("src.routers.places.get_sun_position", return_value=SUN_UP), \
-         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]) as mock_fetch, \
-         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]):
-        client.post("/places/search", json={
-            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
-        }, headers=auth_headers)
-    mock_fetch.assert_called_with(LAT, LNG, 500, "cafe", None)
-
-
 def test_fetch_places_from_google_success():
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -530,7 +489,7 @@ CAFE_LATE = {
 
 def _make_fetch(by_type: dict):
     """Return a side_effect callable that dispatches on place_type."""
-    def _fetch(lat, lng, radius, place_type, keyword=None):
+    def _fetch(lat, lng, radius, place_type):
         return by_type.get(place_type, [])
     return _fetch
 
