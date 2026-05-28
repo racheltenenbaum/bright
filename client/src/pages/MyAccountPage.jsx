@@ -1,12 +1,16 @@
 import { useState } from "react";
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const MAP_PREVIEW_CENTERS = {
-  roadmap:   "center=51.505,-0.09&zoom=13&maptype=roadmap",
-  satellite: "center=40.7128,-74.006&zoom=13&maptype=satellite",
-  terrain:   "center=47.2,11.5&zoom=9&maptype=terrain",
+  roadmap: "center=51.505,-0.09&zoom=13&maptype=roadmap",
+  terrain: "center=47.2,11.5&zoom=9&maptype=terrain",
 };
+// Esri World Imagery: free, no API key, genuine satellite over Manhattan
+const SATELLITE_PREVIEW_URL =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=-74.02,40.69,-73.97,40.74&bboxSR=4326&size=200,120&format=png&f=image";
 const MAP_PREVIEW_URL = (type) =>
-  `https://maps.googleapis.com/maps/api/staticmap?${MAP_PREVIEW_CENTERS[type] ?? `center=51.505,-0.09&zoom=13&maptype=${type}`}&size=200x120&key=${MAPS_KEY}`;
+  type === "satellite"
+    ? SATELLITE_PREVIEW_URL
+    : `https://maps.googleapis.com/maps/api/staticmap?${MAP_PREVIEW_CENTERS[type] ?? `center=51.505,-0.09&zoom=13&maptype=${type}`}&size=200x120&key=${MAPS_KEY}`;
 const MAP_PREVIEW_FALLBACK = {
   roadmap:   "#f2efe9",
   satellite: "radial-gradient(ellipse at 40% 55%, #2a3a2a 0%, #1a2a1a 40%, transparent 70%), radial-gradient(ellipse at 75% 30%, #3a3028 0%, #28221a 40%, transparent 65%), linear-gradient(160deg, #0e1a0e 0%, #1a2814 40%, #2a2a1e 70%, #141e10 100%)",
