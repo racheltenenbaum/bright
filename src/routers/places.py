@@ -124,21 +124,20 @@ def _fetch_roads_for_bbox(s: float, w: float, n: float, e: float) -> list:
     return []
 
 
-def _fetch_places_from_google(lat: float, lng: float, radius: int, place_type: str) -> list:
+def _fetch_places_from_google(lat: float, lng: float, radius: int, place_type: str, keyword: str | None = None) -> list:
     if not GOOGLE_MAPS_API_KEY:
         return []
     try:
-        resp = requests.get(
-            GOOGLE_PLACES_URL,
-            params={
-                "location": f"{lat},{lng}",
-                "radius": radius,
-                "type": place_type,
-                "opennow": "true",
-                "key": GOOGLE_MAPS_API_KEY,
-            },
-            timeout=10,
-        )
+        params = {
+            "location": f"{lat},{lng}",
+            "radius": radius,
+            "type": place_type,
+            "opennow": "true",
+            "key": GOOGLE_MAPS_API_KEY,
+        }
+        if keyword:
+            params["keyword"] = keyword
+        resp = requests.get(GOOGLE_PLACES_URL, params=params, timeout=10)
         if resp.status_code == 200:
             results = resp.json().get("results", [])
             return [r for r in results if not _EXCLUDE_TYPES.intersection(r.get("types", []))]
@@ -155,6 +154,7 @@ class PlaceSearchRequest(BaseModel):
     radius: int = 500
     preference: str
     types: list[str]
+    keyword: str | None = None
 
     @field_validator("preference")
     @classmethod
@@ -279,7 +279,7 @@ def search_places(
     seen: dict[str, str] = {}  # place_id → assigned type
     raw_places: list[tuple[dict, str]] = []  # (raw_place, assigned_type)
     for fetch_type, assigned_type in types_to_fetch:
-        for raw in _fetch_places_from_google(body.lat, body.lng, body.radius, fetch_type):
+        for raw in _fetch_places_from_google(body.lat, body.lng, body.radius, fetch_type, body.keyword):
             pid = raw.get("place_id", "")
             if pid and pid not in seen:
                 seen[pid] = assigned_type
