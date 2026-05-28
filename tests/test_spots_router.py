@@ -237,3 +237,81 @@ def test_update_spot_city(client, auth_headers, test_user, db):
     )
     assert response.status_code == 200
     assert response.json()["city"] == "Manchester"
+
+
+def test_share_spot_generates_token(client, auth_headers, test_user, db):
+    spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", city="London", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    response = client.post(f"/spots/{spot.id}/share", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert "share_token" in data
+    assert len(data["share_token"]) > 0
+
+
+def test_share_spot_idempotent(client, auth_headers, test_user, db):
+    spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", city="London", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    r1 = client.post(f"/spots/{spot.id}/share", headers=auth_headers)
+    r2 = client.post(f"/spots/{spot.id}/share", headers=auth_headers)
+    assert r1.json()["share_token"] == r2.json()["share_token"]
+
+
+def test_share_spot_unauthenticated(client, test_user, db):
+    spot = Spot(name="Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", city="London", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    response = client.post(f"/spots/{spot.id}/share")
+    assert response.status_code == 401
+
+
+def test_share_spot_wrong_user(client, db):
+    from src.auth import create_access_token
+    from src.models import User
+    import bcrypt
+
+    other = User(first_name="Other", email="othershare@example.com",
+                 hashed_password=bcrypt.hashpw(b"pass", bcrypt.gensalt()).decode())
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+
+    spot = Spot(name="Not Yours", address="St", lat=51.5, lng=-0.1,
+                icon="faHouse", city="London", user_id=other.id)
+    db.add(spot)
+    db.commit()
+
+    headers = {"Authorization": f"Bearer {create_access_token(other.id + 999)}"}
+    response = client.post(f"/spots/{spot.id}/share", headers=headers)
+    assert response.status_code in (401, 404)
+
+
+def test_get_shared_spot_public(client, test_user, db):
+    spot = Spot(name="My Café", address="Bean St", lat=51.5, lng=-0.1,
+                icon="faMugHot", city="London", description="Great coffee",
+                share_token="spot-test-token-abc", user_id=test_user.id)
+    db.add(spot)
+    db.commit()
+
+    response = client.get("/share/spot/spot-test-token-abc")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "My Café"
+    assert data["address"] == "Bean St"
+    assert data["lat"] == 51.5
+    assert data["icon"] == "faMugHot"
+    assert data["description"] == "Great coffee"
+    assert data["city"] == "London"
+
+
+def test_get_shared_spot_not_found(client):
+    response = client.get("/share/spot/nonexistent-token")
+    assert response.status_code == 404

@@ -385,12 +385,17 @@ export default function MySpotsPage() {
   }
 
   async function shareSpot(spot) {
-    const url = `https://maps.google.com/?q=${spot.lat},${spot.lng}`;
+    const authToken = localStorage.getItem("token");
+    const res = await api.post(`/spots/${spot.id}/share`, {}, { headers: { Authorization: `Bearer ${authToken}` } });
+    const shareToken = res.data.share_token;
+    const appBase = import.meta.env.VITE_APP_URL || window.location.origin;
+    const brightUrl = `${appBase}/share/spot/${shareToken}`;
+    const mapsUrl = `https://maps.google.com/?q=${spot.lat},${spot.lng}`;
     const canShare = (await Share.canShare()).value;
     if (canShare) {
-      await Share.share({ title: spot.name, text: `Check out ${spot.name}!`, url, dialogTitle: "Share spot" });
+      await Share.share({ title: spot.name, text: `${spot.name} — ${mapsUrl}`, url: brightUrl, dialogTitle: "Share spot" });
     } else {
-      await navigator.clipboard.writeText(`${spot.name} — ${url}`);
+      await navigator.clipboard.writeText(brightUrl);
     }
   }
 

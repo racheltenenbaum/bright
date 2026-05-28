@@ -55,5 +55,7 @@ class Spot(Base):
     city = Column(String(255), nullable=False, server_default="")
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    share_token = Column(String(36), nullable=True, unique=True, index=True)
+
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="spots")
