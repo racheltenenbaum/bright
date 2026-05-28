@@ -17,8 +17,7 @@ function staticMapUrl(lat, lng) {
 }
 
 function googleMapsUrl(spot) {
-  if (spot.place_id) return `https://www.google.com/maps/place/?q=place_id:${spot.place_id}`;
-  return `https://maps.google.com/?q=${spot.lat},${spot.lng}`;
+  return `https://www.google.com/maps?q=${spot.lat},${spot.lng}`;
 }
 
 export default function SharedSpotPage() {
@@ -91,17 +90,14 @@ export default function SharedSpotPage() {
             <p style={{ margin: 0, color: "var(--color-subtext)", fontSize: "0.88em" }}>{spot.description}</p>
           )}
 
-          <a
-            href={googleMapsUrl(spot)}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ textDecoration: "none" }}
+          <button
+            className="btn-outline"
+            onClick={() => window.open(googleMapsUrl(spot), "_blank", "noopener,noreferrer")}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", fontSize: "0.88em" }}
           >
-            <button className="btn-outline" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "7px", fontSize: "0.88em" }}>
-              <FontAwesomeIcon icon={faLocationDot} />
-              Open in Google Maps
-            </button>
-          </a>
+            <FontAwesomeIcon icon={faLocationDot} />
+            Open in Google Maps
+          </button>
         </div>
       </div>
 
