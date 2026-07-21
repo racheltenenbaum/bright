@@ -175,6 +175,7 @@ export default function RouteMap() {
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
   const [planning, setPlanning] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [mapCenter, setMapCenter] = useState(null);
   const [weather, setWeather] = useState(null);
   const [mapHeading, setMapHeading] = useState(0);
 
@@ -307,6 +308,11 @@ export default function RouteMap() {
 
     mapRef.current.addListener("heading_changed", () => {
       setMapHeading(mapRef.current.getHeading() || 0);
+    });
+
+    mapRef.current.addListener("idle", () => {
+      const c = mapRef.current.getCenter();
+      setMapCenter({ lat: c.lat(), lng: c.lng() });
     });
 
     // Two-finger rotation gesture — only fires setHeading when rotation arc dominates
@@ -1132,7 +1138,7 @@ export default function RouteMap() {
         >
           <div style={{ position: "relative" }}>
             <Autocomplete
-              onLoad={(a) => { startAutocompleteRef.current = a; }}
+              onLoad={(a) => { startAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
               onPlaceChanged={() => handlePlaceSelected("start")}
             >
               <input
@@ -1147,10 +1153,34 @@ export default function RouteMap() {
                   setRouteSaved(false);
                 }}
                 placeholder="Start address (or click map)"
-                style={currentLocation && !start ? { paddingRight: "118px" } : undefined}
+                style={
+                  startAddress
+                    ? { paddingRight: "28px" }
+                    : currentLocation && !start
+                    ? { paddingRight: "118px" }
+                    : undefined
+                }
               />
             </Autocomplete>
-            {currentLocation && !start && (
+            {startAddress ? (
+              <button
+                onClick={() => {
+                  setStartAddress("");
+                  setStart(null);
+                  clearPolylines(polylinesRef);
+                  setSunData(null);
+                  setSavedRouteName(null);
+                  setRouteSaved(false);
+                }}
+                style={{
+                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", cursor: "pointer",
+                  color: colors.subtext, fontSize: "15px", padding: "2px 4px", lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
+            ) : currentLocation && !start && (
               <button
                 onClick={async () => {
                   const geocoder = new window.google.maps.Geocoder();
@@ -1174,61 +1204,120 @@ export default function RouteMap() {
               </button>
             )}
           </div>
-          <Autocomplete
-            onLoad={(a) => {
-              endAutocompleteRef.current = a;
-            }}
-            onPlaceChanged={() => handlePlaceSelected("end")}
-          >
-            <input
-              type="text"
-              value={endAddress}
-              onChange={(e) => {
-                setEndAddress(e.target.value);
-                setSavedRouteName(null);
-                setRouteSaved(false);
-              }}
-              placeholder="End address (or click map)"
-            />
-          </Autocomplete>
-        </div>
-        {/* Spot chips — shown when start or end is empty */}
-        {spots.length > 0 && (!start || !end) && !sunData && (
-          <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px" }}>
-            {spots.map((spot) => (
+          <div style={{ position: "relative" }}>
+            <Autocomplete
+              onLoad={(a) => { endAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
+              onPlaceChanged={() => handlePlaceSelected("end")}
+            >
+              <input
+                type="text"
+                value={endAddress}
+                onChange={(e) => {
+                  setEndAddress(e.target.value);
+                  setSavedRouteName(null);
+                  setRouteSaved(false);
+                }}
+                placeholder="End address (or click map)"
+                style={
+                  endAddress
+                    ? { paddingRight: "28px" }
+                    : currentLocation && !end
+                    ? { paddingRight: "118px" }
+                    : undefined
+                }
+              />
+            </Autocomplete>
+            {endAddress ? (
               <button
-                key={spot.id}
                 onClick={() => {
-                  const coords = { lat: spot.lat, lng: spot.lng };
-                  if (!start) {
-                    setStart(coords);
-                    setStartAddress(spot.address);
-                    clearPolylines(polylinesRef);
-                    setSunData(null);
-                    setSavedRouteName(null);
-                    setRouteSaved(false);
-                  } else {
-                    setEnd(coords);
-                    setEndAddress(spot.address);
-                    setSavedRouteName(null);
-                    setRouteSaved(false);
-                  }
-                  mapRef.current?.panTo(coords);
+                  setEndAddress("");
+                  setEnd(null);
+                  clearPolylines(polylinesRef);
+                  setSunData(null);
+                  setSavedRouteName(null);
+                  setRouteSaved(false);
                 }}
                 style={{
-                  display: "flex", alignItems: "center", gap: "5px",
-                  padding: "4px 10px", borderRadius: "999px", whiteSpace: "nowrap",
-                  fontSize: "0.75em", fontWeight: 700,
-                  background: colors.accentGlow, border: `1.5px solid ${colors.accentFaint}`,
-                  color: colors.text, flexShrink: 0, boxShadow: "none",
+                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", cursor: "pointer",
+                  color: colors.subtext, fontSize: "15px", padding: "2px 4px", lineHeight: 1,
                 }}
               >
-                <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ fontSize: "11px" }} />
-                {spot.name}
+                ×
               </button>
-            ))}
+            ) : currentLocation && !end && (
+              <button
+                onClick={async () => {
+                  const geocoder = new window.google.maps.Geocoder();
+                  const result = await geocoder.geocode({ location: currentLocation });
+                  const address = result.results[0]?.formatted_address || "My location";
+                  setEnd(currentLocation);
+                  setEndAddress(address);
+                  clearPolylines(polylinesRef);
+                  setSunData(null);
+                  setSavedRouteName(null);
+                  setRouteSaved(false);
+                }}
+                style={{
+                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
+                  fontSize: "10px", padding: "2px 7px", display: "flex", alignItems: "center",
+                  gap: "4px", background: colors.accentGlow, border: `1.5px solid ${colors.accent}`,
+                  color: colors.subtext, fontWeight: 700, whiteSpace: "nowrap",
+                }}
+              >
+                <FontAwesomeIcon icon={faLocationCrosshairs} /> Use my location
+              </button>
+            )}
           </div>
-        )}
+        </div>
+        {/* Spot chips — shown when start or end is empty, filtered to map region */}
+        {(() => {
+          if (!spots.length || (start && end) || sunData) return null;
+          const nearbySpots = mapCenter
+            ? spots.filter((s) => {
+                const dlat = (s.lat - mapCenter.lat) * 111;
+                const dlng = (s.lng - mapCenter.lng) * 111 * Math.cos((mapCenter.lat * Math.PI) / 180);
+                return Math.sqrt(dlat * dlat + dlng * dlng) < 800;
+              })
+            : spots;
+          if (!nearbySpots.length) return null;
+          return (
+            <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px" }}>
+              {nearbySpots.map((spot) => (
+                <button
+                  key={spot.id}
+                  onClick={() => {
+                    const coords = { lat: spot.lat, lng: spot.lng };
+                    if (!start) {
+                      setStart(coords);
+                      setStartAddress(spot.address);
+                      clearPolylines(polylinesRef);
+                      setSunData(null);
+                      setSavedRouteName(null);
+                      setRouteSaved(false);
+                    } else {
+                      setEnd(coords);
+                      setEndAddress(spot.address);
+                      setSavedRouteName(null);
+                      setRouteSaved(false);
+                    }
+                    mapRef.current?.panTo(coords);
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "5px",
+                    padding: "4px 10px", borderRadius: "999px", whiteSpace: "nowrap",
+                    fontSize: "0.75em", fontWeight: 700,
+                    background: colors.accentGlow, border: `1.5px solid ${colors.accentFaint}`,
+                    color: colors.text, flexShrink: 0, boxShadow: "none",
+                  }}
+                >
+                  <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ fontSize: "11px" }} />
+                  {spot.name}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         {/* Plan Route row — below inputs, right-aligned */}
         {!planning && start && end && !sunData && (
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
