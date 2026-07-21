@@ -65,7 +65,7 @@ export default function AboutPage() {
   const [hovered, setHovered] = useState(null);
 
   return (
-    <div style={{ maxWidth: "560px", margin: "0 auto", padding: "28px 16px 56px" }}>
+    <div className="page-container" style={{ maxWidth: "560px", margin: "0 auto", padding: "28px 16px 56px" }}>
 
       {/* Hero */}
       <div style={{ textAlign: "center", marginBottom: "36px" }}>

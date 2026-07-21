@@ -9,7 +9,11 @@ import requests
 
 from src.shadow import is_point_shaded
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 SUN_PENALTY = 1.5
 EXCLUDED_HIGHWAY_TYPES = {"motorway", "trunk", "motorway_link", "trunk_link"}
 
@@ -92,20 +96,21 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
         f'service|unclassified|tertiary|secondary|primary|cycleway|steps|track)$"]'
         f'({s},{w},{n},{e}););out body;>;out skel qt;'
     )
-    try:
-        resp = requests.post(
-            OVERPASS_URL,
-            data=query,
-            headers={"User-Agent": "bright-app/1.0"},
-            timeout=30,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            _road_cache[key] = data
-            _road_sqlite_set(key, data)
-            return data
-    except Exception:
-        pass
+    for url in OVERPASS_URLS:
+        try:
+            resp = requests.post(
+                url,
+                data=query,
+                headers={"User-Agent": "bright-app/1.0"},
+                timeout=30,
+            )
+            if resp.status_code == 200 and resp.json().get("elements") is not None:
+                data = resp.json()
+                _road_cache[key] = data
+                _road_sqlite_set(key, data)
+                return data
+        except Exception:
+            continue
     return {"elements": []}
 
 

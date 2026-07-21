@@ -23,7 +23,11 @@ MAX_SUN_ALT_FOR_TERRAIN_DEG: float = 25.0
 router = APIRouter(prefix="/sun", tags=["sun"])
 
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 GOOGLE_ELEVATION_URL = "https://maps.googleapis.com/maps/api/elevation/json"
 
 # L1: in-memory cache (fast, lost on restart)
@@ -90,6 +94,7 @@ class ShadowAnalyzeResponse(BaseModel):
     sun_azimuth: float
     date: str
     segments: list[SegmentResult]
+    shadow_available: bool = True
 
 
 def _bbox_key(s: float, w: float, n: float, e: float) -> str:
@@ -108,20 +113,21 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list:
         return cached
 
     query = f"[out:json][timeout:25];(way[\"building\"]({s},{w},{n},{e}););out body;>;out skel qt;"
-    try:
-        resp = requests.post(
-            OVERPASS_URL,
-            data=query,
-            headers={"User-Agent": "bright-app/1.0"},
-            timeout=25,
-        )
-        if resp.status_code == 200:
-            buildings = extract_buildings_from_overpass(resp.json())
-            _overpass_cache[key] = buildings
-            _sqlite_set(key, buildings)
-            return buildings
-    except Exception:
-        pass
+    for url in OVERPASS_URLS:
+        try:
+            resp = requests.post(
+                url,
+                data=query,
+                headers={"User-Agent": "bright-app/1.0"},
+                timeout=25,
+            )
+            if resp.status_code == 200 and resp.json().get("elements") is not None:
+                buildings = extract_buildings_from_overpass(resp.json())
+                _overpass_cache[key] = buildings
+                _sqlite_set(key, buildings)
+                return buildings
+        except Exception:
+            continue
     return []
 
 
@@ -202,6 +208,7 @@ def shadow_analyze(
 
     s, w, north, e = _route_bbox(body.coordinates)
     buildings = _fetch_buildings_for_bbox(s, w, north, e)
+    shadow_available = len(buildings) > 0
 
     samples = _sample_coords(body.coordinates, target=25)
     sample_coords_list = [(lat, lng) for _, lat, lng in samples]
@@ -224,6 +231,7 @@ def shadow_analyze(
         sun_azimuth=sun_azimuth,
         date=date_str,
         segments=segments,
+        shadow_available=shadow_available,
     )
 
 

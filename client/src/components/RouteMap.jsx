@@ -689,10 +689,10 @@ export default function RouteMap() {
         { coordinates: waypoints, datetime },
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      const { sun_altitude, sun_azimuth, date, segments } = shadowRes.data;
+      const { sun_altitude, sun_azimuth, date, segments, shadow_available } = shadowRes.data;
 
       setRouteStats(formatRouteStats(waypoints));
-      setSunData({ sun_altitude, sun_azimuth, date });
+      setSunData({ sun_altitude, sun_azimuth, date, shadow_available });
       setPlacesSunAltitude(sun_altitude);
       setRouteCoords(waypoints);
       setRouteSegments(segments);
@@ -1470,6 +1470,26 @@ export default function RouteMap() {
             style={{ color: "#C0392B", fontWeight: 700, fontSize: "0.88em" }}
           >
             {error}
+          </span>
+        </div>
+      )}
+
+      {sunData && sunData.shadow_available === false && (
+        <div
+          style={{
+            marginBottom: "8px",
+            padding: "8px 14px",
+            borderRadius: "12px",
+            background: isNighttime ? colors.surface : "#FFFBEA",
+            border: "2px solid #F0B429",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#F0B429", fontSize: "1em" }} />
+          <span style={{ color: "#7D5A00", fontWeight: 700, fontSize: "0.82em" }}>
+            Shadow data unavailable right now - route shown without sun/shade info
           </span>
         </div>
       )}

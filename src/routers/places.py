@@ -20,7 +20,11 @@ router = APIRouter(prefix="/places", tags=["places"])
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 GOOGLE_PLACES_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
 GOOGLE_PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 
 VALID_TYPES = {"cafe", "restaurant", "bar", "park"}
 
@@ -107,20 +111,21 @@ def _fetch_roads_for_bbox(s: float, w: float, n: float, e: float) -> list:
         f"|footway|cycleway|service|track|path|steps\"]({s},{w},{n},{e}););"
         f"out body;>;out skel qt;"
     )
-    try:
-        resp = requests.post(
-            OVERPASS_URL,
-            data=query,
-            headers={"User-Agent": "bright-app/1.0"},
-            timeout=25,
-        )
-        if resp.status_code == 200:
-            roads = extract_roads_from_overpass(resp.json())
-            _road_cache[key] = roads
-            _road_sqlite_set(key, roads)
-            return roads
-    except Exception:
-        pass
+    for url in OVERPASS_URLS:
+        try:
+            resp = requests.post(
+                url,
+                data=query,
+                headers={"User-Agent": "bright-app/1.0"},
+                timeout=25,
+            )
+            if resp.status_code == 200 and resp.json().get("elements") is not None:
+                roads = extract_roads_from_overpass(resp.json())
+                _road_cache[key] = roads
+                _road_sqlite_set(key, roads)
+                return roads
+        except Exception:
+            continue
     return []
 
 
