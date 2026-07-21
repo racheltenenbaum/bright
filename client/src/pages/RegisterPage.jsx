@@ -33,7 +33,7 @@ export default function RegisterPage() {
     try {
       const res = await api.post("/users/register", form);
       login(res.data.user, res.data.access_token);
-      navigate("/plan");
+      navigate("/about");
     } catch (err) {
       setError(err.response?.data?.detail || "Something went wrong");
     }

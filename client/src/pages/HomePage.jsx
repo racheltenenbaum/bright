@@ -1,7 +1,7 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faStar } from "@fortawesome/free-solid-svg-icons";
+import { faStar, faCircleInfo } from "@fortawesome/free-solid-svg-icons";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -24,19 +24,29 @@ export default function HomePage() {
         lineHeight: 1.7,
         fontWeight: 600,
       }}>
-        Find routes in the sunshine — or the shade.
+        Find routes in the sunshine - or the shade.
       </p>
       {isAuthenticated ? (
-        <button onClick={() => navigate("/plan")} style={{ fontSize: "1.05em", padding: "0.65em 2.4em" }}>
-          to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
-        </button>
-      ) : (
-        <div style={{ display: "flex", gap: "14px" }}>
-          <Link to="/login">
-            <button style={{ fontSize: "1em", padding: "0.65em 2em" }}>Log in</button>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+          <button onClick={() => navigate("/plan")} style={{ fontSize: "1.05em", padding: "0.65em 2.4em" }}>
+            to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
+          </button>
+          <Link to="/about" style={{ fontSize: "0.85em", color: "var(--color-subtext)", fontWeight: 600 }}>
+            <FontAwesomeIcon icon={faCircleInfo} style={{ marginRight: "5px" }} />About bright
           </Link>
-          <Link to="/register">
-            <button className="btn-outline" style={{ fontSize: "1em", padding: "0.65em 2em" }}>Register</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px" }}>
+          <div style={{ display: "flex", gap: "14px" }}>
+            <Link to="/login">
+              <button style={{ fontSize: "1em", padding: "0.65em 2em" }}>Log in</button>
+            </Link>
+            <Link to="/register">
+              <button className="btn-outline" style={{ fontSize: "1em", padding: "0.65em 2em" }}>Register</button>
+            </Link>
+          </div>
+          <Link to="/about" style={{ fontSize: "0.85em", color: "var(--color-subtext)", fontWeight: 600 }}>
+            <FontAwesomeIcon icon={faCircleInfo} style={{ marginRight: "5px" }} />About bright
           </Link>
         </div>
       )}

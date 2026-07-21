@@ -393,7 +393,7 @@ export default function MySpotsPage() {
     const mapsUrl = `https://maps.google.com/?q=${spot.lat},${spot.lng}`;
     const canShare = (await Share.canShare()).value;
     if (canShare) {
-      await Share.share({ title: spot.name, text: `${spot.name} — ${mapsUrl}`, url: brightUrl, dialogTitle: "Share spot" });
+      await Share.share({ title: spot.name, text: `${spot.name} - ${mapsUrl}`, url: brightUrl, dialogTitle: "Share spot" });
     } else {
       await navigator.clipboard.writeText(brightUrl);
     }

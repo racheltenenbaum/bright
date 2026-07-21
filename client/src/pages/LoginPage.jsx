@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faStar } from "@fortawesome/free-solid-svg-icons";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -19,7 +21,7 @@ export default function LoginPage() {
     try {
       const res = await api.post("/users/login", form);
       login(res.data.user, res.data.access_token);
-      navigate("/");
+      navigate("/plan");
     } catch (err) {
       setError(err.response?.data?.detail || "Something went wrong");
     }
@@ -29,7 +31,7 @@ export default function LoginPage() {
     <div className="page-container" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
       <div className="auth-card">
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <img src="/logo.gif" alt="bright" style={{ height: "60px", marginBottom: "8px" }} />
+          <Link to="/"><img src="/logo.gif" alt="bright" style={{ height: "60px", marginBottom: "8px", cursor: "pointer" }} /></Link>
           <h2 style={{ margin: 0, fontSize: "1.5em" }}>Welcome back</h2>
         </div>
         <form onSubmit={handleSubmit}>
@@ -43,7 +45,7 @@ export default function LoginPage() {
           </div>
           {error && <p style={{ color: "#C0392B", margin: "0 0 12px", fontSize: "0.85em" }}>{error}</p>}
           <button type="submit" style={{ width: "100%", padding: "0.65em", fontSize: "0.95em", marginTop: "6px" }}>
-            Log in
+            to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
           </button>
         </form>
         <p style={{ margin: "18px 0 0", textAlign: "center", fontSize: "0.88em", color: "var(--color-subtext)" }}>

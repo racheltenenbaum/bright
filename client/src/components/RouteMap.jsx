@@ -667,7 +667,7 @@ export default function RouteMap() {
         });
         if (!result.routes?.length) throw new Error("No route found");
         if (result.routes[0].legs[0].distance.value > 5000) {
-          setError("Route is over 5 km — please choose a shorter journey.");
+          setError("Route is over 5 km - please choose a shorter journey.");
           return;
         }
         waypoints = result.routes[0].overview_path.map((p) => [p.lat(), p.lng()]);
@@ -679,7 +679,7 @@ export default function RouteMap() {
         return sum + haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], pt[0], pt[1]);
       }, 0);
       if (distKm > 5) {
-        setError("Route is over 5 km — please choose a shorter journey.");
+        setError("Route is over 5 km - please choose a shorter journey.");
         return;
       }
 
@@ -778,7 +778,7 @@ export default function RouteMap() {
       if (canShare) {
         await Share.share({ title: place.name, text: `Check out ${place.name}!`, url, dialogTitle: "Share place" });
       } else {
-        await navigator.clipboard.writeText(`${place.name} — ${url}`);
+        await navigator.clipboard.writeText(`${place.name} - ${url}`);
         setSharePlaceCopied(true);
         setTimeout(() => setSharePlaceCopied(false), 2000);
       }

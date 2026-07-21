@@ -68,6 +68,7 @@ export default function Navbar() {
               { label: "Routes", path: "/my-routes" },
               { label: "Spots", path: "/my-spots" },
               { label: "My Account", path: "/my-account" },
+              { label: "About", path: "/about" },
             ].map(({ label, path }) => (
               <button
                 key={path}

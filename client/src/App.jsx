@@ -13,6 +13,7 @@ const MyAccountPage = lazy(() => import("./pages/MyAccountPage"));
 const MySpotsPage = lazy(() => import("./pages/MySpotsPage"));
 const SharedRoutePage = lazy(() => import("./pages/SharedRoutePage"));
 const SharedSpotPage = lazy(() => import("./pages/SharedSpotPage"));
+const AboutPage = lazy(() => import("./pages/AboutPage"));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -68,6 +69,7 @@ function Layout() {
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/share/spot/:token" element={<SharedSpotPage />} />
             <Route path="/share/:token" element={<SharedRoutePage />} />
             <Route path="/login" element={<LoginPage />} />
