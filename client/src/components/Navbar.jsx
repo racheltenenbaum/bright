@@ -28,8 +28,6 @@ export default function Navbar() {
   return (
     <nav style={{ flexShrink: 0, background: "var(--color-bg)", transition: "background-color 0.3s" }}>
       <div style={{
-        maxWidth: "700px",
-        margin: "0 auto",
         padding: "10px 16px",
         display: "flex",
         justifyContent: "space-between",
@@ -85,7 +83,7 @@ export default function Navbar() {
               </button>
             ))}
             <button
-              onClick={() => { setOpen(false); logout(); }}
+              onClick={() => { setOpen(false); logout(); navigate("/"); }}
               style={{
                 display: "block", width: "100%", textAlign: "left",
                 background: "none", border: "none", boxShadow: "none",

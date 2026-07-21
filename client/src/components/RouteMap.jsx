@@ -180,6 +180,7 @@ export default function RouteMap() {
   const [mapHeading, setMapHeading] = useState(0);
 
   const [spots, setSpots] = useState([]);
+  const [savedRoutes, setSavedRoutes] = useState([]);
   const [mode, setMode] = useState("route");
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
   const [placesSearching, setPlacesSearching] = useState(false);
@@ -240,6 +241,14 @@ export default function RouteMap() {
     if (!token) return;
     api.get("/spots", { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => setSpots(res.data))
+      .catch(() => {});
+  }, []);
+
+  // Fetch saved routes for quick-access in panel
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    api.get("/routes", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => setSavedRoutes(r.data))
       .catch(() => {});
   }, []);
 
@@ -1034,6 +1043,27 @@ export default function RouteMap() {
     setMode(newMode);
   }
 
+  function loadSavedRoute(route) {
+    clearPolylines(polylinesRef);
+    setSunData(null);
+    setSaveForm(null);
+    setSaveError(null);
+    setError(null);
+    setRouteStats(null);
+    setRouteCoords(null);
+    setRouteSegments(null);
+    setRouteSaved(true);
+    setSavedRouteName(route.name);
+    setSavedRouteId(route.id);
+    if (route.preference) setPreference(route.preference);
+    setStart({ lat: route.start_lat, lng: route.start_lng });
+    setEnd({ lat: route.end_lat, lng: route.end_lng });
+    setStartAddress(route.start_address || "");
+    setEndAddress(route.end_address || "");
+    autoCalculateRef.current = true;
+    mapRef.current?.panTo({ lat: route.start_lat, lng: route.start_lng });
+  }
+
   function reset() {
     setStart(null);
     setEnd(null);
@@ -1066,7 +1096,8 @@ export default function RouteMap() {
   if (!isLoaded) return <p>Loading map...</p>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div className="route-container">
+      <div className="route-panel">
       {/* Mode tabs: Plan Route | Find Places */}
       <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
         {["route", "places"].map((m) => (
@@ -1174,7 +1205,7 @@ export default function RouteMap() {
                 }}
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
-                  background: "none", border: "none", cursor: "pointer",
+                  background: "none", border: "none", boxShadow: "none", cursor: "pointer",
                   color: colors.subtext, fontSize: "15px", padding: "2px 4px", lineHeight: 1,
                 }}
               >
@@ -1239,7 +1270,7 @@ export default function RouteMap() {
                 }}
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
-                  background: "none", border: "none", cursor: "pointer",
+                  background: "none", border: "none", boxShadow: "none", cursor: "pointer",
                   color: colors.subtext, fontSize: "15px", padding: "2px 4px", lineHeight: 1,
                 }}
               >
@@ -1318,6 +1349,43 @@ export default function RouteMap() {
             </div>
           );
         })()}
+        {/* Saved routes — quick access when panel is otherwise empty */}
+        {mode === "route" && !sunData && savedRoutes.length > 0 && (
+          <div style={{ marginTop: "6px" }}>
+            <p style={{ margin: "0 0 8px", fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.subtext }}>
+              Saved routes
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {savedRoutes.slice(0, 5).map((route) => {
+                const distKm = currentLocation
+                  ? haversineKm(currentLocation.lat, currentLocation.lng, route.start_lat, route.start_lng)
+                  : null;
+                const distText = distKm == null ? null
+                  : distKm >= 1 ? `${distKm.toFixed(1)} km away`
+                  : `${Math.round(distKm * 1000)} m away`;
+                return (
+                  <button
+                    key={route.id}
+                    onClick={() => loadSavedRoute(route)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "10px 14px", borderRadius: "12px", width: "100%",
+                      background: colors.surface, border: `1.5px solid ${colors.accentFaint}`,
+                      color: colors.text, textAlign: "left", boxShadow: "none",
+                      fontSize: "0.85em", fontWeight: 700, gap: "8px", cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {route.name}
+                    </span>
+                    {distText && <span style={{ fontSize: "0.8em", color: colors.subtext, flexShrink: 0 }}>{distText}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Plan Route row — below inputs, right-aligned */}
         {!planning && start && end && !sunData && (
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -1493,9 +1561,10 @@ export default function RouteMap() {
           </span>
         </div>
       )}
+      </div>
 
       {/* Map — fills remaining height */}
-      <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+      <div className="route-map" style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
           {currentLocation && (
