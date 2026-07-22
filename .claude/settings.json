@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)"
+      "Bash(*)",
+      "Bash(npm --prefix /Users/racheltenenbaum/projects/bright/client run dev)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(npm run *)",
+      "Bash(npx cap *)",
+      "Bash(pkill -9 -f vite)",
+      "Bash(python -m pytest tests/test_routing.py tests/test_shadow.py -q)",
+      "Bash(curl -s --max-time 10 \"https://overpass-api.de/api/status\")",
+      "Bash(curl -s --max-time 10 -X POST https://overpass-api.de/api/interpreter -d '[out:json][timeout:5];\\(way[\"building\"]\\(51.50,-0.13,51.52,-0.11\\);\\);out count;')",
+      "Bash(python -m pytest tests/ -q)",
+      "Skill(schedule)",
+      "Skill(schedule:*)",
+      "Bash(awk -F: '{sum+=$2; print} END {print \"TOTAL:\", sum}')",
+      "Bash(git commit *)"
     ]
   }
 }

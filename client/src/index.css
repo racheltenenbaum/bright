@@ -240,6 +240,7 @@ body.night-mode .auth-card {
 .page-container {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
   background-color: var(--color-bg);
 }
@@ -327,7 +328,11 @@ body.night-mode .auth-card {
 }
 
 .home-tiles {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin-top: 28px;
 }
 
 @media (min-width: 1024px) {
@@ -344,11 +349,148 @@ body.night-mode .auth-card {
     align-items: flex-start;
   }
   .home-tiles {
-    display: flex;
     flex-direction: column;
     gap: 14px;
     width: 320px;
     flex-shrink: 0;
+    margin-top: 0;
+  }
+}
+
+/* ── About page ───────────────────────────────────────── */
+
+.about-inner {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 20px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+.about-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.about-cta {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* How it works section — open layout, no card */
+.about-steps-card {
+  padding: 0;
+}
+
+.about-step-circle {
+  width: 48px;
+  height: 48px;
+}
+
+.about-step-number {
+  display: none;
+}
+
+/* Steps — stacked on mobile */
+.about-steps-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.about-step-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.about-step-label {
+  flex: 1;
+}
+
+.about-step-connector-v {
+  width: 2px;
+  height: 14px;
+  background: var(--color-divider);
+  margin: 4px 0 4px 23px;
+}
+
+/* Feature list */
+.about-feature-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.about-feature-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.about-feature-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding-top: 8px;
+}
+
+@media (min-width: 1024px) {
+  .about-inner {
+    max-width: 1020px;
+    padding: 44px 48px 80px;
+    gap: 48px;
+  }
+
+  /* Steps — horizontal on desktop */
+  .about-steps-row {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 24px;
+  }
+  .about-step-item {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 18px;
+    padding: 28px 24px;
+    background: var(--color-surface);
+    border: 2px solid var(--color-card-border);
+    border-radius: 20px;
+  }
+  .about-step-number {
+    display: block;
+    font-size: 0.72em;
+    font-weight: 900;
+    color: var(--color-accent);
+    letter-spacing: 0.04em;
+    align-self: flex-start;
+  }
+  .about-step-circle {
+    width: 64px;
+    height: 64px;
+  }
+  .about-step-label {
+    flex: none;
+  }
+  .about-step-connector-v {
+    display: none;
+  }
+
+  /* Feature list — 2 col on desktop */
+  .about-feature-list {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px 48px;
+  }
+  .about-feature-cta {
+    justify-content: center;
+    padding-top: 0;
   }
 }
 

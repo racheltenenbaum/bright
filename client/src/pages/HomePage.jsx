@@ -21,8 +21,8 @@ export default function HomePage() {
         <div className="home-left">
           <img src="/logo.gif"      className="logo-light" alt="bright" style={{ height: "90px", marginBottom: "14px" }} />
           <img src="/logo-dark.gif" className="logo-dark"  alt="bright" style={{ height: "90px", marginBottom: "14px" }} />
-          <p style={{ fontSize: "1.05em", color: "var(--color-subtext)", fontWeight: 700, lineHeight: 1.7, marginBottom: "28px", maxWidth: "260px" }}>
-            Find routes in the sunshine - or the shade.
+          <p style={{ fontSize: "1.05em", color: "var(--color-subtext)", fontWeight: 700, lineHeight: 1.7, marginBottom: "28px", maxWidth: "300px" }}>
+            your sun companion — whether you love it or hide away.
           </p>
           {isAuthenticated ? (
             <div className="home-cta">
