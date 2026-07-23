@@ -16,7 +16,22 @@
       "Skill(schedule)",
       "Skill(schedule:*)",
       "Bash(awk -F: '{sum+=$2; print} END {print \"TOTAL:\", sum}')",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(python3 -c \"import docx; print\\('python-docx available'\\)\")",
+      "Bash(pip3 show *)",
+      "Bash(pip3 install *)",
+      "Bash(python3 build_resume.py)",
+      "Bash(ls -d ~/Desktop 2>/dev/null && echo \"exists\")",
+      "Read(//Users/racheltenenbaum/Desktop/**)",
+      "Bash(cp /private/tmp/claude-501/-Users-racheltenenbaum-projects-bright/1325f086-a9e4-4b43-87e9-daaa8d446343/scratchpad/Rachel_Tenenbaum_Resume_ATS.docx ~/Desktop/Rachel_Tenenbaum_Resume_ATS.docx && echo copied)",
+      "Bash(find ~/Desktop ~/Downloads ~/Documents -iname \"*rachel*resume*\" -o -iname \"*rachel*cv*\" 2>/dev/null | grep -i pdf)",
+      "Read(//Users/racheltenenbaum/Downloads/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import fitz; print\\('ok', fitz.__doc__\\)\")",
+      "Bash(git remote *)"
+    ],
+    "additionalDirectories": [
+      "/Users/racheltenenbaum/Desktop"
     ]
   }
 }
