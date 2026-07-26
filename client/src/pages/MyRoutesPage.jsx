@@ -115,14 +115,15 @@ export default function MyRoutesPage() {
   }
 
   return (
-    <div className="page-container" style={{ maxWidth: "600px" }}>
+    <div className="page-container">
+      <div className="content-inner">
       <h2>Routes</h2>
       {error && <p style={{ color: "#C0392B", fontSize: "0.88em" }}>{error}</p>}
       {loading && <p style={{ color: "var(--color-subtext)", fontSize: "0.92em" }}>Loading routes...</p>}
       {!loading && routes.length === 0 && !error && (
         <p style={{ color: "var(--color-subtext)", fontSize: "0.92em" }}>No saved routes yet. Plan one!</p>
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <div className="routes-grid">
         {routes.map((route) => (
           <div
             key={route.id}
@@ -245,6 +246,7 @@ export default function MyRoutesPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -400,7 +400,8 @@ export default function MySpotsPage() {
   }
 
   return (
-    <div className="page-container" style={{ maxWidth: "600px" }}>
+    <div className="page-container">
+      <div className="content-inner">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
         <h2 style={{ margin: 0 }}>Spots</h2>
         <button onClick={openAdd} style={{ fontSize: "0.82em", padding: "0.4em 1em", display: "flex", alignItems: "center", gap: "6px" }}>
@@ -443,7 +444,7 @@ export default function MySpotsPage() {
         );
       })()}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      <div className="spots-grid">
         {spots.filter((s) => {
           if (filterCity && s.city !== filterCity) return false;
           if (filterGroup) {
@@ -697,6 +698,7 @@ export default function MySpotsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

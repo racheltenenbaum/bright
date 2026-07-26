@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSun, faMagnifyingGlass,
   faLocationDot, faBookmark, faStar, faShareNodes,
-  faArrowRight, faPersonWalking, faSliders,
+  faPersonWalking, faSliders,
 } from "@fortawesome/free-solid-svg-icons";
 
 const STEPS = [
@@ -83,7 +83,11 @@ export default function AboutPage() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   flexShrink: 0,
                 }}>
-                  <FontAwesomeIcon icon={icon} style={{ color: "rgba(255,255,255,0.9)", fontSize: "1.15em" }} />
+                  <FontAwesomeIcon
+                    icon={icon}
+                    className={i === 1 ? "about-step-sun-spin" : undefined}
+                    style={{ color: "rgba(255,255,255,0.9)", fontSize: "1.6em" }}
+                  />
                 </div>
                 <p className="about-step-label" style={{ margin: 0, fontSize: "0.92em", fontWeight: 700, color: "var(--color-text)", lineHeight: 1.45 }}>
                   {label}
@@ -118,27 +122,40 @@ export default function AboutPage() {
               </div>
             ))}
 
-            {/* CTA as 6th grid slot */}
+            {/* CTA as 6th grid slot — sun blob */}
             <div className="about-feature-cta">
-              {isAuthenticated ? (
-                <button
-                  onClick={() => navigate("/plan")}
-                  style={{ fontSize: "1em", padding: "0.65em 2.4em", display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  Start planning <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
-                </button>
-              ) : (
-                <>
-                  <Link to="/register">
-                    <button style={{ fontSize: "1em", padding: "0.65em 2em", display: "flex", alignItems: "center", gap: "8px" }}>
-                      Start your sun expedition <FontAwesomeIcon icon={faArrowRight} style={{ fontSize: "0.8em" }} />
-                    </button>
-                  </Link>
-                  <p style={{ margin: "10px 0 0", fontSize: "0.85em", color: "var(--color-subtext)" }}>
-                    Already have an account? <Link to="/login">Log in</Link>
-                  </p>
-                </>
-              )}
+              <FontAwesomeIcon icon={faSun} className="about-cta-sun-bg" />
+              <div className="about-cta-content">
+                {isAuthenticated ? (
+                  <button
+                    onClick={() => navigate("/plan")}
+                    className="about-cta-link"
+                    style={{
+                      background: "none", border: "none", boxShadow: "none", borderRadius: 0,
+                      padding: "4px 0", borderBottom: "2.5px solid var(--color-accent)",
+                      cursor: "pointer", fontSize: "1.2em", fontWeight: 800,
+                      color: "var(--color-text)", display: "flex", alignItems: "center", gap: "8px",
+                    }}
+                  >
+                    Start planning → <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
+                  </button>
+                ) : (
+                  <>
+                    <Link to="/register" className="about-cta-link" style={{
+                      background: "none", border: "none", boxShadow: "none", borderRadius: 0,
+                      padding: "4px 0", borderBottom: "2.5px solid var(--color-accent)",
+                      fontSize: "1.2em", fontWeight: 800,
+                      color: "var(--color-text)", display: "flex", alignItems: "center", gap: "8px",
+                      textDecoration: "none",
+                    }}>
+                      Start your sun expedition → <FontAwesomeIcon icon={faSun} style={{ fontSize: "0.85em" }} />
+                    </Link>
+                    <p style={{ margin: "12px 0 0", fontSize: "0.85em", color: "var(--color-subtext)", textAlign: "center" }}>
+                      Already have an account? <Link to="/login">Log in</Link>
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

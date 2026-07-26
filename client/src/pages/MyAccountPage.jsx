@@ -271,7 +271,8 @@ export default function MyAccountPage() {
   };
 
   return (
-    <div className="page-container" style={{ maxWidth: "480px" }}>
+    <div className="page-container">
+      <div className="content-inner account-inner">
       <h2>My Account</h2>
       <TabBar active={tab} onChange={setTab} />
 
@@ -532,6 +533,7 @@ export default function MyAccountPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

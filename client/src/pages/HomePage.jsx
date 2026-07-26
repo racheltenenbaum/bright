@@ -1,12 +1,12 @@
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faStar } from "@fortawesome/free-solid-svg-icons";
+import { faStar, faLocationDot, faSun, faPersonWalking } from "@fortawesome/free-solid-svg-icons";
 
-const TILES = [
-  { emoji: "☀️", label: "Walk in the sunshine", sub: "Real-time sun position, street by street" },
-  { emoji: "🌿", label: "Or seek the shade", sub: "Stay cool when it's too hot to be outside" },
-  { emoji: "📍", label: "Save what you find", sub: "Routes, spots, and favourite places" },
+const STEPS = [
+  { icon: faLocationDot,   label: "Tap a start and end point and select your sun / shade preference" },
+  { icon: faSun,           label: "bright calculates the real-time sun position" },
+  { icon: faPersonWalking, label: "Walk the sunniest (or shadiest) route" },
 ];
 
 export default function HomePage() {
@@ -19,9 +19,10 @@ export default function HomePage() {
 
         {/* Branding + CTA */}
         <div className="home-left">
-          <img src="/logo.gif"      className="logo-light" alt="bright" style={{ height: "90px", marginBottom: "14px" }} />
-          <img src="/logo-dark.gif" className="logo-dark"  alt="bright" style={{ height: "90px", marginBottom: "14px" }} />
-          <p style={{ fontSize: "1.05em", color: "var(--color-subtext)", fontWeight: 700, lineHeight: 1.7, marginBottom: "28px", maxWidth: "300px" }}>
+          <img src="/logo.gif"      className="logo-light home-logo" alt="bright" style={{ marginBottom: "14px" }} />
+          <img src="/logo-dark.gif" className="logo-dark home-logo"  alt="bright" style={{ marginBottom: "14px" }} />
+          <h1 className="home-headline">Sunshine, mapped.</h1>
+          <p className="home-tagline">
             your sun companion — whether you love it or hide away.
           </p>
           {isAuthenticated ? (
@@ -50,18 +51,29 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Feature tiles — desktop only */}
-        <div className="home-tiles">
-          {TILES.map(({ emoji, label, sub }) => (
-            <div key={label} style={{
-              background: "var(--color-surface)",
-              border: "2px solid var(--color-card-border)",
-              borderRadius: "20px",
-              padding: "22px 20px",
-            }}>
-              <div style={{ fontSize: "1.9em", marginBottom: "10px" }}>{emoji}</div>
-              <p style={{ margin: "0 0 5px", fontWeight: 800, fontSize: "0.92em", color: "var(--color-text)" }}>{label}</p>
-              <p style={{ margin: 0, fontSize: "0.78em", color: "var(--color-subtext)", fontWeight: 600, lineHeight: 1.55 }}>{sub}</p>
+        {/* How it works — desktop only */}
+        <div className="home-steps">
+          <p style={{ margin: "0 0 24px", fontWeight: 900, fontSize: "0.8em", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-subtext)" }}>
+            How it works
+          </p>
+          {STEPS.map(({ icon, label }, i) => (
+            <div key={i}>
+              <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
+                <div style={{
+                  position: "relative",
+                  width: "52px", height: "52px", borderRadius: "50%", flexShrink: 0,
+                  background: "var(--color-accent)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <FontAwesomeIcon icon={icon} style={{ color: "rgba(255,255,255,0.9)", fontSize: "1.1em" }} />
+                </div>
+                <p style={{ margin: 0, fontSize: "0.97em", fontWeight: 700, color: "var(--color-text)", lineHeight: 1.45 }}>
+                  {label}
+                </p>
+              </div>
+              {i < STEPS.length - 1 && (
+                <div style={{ width: "2px", height: "20px", background: "var(--color-divider)", margin: "6px 0 6px 25px" }} />
+              )}
             </div>
           ))}
         </div>

@@ -28,7 +28,10 @@
       "Read(//Users/racheltenenbaum/Downloads/**)",
       "Bash(python3 -c ' *)",
       "Bash(python3 -c \"import fitz; print\\('ok', fitz.__doc__\\)\")",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(python3 build_resume_visual.py)",
+      "Bash(which soffice *)",
+      "Read(//Applications/**)"
     ],
     "additionalDirectories": [
       "/Users/racheltenenbaum/Desktop"
