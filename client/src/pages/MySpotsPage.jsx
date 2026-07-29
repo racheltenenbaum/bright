@@ -446,7 +446,7 @@ export default function MySpotsPage() {
 
       <div className="spots-grid">
         {spots.filter((s) => {
-          if (filterCity && s.city !== filterCity) return false;
+          if (filterCity && s.city !== filterCity && !s.address?.includes(filterCity)) return false;
           if (filterGroup) {
             const group = ICON_GROUPS.find((g) => g.key === filterGroup);
             if (group && !group.icons.has(s.icon)) return false;
@@ -458,6 +458,7 @@ export default function MySpotsPage() {
             <div
               key={spot.id}
               onClick={() => setExpandedSpotId(expanded ? null : spot.id)}
+              className="spot-card"
               style={{
                 border: "2.5px solid var(--color-card-border)", borderRadius: "14px",
                 padding: "12px 16px", background: "var(--color-surface)",
@@ -465,18 +466,14 @@ export default function MySpotsPage() {
                 cursor: "pointer",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                <div style={{
-                  width: "38px", height: "38px", borderRadius: "50%",
-                  background: "var(--color-accent)", display: "flex", alignItems: "center",
-                  justifyContent: "center", flexShrink: 0,
-                }}>
+              <div className="spot-card-row">
+                <div className="spot-icon-wrap">
                   <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ color: "var(--color-text)", fontSize: "16px" }} />
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="spot-card-text">
                   <strong style={{ color: "var(--color-text)", fontSize: "0.95em" }}>{spot.name}</strong>
-                  <p style={{ margin: "2px 0 0", fontSize: "0.78em", color: "var(--color-subtext)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {spot.address}
+                  <p className="spot-addr" style={{ margin: "2px 0 0", fontSize: "0.78em", color: "var(--color-subtext)" }}>
+                    {spot.city || spot.address}
                   </p>
                   {spot.description && !expanded && (
                     <p style={{ margin: "3px 0 0", fontSize: "0.76em", color: "var(--color-subtext)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -484,7 +481,7 @@ export default function MySpotsPage() {
                     </p>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                <div className="spot-card-actions">
                   <button onClick={(e) => { e.stopPropagation(); shareSpot(spot); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-placeholder)", fontSize: "16px", padding: "2px 4px", boxShadow: "none" }}>
                     <FontAwesomeIcon icon={faShareNodes} />
                   </button>

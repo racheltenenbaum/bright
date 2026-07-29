@@ -267,6 +267,40 @@ body.night-mode .auth-card {
   gap: 10px;
 }
 
+.spot-card-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.spot-icon-wrap {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.spot-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.spot-addr {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spot-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .plan-layout {
   flex: 1;
   display: flex;
@@ -416,7 +450,7 @@ body.night-mode .auth-card {
 .about-inner {
   max-width: 620px;
   margin: 0 auto;
-  padding: 12px 16px 48px;
+  padding: 0px 16px 48px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -475,8 +509,14 @@ body.night-mode .auth-card {
 
 /* Feature list */
 .about-feature-list {
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.about-feature-items {
+  display: flex;
+  flex-direction: column;
   gap: 20px;
 }
 
@@ -493,9 +533,10 @@ body.night-mode .auth-card {
   border-radius: 20px;
   padding: 32px 20px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   min-height: 160px;
+  padding-top: 52px;
 }
 
 .about-cta-sun-bg {
@@ -536,10 +577,34 @@ body.night-mode .auth-card {
   animation: sun-spin 10s linear infinite;
 }
 
+@keyframes pin-tap {
+  0%   { transform: scale(1); }
+  12%  { transform: scale(1.5); }
+  26%  { transform: scale(0.82); }
+  38%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+.about-step-pin-tap {
+  animation: pin-tap 3.5s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+@keyframes person-walk {
+  0%   { transform: translateY(0) rotate(0deg); }
+  20%  { transform: translateY(-4px) rotate(-7deg); }
+  40%  { transform: translateY(0) rotate(0deg); }
+  60%  { transform: translateY(-4px) rotate(7deg); }
+  80%  { transform: translateY(0) rotate(0deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+.about-step-walk {
+  animation: person-walk 0.75s ease-in-out infinite;
+}
+
 @media (min-width: 1024px) {
   .about-inner {
     max-width: 1020px;
-    padding: 28px 48px 60px;
+    padding: 8px 48px 60px;
     gap: 32px;
   }
 
@@ -587,13 +652,19 @@ body.night-mode .auth-card {
     display: none;
   }
 
-  /* Feature list — 2 col on desktop */
+  /* Feature list — items left, CTA right */
   .about-feature-list {
-    grid-template-columns: 1fr 1fr;
-    gap: 24px 48px;
+    flex-direction: row;
+    align-items: center;
+    gap: 48px;
+  }
+  .about-feature-items {
+    flex: 1;
   }
   .about-feature-cta {
-    padding-top: 0;
+    flex-shrink: 0;
+    width: 280px;
+    align-self: stretch;
   }
 }
 
@@ -640,6 +711,50 @@ body.night-mode .auth-card {
   }
   .account-inner {
     max-width: 560px;
+  }
+  .spots-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+  .spot-card {
+    position: relative;
+    padding: 10px 10px !important;
+  }
+  .spot-card-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+  }
+  .spot-icon-wrap {
+    width: 36px;
+    height: 36px;
+  }
+  .spot-icon-wrap svg {
+    font-size: 14px;
+  }
+  .spot-card-text {
+    flex: none;
+    width: 100%;
+  }
+  .spot-card-text strong {
+    font-size: 0.82em;
+  }
+  .spot-addr {
+    white-space: normal;
+    font-size: 0.72em !important;
+  }
+  .spot-card-actions {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .spot-card-actions button {
+    font-size: 13px !important;
   }
   .routes-grid {
     display: grid;

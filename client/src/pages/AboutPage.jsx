@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faSun, faMagnifyingGlass,
-  faLocationDot, faBookmark, faStar, faShareNodes,
+  faLocationDot, faBookmark, faShareNodes,
   faPersonWalking, faSliders,
 } from "@fortawesome/free-solid-svg-icons";
 
@@ -106,21 +106,23 @@ export default function AboutPage() {
             What you can do
           </p>
           <div className="about-feature-list">
-            {FEATURES.map(({ icon, title, body, accent }) => (
-              <div key={title} className="about-feature-row">
-                <div style={{
-                  width: "34px", height: "34px", borderRadius: "10px", flexShrink: 0, marginTop: "2px",
-                  background: accent + "20",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  <FontAwesomeIcon icon={icon} style={{ color: accent, fontSize: "0.95em" }} />
+            <div className="about-feature-items">
+              {FEATURES.map(({ icon, title, body, accent }) => (
+                <div key={title} className="about-feature-row">
+                  <div style={{
+                    width: "34px", height: "34px", borderRadius: "10px", flexShrink: 0, marginTop: "2px",
+                    background: accent + "20",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <FontAwesomeIcon icon={icon} style={{ color: accent, fontSize: "0.95em" }} />
+                  </div>
+                  <div>
+                    <p style={{ margin: "0 0 3px", fontWeight: 800, fontSize: "0.88em", color: "var(--color-text)" }}>{title}</p>
+                    <p style={{ margin: 0, fontSize: "0.78em", color: "var(--color-subtext)", lineHeight: 1.6 }}>{body}</p>
+                  </div>
                 </div>
-                <div>
-                  <p style={{ margin: "0 0 3px", fontWeight: 800, fontSize: "0.88em", color: "var(--color-text)" }}>{title}</p>
-                  <p style={{ margin: 0, fontSize: "0.78em", color: "var(--color-subtext)", lineHeight: 1.6 }}>{body}</p>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
 
             {/* CTA as 6th grid slot — sun blob */}
             <div className="about-feature-cta">
@@ -137,7 +139,7 @@ export default function AboutPage() {
                       color: "var(--color-text)", display: "flex", alignItems: "center", gap: "8px",
                     }}
                   >
-                    Start planning → <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
+                    Start planning →
                   </button>
                 ) : (
                   <>
