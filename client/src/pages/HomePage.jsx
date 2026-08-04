@@ -23,7 +23,7 @@ export default function HomePage() {
           <img src="/logo-dark.gif" className="logo-dark home-logo"  alt="bright" style={{ marginBottom: "14px" }} />
           <h1 className="home-headline">Sunshine, mapped.</h1>
           <p className="home-tagline">
-            your sun companion — whether you love it or hide away.
+            your sun companion - for sunny trails or shaded strolls.
           </p>
           {isAuthenticated ? (
             <div className="home-cta">

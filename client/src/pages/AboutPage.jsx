@@ -85,8 +85,8 @@ export default function AboutPage() {
                 }}>
                   <FontAwesomeIcon
                     icon={icon}
-                    className={i === 1 ? "about-step-sun-spin" : undefined}
-                    style={{ color: "rgba(255,255,255,0.9)", fontSize: "1.6em" }}
+                    className={`about-step-icon${i === 1 ? " about-step-sun-spin" : ""}`}
+                    style={{ color: "rgba(255,255,255,0.9)" }}
                   />
                 </div>
                 <p className="about-step-label" style={{ margin: 0, fontSize: "0.92em", fontWeight: 700, color: "var(--color-text)", lineHeight: 1.45 }}>
