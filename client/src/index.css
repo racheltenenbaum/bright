@@ -751,8 +751,8 @@ body.night-mode .auth-card {
     width: 540px;
     flex-shrink: 0;
     overflow-y: auto;
-    padding: 14px 16px;
-    border-right: 2px solid var(--color-divider);
+    padding: 14px 16px 280px;
+    border-right: none;
   }
   .route-map {
     flex: 1;
@@ -769,8 +769,29 @@ body.night-mode .auth-card {
     right: 16px !important;
     transform: none !important;
     bottom: 16px !important;
-    width: 380px !important;
+    width: 300px !important;
     height: min(560px, calc(100% - 32px)) !important;
+  }
+
+  .preferences-card {
+    font-size: 1.1em;
+  }
+}
+
+/* ── Saved routes fixed bar ──────────────────────────── */
+
+.saved-routes-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+}
+
+@media (min-width: 1024px) {
+  .saved-routes-bar {
+    right: auto;
+    width: 540px;
   }
 }
 

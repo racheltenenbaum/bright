@@ -32,6 +32,32 @@ function extractCity(components) {
   return "";
 }
 
+function escapeSvg(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function placeMarkerSvg(color, name, selected) {
+  // viewBox is 80×52; pin centered at x=40 (body 24 units wide), label rect spans full width
+  const screenW = selected ? 104 : 80;
+  const screenH = selected ? 68 : 52;
+  const anchorX = selected ? 52 : 40;  // pin tip x: 40 × (screenW/80)
+  const anchorY = selected ? 47 : 36;  // pin tip y: 36 × (screenH/52)
+  const maxLen = 16;
+  const label = escapeSvg(name.length > maxLen ? name.slice(0, maxLen - 1) + "…" : name);
+  return {
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="52" viewBox="0 0 80 52">` +
+      `<path fill="${color}" stroke="#fff" stroke-width="1.5" d="M40 0C33.4 0 28 5.4 28 12c0 9 12 24 12 24S52 21 52 12C52 5.4 46.6 0 40 0z"/>` +
+      `<circle cx="40" cy="12" r="5" fill="white"/>` +
+      `<rect x="1" y="37" width="78" height="12" rx="3" fill="none"/>` +
+      `<text x="40" y="47" text-anchor="middle" font-size="8" font-family="Arial,sans-serif" fill="rgba(50,40,0,0.85)" font-weight="600">${label}</text>` +
+      `</svg>`
+    )}`,
+    scaledSize: new window.google.maps.Size(screenW, screenH),
+    anchor: new window.google.maps.Point(anchorX, anchorY),
+  };
+}
+
 function iconFromPlaceTypes(types) {
   if (!types?.length) return "faMapPin";
   if (types.includes("cafe")) return "faMugHot";
@@ -313,6 +339,8 @@ export default function RouteMap() {
       zoomControl: user?.pref_map_controls ?? false,
       gestureHandling: "greedy",
       mapTypeId: user?.pref_map_type ?? "roadmap",
+      renderingType: "VECTOR",
+      rotateControl: false,
     });
 
     if (user?.pref_map_controls) {
@@ -837,17 +865,7 @@ export default function RouteMap() {
       const color = selected
         ? (isNighttime ? "#2D5070" : (place.is_sunny ? "#D4940A" : "#3D6E8C"))
         : (isNighttime ? "#3D6E8C" : (place.is_sunny ? "#FFD600" : "#5E8FAD"));
-      const w = selected ? 34 : 28;
-      const h = selected ? 49 : 40;
-      marker.setIcon({
-        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
-          `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 24 36">` +
-          `<path fill="${color}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>` +
-          `<circle cx="12" cy="12" r="5" fill="white"/></svg>`
-        )}`,
-        scaledSize: new window.google.maps.Size(w, h),
-        anchor: new window.google.maps.Point(w / 2, h),
-      });
+      marker.setIcon(placeMarkerSvg(color, place.name, selected));
       marker.setZIndex(selected ? 3 : 2);
     });
   }, [selectedPlace]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -862,19 +880,10 @@ export default function RouteMap() {
     clearPlaceMarkers();
     places.forEach((place) => {
       const pinColor = isNighttime ? "#3D6E8C" : (place.is_sunny ? "#FFD600" : "#5E8FAD");
-      const pin = encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 24 36">` +
-        `<path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/>` +
-        `<circle cx="12" cy="12" r="5" fill="white"/></svg>`
-      );
       const marker = new window.google.maps.Marker({
         position: { lat: place.lat, lng: place.lng },
         map: mapRef.current,
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${pin}`,
-          scaledSize: new window.google.maps.Size(28, 40),
-          anchor: new window.google.maps.Point(14, 40),
-        },
+        icon: placeMarkerSvg(pinColor, place.name, false),
         title: place.name,
         zIndex: 2,
       });
@@ -1137,6 +1146,13 @@ export default function RouteMap() {
         ))}
       </div>
 
+      {/* Find Places hint — above sun/shade toggle */}
+      {mode === "places" && (
+        <p style={{ margin: "0 0 8px", fontSize: "0.78em", color: colors.subtext, fontWeight: 500 }}>
+          → find a hangout spot currently open{isNighttime ? "" : " to enjoy sun / shade"}
+        </p>
+      )}
+
       {/* Sun / Shade toggle + Reset */}
       <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
         <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1 }}>
@@ -1375,43 +1391,6 @@ export default function RouteMap() {
             </div>
           );
         })()}
-        {/* Saved routes — quick access when panel is otherwise empty */}
-        {mode === "route" && !sunData && savedRoutes.length > 0 && (
-          <div style={{ marginTop: "6px" }}>
-            <p style={{ margin: "0 0 8px", fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.subtext }}>
-              Saved routes
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {savedRoutes.slice(0, 5).map((route) => {
-                const distKm = currentLocation
-                  ? haversineKm(currentLocation.lat, currentLocation.lng, route.start_lat, route.start_lng)
-                  : null;
-                const distText = distKm == null ? null
-                  : distKm >= 1 ? `${distKm.toFixed(1)} km away`
-                  : `${Math.round(distKm * 1000)} m away`;
-                return (
-                  <button
-                    key={route.id}
-                    onClick={() => loadSavedRoute(route)}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "10px 14px", borderRadius: "12px", width: "100%",
-                      background: colors.surface, border: `1.5px solid ${colors.accentFaint}`,
-                      color: colors.text, textAlign: "left", boxShadow: "none",
-                      fontSize: "0.85em", fontWeight: 700, gap: "8px", cursor: "pointer",
-                    }}
-                  >
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {route.name}
-                    </span>
-                    {distText && <span style={{ fontSize: "0.8em", color: colors.subtext, flexShrink: 0 }}>{distText}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {saveForm && (
           <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
@@ -1444,22 +1423,6 @@ export default function RouteMap() {
       {/* Find Places panel — places mode only */}
       {mode === "places" && (
         <div style={{ marginBottom: "8px", display: "flex", flexDirection: "column", gap: "8px" }}>
-          {/* Name search */}
-          <Autocomplete
-            onLoad={(a) => { placeNameAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
-            onPlaceChanged={handlePlaceNameSearch}
-          >
-            <input
-              type="text"
-              placeholder="Search by name…"
-              value={placeNameQuery}
-              onChange={(e) => {
-                setPlaceNameQuery(e.target.value);
-                placeNameSelectedRef.current = false;
-              }}
-            />
-          </Autocomplete>
-
           {/* Place type chips */}
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {PLACE_TYPE_OPTIONS.map(({ key, label }) => {
@@ -1488,19 +1451,37 @@ export default function RouteMap() {
             })}
           </div>
 
-          {/* Search button */}
-          <button
-            onClick={searchPlaces}
-            disabled={placesSearching}
-            style={{ fontWeight: 800, fontSize: "0.85em", padding: "0.4em 1.2em", alignSelf: "flex-end" }}
+          {/* Name search */}
+          <Autocomplete
+            onLoad={(a) => { placeNameAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
+            onPlaceChanged={handlePlaceNameSearch}
           >
-            {placesSearching ? "Searching…" : "Search"}
-          </button>
+            <input
+              type="text"
+              placeholder="Search by name…"
+              value={placeNameQuery}
+              onChange={(e) => {
+                setPlaceNameQuery(e.target.value);
+                placeNameSelectedRef.current = false;
+              }}
+            />
+          </Autocomplete>
+
+          {/* Search button */}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={searchPlaces}
+              disabled={placesSearching}
+              style={{ fontWeight: 800, fontSize: "0.85em", padding: "0.4em 1.2em" }}
+            >
+              {placesSearching ? "Searching…" : "Search"}
+            </button>
+          </div>
 
         </div>
       )}
 
-      {(savedRouteName || routeStats || planning || (sunData && !saveForm && !routeSaved)) && (
+      {(savedRouteName || routeStats || (sunData && !saveForm && !routeSaved)) && (
         <div style={{ margin: "0 0 6px", display: mode === "route" ? "flex" : "none", alignItems: "center", justifyContent: "space-between" }}>
           {savedRouteName ? (
             <span style={{ fontSize: "13px", color: "#5A8F5A", fontWeight: 600, display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1521,14 +1502,7 @@ export default function RouteMap() {
               Save Route
             </button>
           ) : null}
-          {planning ? (
-            <div className="planning-dots" style={{ marginLeft: "auto" }}>
-              <span className="planning-label">planning</span>
-              <span>•</span>
-              <span>•</span>
-              <span>•</span>
-            </div>
-          ) : routeStats && (
+          {routeStats && (
             <span style={{ fontSize: "12px", color: colors.subtext, fontWeight: 500, whiteSpace: "nowrap", marginLeft: "auto" }}>
               Approx. {routeStats.distance} · {routeStats.duration} walk
             </span>
@@ -1708,7 +1682,7 @@ export default function RouteMap() {
                 position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
                 background: colors.surface, borderRadius: "20px",
                 border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
-                zIndex: 10, width: "min(340px, 90vw)",
+                zIndex: 10, width: "min(270px, 86vw)",
                 height: panelExpanded ? "calc(100% - 44px)" : "118px",
                 overflow: "hidden", display: "flex", flexDirection: "column",
                 transition: "height 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -2110,6 +2084,43 @@ export default function RouteMap() {
                 Save
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saved routes — fixed to bottom of page */}
+      {mode === "route" && !sunData && savedRoutes.length > 0 && (
+        <div className="saved-routes-bar" style={{ background: "var(--color-bg)", borderTop: `1.5px solid ${colors.accentFaint}`, padding: "10px 16px 14px" }}>
+          <p style={{ margin: "0 0 8px", fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.subtext }}>
+            Saved routes
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {savedRoutes.slice(0, 5).map((route) => {
+              const distKm = currentLocation
+                ? haversineKm(currentLocation.lat, currentLocation.lng, route.start_lat, route.start_lng)
+                : null;
+              const distText = distKm == null ? null
+                : distKm >= 1 ? `${distKm.toFixed(1)} km away`
+                : `${Math.round(distKm * 1000)} m away`;
+              return (
+                <button
+                  key={route.id}
+                  onClick={() => loadSavedRoute(route)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "10px 14px", borderRadius: "12px", width: "100%",
+                    background: colors.surface, border: `1.5px solid ${colors.accentFaint}`,
+                    color: colors.text, textAlign: "left", boxShadow: "none",
+                    fontSize: "0.85em", fontWeight: 700, gap: "8px", cursor: "pointer",
+                  }}
+                >
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {route.name}
+                  </span>
+                  {distText && <span style={{ fontSize: "0.8em", color: colors.subtext, flexShrink: 0 }}>{distText}</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

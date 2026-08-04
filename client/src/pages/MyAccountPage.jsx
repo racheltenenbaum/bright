@@ -325,7 +325,7 @@ export default function MyAccountPage() {
       )}
 
       {tab === "preferences" && (
-        <div style={cardStyle}>
+        <div className="preferences-card" style={cardStyle}>
           {/* Sun/Shade Preference — collapsible */}
           <div>
             <button
