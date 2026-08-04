@@ -7,6 +7,7 @@ os.environ.setdefault("GOOGLE_MAPS_API_KEY", "test-google-key")
 os.environ.setdefault("ASTRONOMY_API_KEY", "test-astro-key")
 # Low limits so rate-limit tests only need 3+1 requests
 os.environ["RATE_LIMIT_LOGIN"] = "3/minute"
+os.environ["RATE_LIMIT_REGISTER"] = "3/minute"
 os.environ["RATE_LIMIT_WEATHER"] = "3/minute"
 os.environ["RATE_LIMIT_SHADOW"] = "3/minute"
 

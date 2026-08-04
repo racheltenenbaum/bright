@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.auth import get_current_user
 from src.limiter import limiter, RATE_LIMIT_SHADOW
@@ -30,6 +30,22 @@ class OptimizedRouteRequest(BaseModel):
     datetime: str        # ISO string
     preference: str      # "sun" or "shade"
 
+    @field_validator("datetime")
+    @classmethod
+    def valid_datetime(cls, v):
+        try:
+            datetime.fromisoformat(v)
+        except ValueError:
+            raise ValueError("datetime must be a valid ISO 8601 string")
+        return v
+
+    @field_validator("preference")
+    @classmethod
+    def valid_preference(cls, v):
+        if v not in ("sun", "shade"):
+            raise ValueError("preference must be 'sun' or 'shade'")
+        return v
+
 
 class OptimizedRouteResponse(BaseModel):
     waypoints: list[list[float]]
@@ -45,7 +61,7 @@ def optimized_route(
     body: OptimizedRouteRequest,
     current_user: User = Depends(get_current_user),
 ):
-    dt = datetime.fromisoformat(body.datetime)
+    dt = datetime.fromisoformat(body.datetime)  # already validated by Pydantic
     date_str = dt.strftime("%Y-%m-%d")
 
     mid_lat = (body.start[0] + body.end[0]) / 2

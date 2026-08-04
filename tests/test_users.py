@@ -148,3 +148,28 @@ def test_update_pref_map_type_terrain(client, auth_headers):
 def test_update_pref_map_type_invalid(client, auth_headers):
     response = client.patch("/users/me", json={"pref_map_type": "moonmap"}, headers=auth_headers)
     assert response.status_code == 422
+
+
+def test_register_password_too_short(client):
+    response = client.post("/users/register", json={
+        "first_name": "Alice", "email": "alice@example.com", "password": "abc"
+    })
+    assert response.status_code == 422
+
+
+def test_register_password_no_number(client):
+    response = client.post("/users/register", json={
+        "first_name": "Alice", "email": "alice@example.com", "password": "abcdefgh"
+    })
+    assert response.status_code == 422
+
+
+def test_register_rate_limited(client):
+    for i in range(3):
+        client.post("/users/register", json={
+            "first_name": f"User{i}", "email": f"user{i}@example.com", "password": "secret123"
+        })
+    response = client.post("/users/register", json={
+        "first_name": "Extra", "email": "extra@example.com", "password": "secret123"
+    })
+    assert response.status_code == 429

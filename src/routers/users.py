@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import bcrypt
 
 from src.database import get_db
-from src.limiter import limiter, RATE_LIMIT_LOGIN
+from src.limiter import limiter, RATE_LIMIT_LOGIN, RATE_LIMIT_REGISTER
 from src.models import User
 from src.schemas import UserCreate, UserResponse, LoginRequest, TokenResponse, UpdateUserRequest
 from src.auth import create_access_token, get_current_user
@@ -12,7 +12,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-def register(user: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit(RATE_LIMIT_REGISTER)
+def register(request: Request, user: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 

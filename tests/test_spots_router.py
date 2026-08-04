@@ -315,3 +315,18 @@ def test_get_shared_spot_public(client, test_user, db):
 def test_get_shared_spot_not_found(client):
     response = client.get("/share/spot/nonexistent-token")
     assert response.status_code == 404
+
+
+def test_create_spot_invalid_icon_rejected(client, auth_headers):
+    response = client.post("/spots", json={**SPOT_PAYLOAD, "icon": "notAnIcon"}, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_create_spot_lat_out_of_range(client, auth_headers):
+    response = client.post("/spots", json={**SPOT_PAYLOAD, "lat": 999.0}, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_create_spot_lng_out_of_range(client, auth_headers):
+    response = client.post("/spots", json={**SPOT_PAYLOAD, "lng": -999.0}, headers=auth_headers)
+    assert response.status_code == 422

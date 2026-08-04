@@ -28,3 +28,23 @@ def test_sun_analyze_unauthenticated(client):
         "coordinates": COORDS, "datetime": DATETIME
     })
     assert response.status_code == 401
+
+
+def test_optimized_route_malformed_datetime(client, auth_headers):
+    response = client.post("/sun/optimized-route", json={
+        "start": [51.5, -0.1],
+        "end": [51.51, -0.1],
+        "datetime": "not-a-date",
+        "preference": "sun",
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_optimized_route_invalid_preference(client, auth_headers):
+    response = client.post("/sun/optimized-route", json={
+        "start": [51.5, -0.1],
+        "end": [51.51, -0.1],
+        "datetime": DATETIME,
+        "preference": "tornado",
+    }, headers=auth_headers)
+    assert response.status_code == 422

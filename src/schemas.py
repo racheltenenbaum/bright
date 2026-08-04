@@ -2,10 +2,30 @@ from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime
 
 
+VALID_SPOT_ICONS = frozenset({
+    "faMugHot", "faMugSaucer", "faUtensils", "faPizzaSlice", "faBurger",
+    "faDrumstickBite", "faFish", "faBowlFood", "faBreadSlice", "faCookieBite",
+    "faCakeCandles", "faIceCream", "faEgg", "faCarrot", "faLeaf", "faLemon",
+    "faBeerMugEmpty", "faWineGlass", "faMartiniGlassCitrus", "faGlassWhiskey",
+    "faChampagneGlasses", "faHouse", "faBriefcase", "faDumbbell", "faGraduationCap",
+    "faShoppingCart", "faHeart", "faStar", "faMapPin", "faBicycle", "faMusic",
+    "faTree", "faPlane", "faTrain", "faBus", "faBed", "faCamera", "faBook", "faSun",
+})
+
+
 class UserCreate(BaseModel):
     first_name: str
     email: EmailStr
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError("password must be at least 8 characters")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("password must contain at least one number")
+        return v
 
 
 class UserResponse(BaseModel):
@@ -112,6 +132,27 @@ class SpotCreate(BaseModel):
     description: str | None = None
     place_id: str | None = None
 
+    @field_validator("icon")
+    @classmethod
+    def valid_icon(cls, v):
+        if v not in VALID_SPOT_ICONS:
+            raise ValueError(f"invalid icon key: {v}")
+        return v
+
+    @field_validator("lat")
+    @classmethod
+    def valid_lat(cls, v):
+        if not -90 <= v <= 90:
+            raise ValueError("lat must be between -90 and 90")
+        return v
+
+    @field_validator("lng")
+    @classmethod
+    def valid_lng(cls, v):
+        if not -180 <= v <= 180:
+            raise ValueError("lng must be between -180 and 180")
+        return v
+
 
 class SpotResponse(BaseModel):
     id: int
@@ -138,6 +179,13 @@ class RouteCreate(BaseModel):
     end_address: str | None = None
     preference: str | None = None
     route_path: str | None = None
+
+    @field_validator("preference")
+    @classmethod
+    def valid_preference(cls, v):
+        if v is not None and v not in ("sun", "shade"):
+            raise ValueError("preference must be 'sun' or 'shade'")
+        return v
 
 
 class RouteResponse(BaseModel):

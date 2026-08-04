@@ -160,3 +160,8 @@ def test_get_shared_route_public(client, test_user, db):
 def test_get_shared_route_not_found(client):
     response = client.get("/share/nonexistent-token")
     assert response.status_code == 404
+
+
+def test_create_route_invalid_preference_rejected(client, auth_headers):
+    response = client.post("/routes", json={**ROUTE_PAYLOAD, "preference": "windy"}, headers=auth_headers)
+    assert response.status_code == 422

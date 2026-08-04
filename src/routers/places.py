@@ -161,6 +161,27 @@ class PlaceSearchRequest(BaseModel):
     types: list[str]
     keyword: str | None = None
 
+    @field_validator("lat")
+    @classmethod
+    def validate_lat(cls, v):
+        if not -90 <= v <= 90:
+            raise ValueError("lat must be between -90 and 90")
+        return v
+
+    @field_validator("lng")
+    @classmethod
+    def validate_lng(cls, v):
+        if not -180 <= v <= 180:
+            raise ValueError("lng must be between -180 and 180")
+        return v
+
+    @field_validator("radius")
+    @classmethod
+    def validate_radius(cls, v):
+        if v < 1 or v > 2000:
+            raise ValueError("radius must be between 1 and 2000 metres")
+        return v
+
     @field_validator("preference")
     @classmethod
     def validate_preference(cls, v):
@@ -222,6 +243,20 @@ class PlaceSearchResponse(BaseModel):
 class PlaceSunCheckRequest(BaseModel):
     lat: float
     lng: float
+
+    @field_validator("lat")
+    @classmethod
+    def validate_lat(cls, v):
+        if not -90 <= v <= 90:
+            raise ValueError("lat must be between -90 and 90")
+        return v
+
+    @field_validator("lng")
+    @classmethod
+    def validate_lng(cls, v):
+        if not -180 <= v <= 180:
+            raise ValueError("lng must be between -180 and 180")
+        return v
 
 
 class PlaceSunCheckResponse(BaseModel):

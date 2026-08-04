@@ -883,3 +883,27 @@ def test_sun_check_nighttime_skips_buildings(client, auth_headers):
 def test_sun_check_unauthenticated(client):
     response = client.post("/places/sun-check", json={"lat": 51.5, "lng": -0.1})
     assert response.status_code == 401
+
+
+def test_place_search_radius_too_large(client, auth_headers):
+    response = client.post("/places/search", json={
+        "lat": 51.5, "lng": -0.1, "radius": 99999,
+        "preference": "sun", "types": ["cafe"],
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_place_search_invalid_lat(client, auth_headers):
+    response = client.post("/places/search", json={
+        "lat": 999.0, "lng": -0.1, "radius": 500,
+        "preference": "sun", "types": ["cafe"],
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_place_search_invalid_lng(client, auth_headers):
+    response = client.post("/places/search", json={
+        "lat": 51.5, "lng": 999.0, "radius": 500,
+        "preference": "sun", "types": ["cafe"],
+    }, headers=auth_headers)
+    assert response.status_code == 422
