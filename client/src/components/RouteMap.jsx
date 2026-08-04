@@ -299,7 +299,7 @@ export default function RouteMap() {
     setMode("route");
     modeRef.current = "route";
     setEnd({ lat: fromSpot.lat, lng: fromSpot.lng });
-    setEndAddress(fromSpot.address || fromSpot.name || "");
+    setEndAddress(fromSpot.name || fromSpot.address || "");
     window.history.replaceState({}, document.title);
     // Use last-known location from localStorage (set by location watch on previous visits)
     const cachedLat = parseFloat(localStorage.getItem("bright_lat"));
@@ -1035,7 +1035,7 @@ export default function RouteMap() {
     clearPolylines(polylinesRef);
     setSunData(null);
     setEnd({ lat: place.lat, lng: place.lng });
-    setEndAddress(place.address || place.name || "");
+    setEndAddress(place.name || place.address || "");
     setSavedRouteName(null);
     setRouteSaved(false);
     if (currentLocationRef.current) {
@@ -1363,14 +1363,14 @@ export default function RouteMap() {
                     const coords = { lat: spot.lat, lng: spot.lng };
                     if (!start) {
                       setStart(coords);
-                      setStartAddress(spot.address);
+                      setStartAddress(spot.name || spot.address);
                       clearPolylines(polylinesRef);
                       setSunData(null);
                       setSavedRouteName(null);
                       setRouteSaved(false);
                     } else {
                       setEnd(coords);
-                      setEndAddress(spot.address);
+                      setEndAddress(spot.name || spot.address);
                       setSavedRouteName(null);
                       setRouteSaved(false);
                     }
