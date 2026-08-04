@@ -4,7 +4,7 @@ import bcrypt
 
 from src.database import get_db
 from src.limiter import limiter, RATE_LIMIT_LOGIN, RATE_LIMIT_REGISTER
-from src.models import User
+from src.models import User, Route, Spot
 from src.schemas import UserCreate, UserResponse, LoginRequest, TokenResponse, UpdateUserRequest
 from src.auth import create_access_token, get_current_user
 
@@ -60,3 +60,14 @@ def update_me(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+
+@router.delete("/me", status_code=204)
+def delete_me(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db.query(Route).filter(Route.user_id == current_user.id).delete()
+    db.query(Spot).filter(Spot.user_id == current_user.id).delete()
+    db.delete(current_user)
+    db.commit()

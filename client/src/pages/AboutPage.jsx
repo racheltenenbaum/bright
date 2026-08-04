@@ -162,6 +162,10 @@ export default function AboutPage() {
           </div>
         </div>
 
+        <p style={{ margin: "32px 0 0", textAlign: "center", fontSize: "0.78em", color: "var(--color-subtext)" }}>
+          <Link to="/privacy">Privacy Policy</Link>
+        </p>
+
       </div>
     </div>
   );

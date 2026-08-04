@@ -164,6 +164,45 @@ def test_register_password_no_number(client):
     assert response.status_code == 422
 
 
+def test_delete_account_success(client, auth_headers):
+    response = client.delete("/users/me", headers=auth_headers)
+    assert response.status_code == 204
+
+
+def test_delete_account_unauthenticated(client):
+    response = client.delete("/users/me")
+    assert response.status_code == 401
+
+
+def test_delete_account_removes_login(client, auth_headers):
+    client.delete("/users/me", headers=auth_headers)
+    response = client.post("/users/login", json={
+        "email": "test@example.com", "password": "password123"
+    })
+    assert response.status_code == 401
+
+
+def test_delete_account_cascades_routes_and_spots(client, auth_headers, db, test_user):
+    from src.models import Route, Spot
+
+    user_id = test_user.id
+    db.add(Route(
+        name="Commute", start_lat=1, start_lng=1, end_lat=2, end_lng=2,
+        user_id=user_id,
+    ))
+    db.add(Spot(
+        name="Bench", address="1 Main St", lat=1, lng=1, icon="faStar",
+        user_id=user_id,
+    ))
+    db.commit()
+
+    response = client.delete("/users/me", headers=auth_headers)
+    assert response.status_code == 204
+
+    assert db.query(Route).filter(Route.user_id == user_id).count() == 0
+    assert db.query(Spot).filter(Spot.user_id == user_id).count() == 0
+
+
 def test_register_rate_limited(client):
     for i in range(3):
         client.post("/users/register", json={

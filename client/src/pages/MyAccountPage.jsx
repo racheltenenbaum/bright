@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const MAP_PREVIEW_CENTERS = {
   roadmap: "center=51.505,-0.09&zoom=13&maptype=roadmap",
@@ -19,7 +20,7 @@ const MAP_PREVIEW_FALLBACK = {
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUser, faEnvelope, faCalendarDays, faPen, faCheck, faXmark, faSlidersH, faSun, faCloud, faChevronDown, faMap } from "@fortawesome/free-solid-svg-icons";
+import { faUser, faEnvelope, faCalendarDays, faPen, faCheck, faXmark, faSlidersH, faSun, faCloud, faChevronDown, faMap, faTrash } from "@fortawesome/free-solid-svg-icons";
 
 const DETOUR_STEPS = [10, 30, 50, 70, 100];
 const DETOUR_LABELS = {
@@ -125,8 +126,14 @@ function DetourSlider({ value, onChange, saving, error }) {
 }
 
 export default function MyAccountPage() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
+  const navigate = useNavigate();
   const [tab, setTab] = useState("profile");
+
+  // Danger zone state
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
   // Profile tab state
   const [editing, setEditing] = useState(false);
@@ -259,6 +266,22 @@ export default function MyAccountPage() {
     }
   }
 
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const token = localStorage.getItem("token");
+      await api.delete("/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      logout();
+      navigate("/");
+    } catch {
+      setDeleteError("Could not delete account. Please try again.");
+      setDeleting(false);
+    }
+  }
+
   const cardStyle = {
     background: "var(--color-surface)",
     border: "2.5px solid var(--color-card-border)",
@@ -321,6 +344,65 @@ export default function MyAccountPage() {
 
           <ReadonlyField icon={faEnvelope}     label="Email"        value={user?.email} />
           <ReadonlyField icon={faCalendarDays} label="Member since" value={joined} />
+        </div>
+      )}
+
+      {tab === "profile" && (
+        <div style={{ marginTop: "18px", textAlign: "center" }}>
+          <Link to="/privacy" style={{ fontSize: "0.82em", color: "var(--color-subtext)" }}>
+            Privacy Policy
+          </Link>
+        </div>
+      )}
+
+      {tab === "profile" && (
+        <div style={{ ...cardStyle, marginTop: "18px", border: "2.5px solid #FF5A3C40" }}>
+          <span style={{
+            fontSize: "0.72em", fontWeight: 800, textTransform: "uppercase",
+            letterSpacing: "0.06em", color: "#FF5A3C",
+          }}>
+            <FontAwesomeIcon icon={faTrash} style={{ marginRight: "5px" }} />Danger Zone
+          </span>
+
+          {!confirmingDelete ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-start" }}>
+              <p style={{ margin: 0, fontSize: "0.84em", color: "var(--color-subtext)", fontWeight: 500 }}>
+                Permanently delete your account and all your saved routes and spots. This can't be undone.
+              </p>
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                style={{ background: "none", border: "2px solid #FF5A3C", color: "#FF5A3C", boxShadow: "none", fontSize: "0.85em", fontWeight: 700 }}
+              >
+                Delete my account
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "flex-start" }}>
+              <p style={{ margin: 0, fontSize: "0.84em", color: "var(--color-text)", fontWeight: 700 }}>
+                Are you sure? All your data will be permanently deleted.
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleting}
+                  style={{ background: "#FF5A3C", border: "none", color: "#fff", fontSize: "0.85em", fontWeight: 700 }}
+                >
+                  {deleting ? "Deleting…" : "Yes, delete everything"}
+                </button>
+                <button
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={deleting}
+                  className="btn-outline"
+                  style={{ fontSize: "0.85em", fontWeight: 700 }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {deleteError && (
+                <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{deleteError}</p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
