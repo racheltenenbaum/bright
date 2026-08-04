@@ -509,12 +509,20 @@ export default function MySpotsPage() {
                       {spot.description}
                     </p>
                   )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); navigate("/plan", { state: { spot } }); }}
-                    style={{ fontSize: "0.8em", padding: "0.35em 1em" }}
-                  >
-                    Open in Find Places →
-                  </button>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate("/plan", { state: { fromSpot: spot } }); }}
+                      style={{ fontSize: "0.8em", padding: "0.35em 1em" }}
+                    >
+                      Plan route here →
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate("/plan", { state: { spot } }); }}
+                      style={{ fontSize: "0.8em", padding: "0.35em 1em", background: "transparent", border: "2px solid var(--color-accent-dim)", color: "var(--color-subtext)" }}
+                    >
+                      Find nearby places
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

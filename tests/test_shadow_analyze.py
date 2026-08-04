@@ -155,8 +155,46 @@ def test_fetch_buildings_api_exception():
     with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
         with patch("requests.post", side_effect=Exception("network error")):
             result = _fetch_buildings_for_bbox(13.0, 23.0, 13.5, 23.5)
-    assert result == []
+    assert result is None  # All API calls failed — return None, not []
     _clear_cache(key)
+
+
+def test_fetch_buildings_api_success_no_buildings():
+    """API succeeds but finds no buildings — returns [], not None."""
+    key = _bbox_key(14.0, 24.0, 14.5, 24.5)
+    _clear_cache(key)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"elements": []}
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp):
+            result = _fetch_buildings_for_bbox(14.0, 24.0, 14.5, 24.5)
+    assert result == []  # Successful fetch, just no buildings
+    _clear_cache(key)
+
+
+def test_shadow_analyze_no_buildings_shadow_still_available(client, auth_headers):
+    """When API succeeds but finds no buildings, shadow_available should be True."""
+    with patch("src.routers.shadow_analyze.get_sun_position", return_value=SUN_POS):
+        with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=[]):
+            with patch("src.routers.shadow_analyze._fetch_elevations", return_value=[0.0] * len(ROUTE)):
+                response = client.post("/sun/shadow-analyze", json={
+                    "coordinates": ROUTE, "datetime": DATETIME
+                }, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["shadow_available"] is True
+
+
+def test_shadow_analyze_api_failure_shadow_not_available(client, auth_headers):
+    """When Overpass API fails (returns None), shadow_available should be False."""
+    with patch("src.routers.shadow_analyze.get_sun_position", return_value=SUN_POS):
+        with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=None):
+            with patch("src.routers.shadow_analyze._fetch_elevations", return_value=[0.0] * len(ROUTE)):
+                response = client.post("/sun/shadow-analyze", json={
+                    "coordinates": ROUTE, "datetime": DATETIME
+                }, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["shadow_available"] is False
 
 
 # ── _fetch_elevations ──────────────────────────────────────────────────────────

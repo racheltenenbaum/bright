@@ -101,7 +101,8 @@ def _bbox_key(s: float, w: float, n: float, e: float) -> str:
     return f"{round(s,3)},{round(w,3)},{round(n,3)},{round(e,3)}"
 
 
-def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list:
+def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | None:
+    """Return buildings list, or None if all API calls failed (vs [] for no buildings found)."""
     key = _bbox_key(s, w, n, e)
 
     if key in _overpass_cache:
@@ -128,7 +129,7 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list:
                 return buildings
         except Exception:
             continue
-    return []
+    return None  # All API calls failed
 
 
 def _route_bbox(coords: list[list[float]], padding_m: float = 50) -> tuple[float, float, float, float]:
@@ -207,8 +208,9 @@ def shadow_analyze(
         )
 
     s, w, north, e = _route_bbox(body.coordinates)
-    buildings = _fetch_buildings_for_bbox(s, w, north, e)
-    shadow_available = len(buildings) > 0
+    buildings_result = _fetch_buildings_for_bbox(s, w, north, e)
+    shadow_available = buildings_result is not None
+    buildings = buildings_result if buildings_result is not None else []
 
     samples = _sample_coords(body.coordinates, target=25)
     sample_coords_list = [(lat, lng) for _, lat, lng in samples]

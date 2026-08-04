@@ -125,16 +125,15 @@ input[type="password"] {
   font-weight: 600;
   color: var(--color-text);
   outline: none;
-  box-shadow: 2px 2px 0 var(--color-accent-dim);
+  box-shadow: none;
   transition:
     box-shadow 0.15s,
-    transform 0.1s;
+    border-color 0.15s;
   box-sizing: border-box;
 }
 input:focus {
-  border-color: #ffffff;
-  box-shadow: 3px 3px 0 var(--color-accent);
-  transform: translate(-0.5px, -0.5px);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-dim);
 }
 input::placeholder {
   color: var(--color-placeholder);
@@ -153,75 +152,52 @@ button {
   background-color: var(--color-accent);
   color: var(--color-text);
   cursor: pointer;
-  box-shadow: 3px 3px 0 #ffffff;
+  box-shadow: none;
   transition:
     transform 0.1s,
-    box-shadow 0.1s,
     background-color 0.3s;
   white-space: nowrap;
   line-height: 1.4;
 }
 button:hover {
   transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #ffffff;
 }
 button:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 #ffffff;
+  transform: translate(1px, 1px);
 }
 
 button.btn-outline {
   background: var(--color-bg);
   border: 2px solid #ffffff;
-  box-shadow: 3px 3px 0 var(--color-accent-dim);
+  box-shadow: none;
   color: var(--color-text);
 }
 button.btn-outline:hover {
   background: var(--color-accent-hover);
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 var(--color-accent-dim);
 }
 button.btn-outline:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 var(--color-accent-dim);
+  transform: translate(1px, 1px);
 }
 
 button.btn-danger {
   background: #ff5a3c;
   border-color: #ffffff;
   color: #fff;
-  box-shadow: 3px 3px 0 #ffffff;
+  box-shadow: none;
 }
 button.btn-danger:hover {
   background: #e8432a;
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 #ffffff;
-}
-button.btn-danger:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 #ffffff;
 }
 
 body.night-mode button {
   border-color: var(--color-card-border);
-  box-shadow: 3px 3px 0 var(--color-card-shadow);
 }
-body.night-mode button:hover { box-shadow: 4px 4px 0 var(--color-card-shadow); }
-body.night-mode button:active { box-shadow: 1px 1px 0 var(--color-card-shadow); }
-body.night-mode button.btn-outline {
-  background: var(--color-bg);
-  box-shadow: 3px 3px 0 var(--color-card-shadow);
-}
-body.night-mode button.btn-outline:hover { box-shadow: 4px 4px 0 var(--color-card-shadow); }
-body.night-mode button.btn-outline:active { box-shadow: 1px 1px 0 var(--color-card-shadow); }
-
 body.night-mode input[type="text"],
 body.night-mode input[type="email"],
 body.night-mode input[type="password"] {
   border-color: var(--color-card-border);
-  box-shadow: 2px 2px 0 var(--color-accent-dim);
 }
-body.night-mode input:focus { box-shadow: 3px 3px 0 var(--color-accent); }
+body.night-mode input:focus { box-shadow: 0 0 0 2px var(--color-accent); }
 
 .logo-dark { display: none; }
 body.night-mode .logo-light { display: none; }
@@ -784,6 +760,18 @@ body.night-mode .auth-card {
     padding: 12px;
   }
 
+  h2 {
+    font-size: 1.8em;
+  }
+
+  .place-preview-panel {
+    left: auto !important;
+    right: 16px !important;
+    transform: none !important;
+    bottom: 16px !important;
+    width: 380px !important;
+    height: min(560px, calc(100% - 32px)) !important;
+  }
 }
 
 /* ── Google Places Autocomplete ──────────────────────── */
@@ -793,7 +781,7 @@ body.night-mode .auth-card {
   background: #fffdf5;
   border: 2px solid #ffffff;
   border-radius: 14px;
-  box-shadow: 4px 4px 0 #e8c000;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
   margin-top: 4px;
   padding: 4px 0;
   overflow: hidden;
@@ -844,7 +832,7 @@ body.night-mode .auth-card {
 
 body.shade-mode .pac-container {
   background: #ebf1f6;
-  box-shadow: 4px 4px 0 #84aeca;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
 }
 
 body.shade-mode .pac-item {
@@ -868,7 +856,7 @@ body.shade-mode .pac-matched {
 body.night-mode .pac-container {
   background: #162536;
   border-color: rgba(255,255,255,0.14);
-  box-shadow: 4px 4px 0 #1e4060;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
 }
 
 body.night-mode .pac-item {

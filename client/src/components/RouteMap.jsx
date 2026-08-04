@@ -266,6 +266,25 @@ export default function RouteMap() {
     autoCalculateRef.current = true;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pre-fill destination from a "Plan route here" action on My Spots
+  useEffect(() => {
+    const fromSpot = location.state?.fromSpot;
+    if (!fromSpot) return;
+    setMode("route");
+    modeRef.current = "route";
+    setEnd({ lat: fromSpot.lat, lng: fromSpot.lng });
+    setEndAddress(fromSpot.address || fromSpot.name || "");
+    window.history.replaceState({}, document.title);
+    // Use last-known location from localStorage (set by location watch on previous visits)
+    const cachedLat = parseFloat(localStorage.getItem("bright_lat"));
+    const cachedLng = parseFloat(localStorage.getItem("bright_lng"));
+    if (!isNaN(cachedLat) && !isNaN(cachedLng)) {
+      setStart({ lat: cachedLat, lng: cachedLng });
+      setStartAddress("My location");
+      autoCalculateRef.current = true;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sync body theme class with preference / nighttime
   useEffect(() => {
     document.body.classList.toggle("shade-mode", !isNighttime && preference === "shade");
@@ -1301,6 +1320,13 @@ export default function RouteMap() {
             )}
           </div>
         </div>
+        {/* Plan Route button — right below the destination field */}
+        {!planning && start && end && !sunData && (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}>Plan Route</button>
+          </div>
+        )}
+
         {/* Spot chips — shown when start or end is empty, filtered to map region */}
         {(() => {
           if (!spots.length || (start && end) || sunData) return null;
@@ -1386,12 +1412,6 @@ export default function RouteMap() {
           </div>
         )}
 
-        {/* Plan Route row — below inputs, right-aligned */}
-        {!planning && start && end && !sunData && (
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}>Plan Route</button>
-          </div>
-        )}
         {saveForm && (
           <div style={{ display: "flex", gap: "6px", alignItems: "flex-start" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", flex: 1 }}>
@@ -1565,8 +1585,31 @@ export default function RouteMap() {
 
       {/* Map — fills remaining height */}
       <div className="route-map" style={{ flex: 1, minHeight: 0, position: "relative" }}>
-        <div className="map-wrapper" style={{ height: "100%", flex: "none" }}>
+        <div className="map-wrapper" style={{ height: "100%", flex: "none", position: "relative" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+          {planning && (
+            <div style={{
+              position: "absolute", inset: 0, zIndex: 20,
+              background: "rgba(0,0,0,0.35)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: "inherit",
+              pointerEvents: "none",
+            }}>
+              <div style={{
+                background: colors.surface,
+                padding: "12px 24px",
+                borderRadius: "20px",
+                border: `2px solid ${colors.accentFaint}`,
+                fontSize: "0.9em", fontWeight: 700, color: colors.text,
+                display: "flex", alignItems: "center", gap: "8px",
+              }}>
+                Planning your route
+                <div className="planning-dots">
+                  <span>•</span><span>•</span><span>•</span>
+                </div>
+              </div>
+            </div>
+          )}
           {currentLocation && (
             <button
               onClick={() => mapRef.current?.panTo(currentLocation)}
@@ -1659,6 +1702,7 @@ export default function RouteMap() {
           )}
           {selectedPlace && (
             <div
+              className="place-preview-panel"
               onClick={!panelExpanded ? () => setPanelExpanded(true) : undefined}
               style={{
                 position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
@@ -1851,7 +1895,8 @@ export default function RouteMap() {
                   {/* Save as Spot + Plan route here */}
                   {(() => {
                     const alreadySaved = spots.some(
-                      (s) => s.place_id && s.place_id === selectedPlace.place_id,
+                      (s) => (s.place_id && s.place_id === selectedPlace.place_id) ||
+                             (s.lat === selectedPlace.lat && s.lng === selectedPlace.lng),
                     );
                     return (
                       <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
@@ -1981,7 +2026,7 @@ export default function RouteMap() {
           <div style={{
             background: "var(--color-surface)", border: "2.5px solid #fff",
             borderRadius: "24px", padding: "24px", width: "100%", maxWidth: "340px",
-            boxShadow: "6px 6px 0 var(--color-accent-dim)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
             display: "flex", flexDirection: "column", gap: "14px",
           }}>
             <h3 style={{ margin: 0, fontSize: "1.05em", color: colors.text }}>Save as Spot</h3>
@@ -2010,7 +2055,7 @@ export default function RouteMap() {
                   borderRadius: "10px", padding: "8px 12px", fontSize: "15px",
                   fontFamily: "Nunito, sans-serif", fontWeight: 500,
                   color: "var(--color-text)", outline: "none", resize: "none",
-                  boxShadow: "2px 2px 0 var(--color-accent-dim)",
+                  boxShadow: "none",
                 }}
               />
             </div>

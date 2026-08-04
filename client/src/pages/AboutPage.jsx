@@ -56,7 +56,7 @@ export default function AboutPage() {
 
         {/* Hero */}
         <div className="about-hero">
-          <Link to="/">
+          <Link to={isAuthenticated ? "/plan" : "/"}>
             <img src="/logo.gif"      className="logo-light" alt="bright" style={{ height: "100px", marginBottom: "18px", cursor: "pointer" }} />
             <img src="/logo-dark.gif" className="logo-dark"  alt="bright" style={{ height: "100px", marginBottom: "18px", cursor: "pointer" }} />
           </Link>

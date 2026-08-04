@@ -302,7 +302,8 @@ def search_places(
         w = body.lng - padding
         n = body.lat + padding
         e = body.lng + padding
-        buildings = _fetch_buildings_for_bbox(s, w, n, e)
+        bldg_result = _fetch_buildings_for_bbox(s, w, n, e)
+        buildings = bldg_result if bldg_result is not None else []
     else:
         buildings = []
 
