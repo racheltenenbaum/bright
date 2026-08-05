@@ -1,7 +1,7 @@
 """add feedback table
 
-Revision ID: a1b2c3d4e5f6
-Revises: f2c9d4e1a705
+Revision ID: c1d2e3f4a5b6
+Revises: b9d0e1f2a3c4
 Create Date: 2026-08-05 00:00:00.000000
 
 """
@@ -11,27 +11,26 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "f2c9d4e1a705"
+revision: str = "c1d2e3f4a5b6"
+down_revision: Union[str, None] = "b9d0e1f2a3c4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "feedback",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("from_email", sa.String(255), nullable=False),
-        sa.Column("message", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index("ix_feedback_id", "feedback", ["id"])
-    op.create_index("ix_feedback_user_id", "feedback", ["user_id"])
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INT NOT NULL AUTO_INCREMENT,
+            user_id INT NOT NULL,
+            from_email VARCHAR(255) NOT NULL,
+            message TEXT NOT NULL,
+            created_at TIMESTAMP NULL,
+            PRIMARY KEY (id),
+            INDEX ix_feedback_user_id (user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
 
 
 def downgrade() -> None:
-    op.drop_index("ix_feedback_user_id", table_name="feedback")
-    op.drop_index("ix_feedback_id", table_name="feedback")
     op.drop_table("feedback")
