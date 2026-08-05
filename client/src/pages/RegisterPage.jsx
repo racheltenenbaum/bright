@@ -5,12 +5,22 @@ import { useAuth } from "../context/AuthContext";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function passwordErrors(pw) {
+  const errs = [];
+  if (pw.length < 8) errs.push("at least 8 characters");
+  if (!/\d/.test(pw)) errs.push("at least one number");
+  return errs;
+}
+
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [form, setForm] = useState({ first_name: "", email: "", password: "" });
   const [emailError, setEmailError] = useState(null);
+  const [pwTouched, setPwTouched] = useState(false);
   const [error, setError] = useState(null);
+
+  const pwErrs = passwordErrors(form.password);
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -25,19 +35,24 @@ export default function RegisterPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setPwTouched(true);
     if (!EMAIL_REGEX.test(form.email)) {
       setEmailError("Please enter a valid email address");
       return;
     }
+    if (pwErrs.length > 0) return;
     setError(null);
     try {
       const res = await api.post("/users/register", form);
       login(res.data.user, res.data.access_token);
-      navigate("/about");
+      navigate("/plan");
     } catch (err) {
-      setError(err.response?.data?.detail || "Something went wrong");
+      const detail = err.response?.data?.detail;
+      setError(Array.isArray(detail) ? detail.map(e => e.msg).join(". ") : (detail || "Something went wrong"));
     }
   }
+
+  const showPwHints = pwTouched || form.password.length > 0;
 
   return (
     <div className="page-container" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
@@ -65,7 +80,30 @@ export default function RegisterPage() {
           </div>
           <div className="field">
             <label>Password</label>
-            <input name="password" type="password" value={form.password} onChange={handleChange} required />
+            <input
+              name="password"
+              type="password"
+              value={form.password}
+              onChange={handleChange}
+              onBlur={() => setPwTouched(true)}
+              required
+            />
+            {showPwHints && (
+              <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                {[
+                  { label: "At least 8 characters", ok: form.password.length >= 8 },
+                  { label: "At least one number", ok: /\d/.test(form.password) },
+                ].map(({ label, ok }) => (
+                  <p key={label} style={{
+                    margin: 0, fontSize: "0.78em",
+                    color: ok ? "#5A8F5A" : (pwTouched && pwErrs.length > 0 ? "#C0392B" : "var(--color-subtext)"),
+                    fontWeight: 600,
+                  }}>
+                    {ok ? "✓" : "·"} {label}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
           {error && <p style={{ color: "#C0392B", margin: "0 0 12px", fontSize: "0.85em" }}>{error}</p>}
           <button type="submit" style={{ width: "100%", padding: "0.65em", fontSize: "0.95em", marginTop: "6px" }}>

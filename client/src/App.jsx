@@ -67,7 +67,7 @@ function Layout() {
     <>
       {isAuthenticated && <Navbar />}
       <div style={{ width: "100%", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <Suspense fallback={null}>
+        <Suspense fallback={<div style={{ flex: 1, background: "var(--color-bg)" }} />}>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/about" element={<AboutPage />} />
