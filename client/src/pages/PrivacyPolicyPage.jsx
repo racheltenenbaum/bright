@@ -1,5 +1,5 @@
 const EFFECTIVE_DATE = "August 4, 2026";
-const CONTACT_EMAIL = "racheltenenbaum14@gmail.com";
+const CONTACT_EMAIL = "bright.sunshine.contact@gmail.com";
 
 function Section({ title, children }) {
   return (
