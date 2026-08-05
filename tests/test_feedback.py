@@ -1,12 +1,24 @@
 from unittest.mock import patch, MagicMock
 
+from src.models import Feedback
 
-def test_feedback_success(client, auth_headers):
+
+def test_feedback_success(client, auth_headers, db):
     with patch("src.routers.feedback._send_feedback_email") as mock_send:
         response = client.post("/feedback", json={"message": "Love the app!"}, headers=auth_headers)
     assert response.status_code == 200
     assert response.json() == {"ok": True}
     mock_send.assert_called_once()
+    assert db.query(Feedback).count() == 1
+    entry = db.query(Feedback).first()
+    assert entry.message == "Love the app!"
+
+
+def test_feedback_saved_to_db_even_if_email_fails(client, auth_headers, db):
+    with patch("src.routers.feedback._send_feedback_email", side_effect=Exception("SMTP error")):
+        response = client.post("/feedback", json={"message": "test message"}, headers=auth_headers)
+    assert response.status_code == 200
+    assert db.query(Feedback).count() == 1
 
 
 def test_feedback_empty_message_rejected(client, auth_headers):
@@ -19,25 +31,19 @@ def test_feedback_unauthenticated(client):
     assert response.status_code == 401
 
 
-def test_feedback_email_failure_still_returns_200(client, auth_headers):
-    with patch("src.routers.feedback._send_feedback_email", side_effect=Exception("SMTP error")):
-        response = client.post("/feedback", json={"message": "test message"}, headers=auth_headers)
-    assert response.status_code == 200
-
-
-def test_feedback_strips_whitespace(client, auth_headers):
+def test_feedback_strips_whitespace(client, auth_headers, db):
     with patch("src.routers.feedback._send_feedback_email") as mock_send:
         response = client.post("/feedback", json={"message": "  great app  "}, headers=auth_headers)
     assert response.status_code == 200
     call_args = mock_send.call_args[0]
     assert call_args[0] == "great app"
+    assert db.query(Feedback).first().message == "great app"
 
 
 def test_send_feedback_email_smtp_configured():
     """Exercises the SMTP sending path when credentials are set."""
     import src.routers.feedback as fb_module
     mock_server = MagicMock()
-    mock_smtp_cls = MagicMock(return_value=__import__("contextlib").nullcontext(mock_server))
     with patch.object(fb_module, "_SMTP_USER", "user@example.com"), \
          patch.object(fb_module, "_SMTP_PASS", "secret"), \
          patch.object(fb_module, "_FEEDBACK_EMAIL", "dest@example.com"), \

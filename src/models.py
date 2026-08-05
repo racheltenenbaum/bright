@@ -18,6 +18,7 @@ class User(Base):
 
     routes = relationship("Route", back_populates="user")
     spots = relationship("Spot", back_populates="user")
+    feedback = relationship("Feedback", back_populates="user")
 
 
 class Route(Base):
@@ -39,6 +40,18 @@ class Route(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="routes")
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    from_email = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="feedback")
 
 
 class Spot(Base):
