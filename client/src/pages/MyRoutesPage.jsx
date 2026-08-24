@@ -4,6 +4,7 @@ import { Share } from "@capacitor/share";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faTrash, faShareNodes } from "@fortawesome/free-solid-svg-icons";
+import { addressFromGeocodeResult } from "../utils/address";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -33,10 +34,10 @@ function staticMapUrl(route) {
 async function reverseGeocode(lat, lng) {
   try {
     const res = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${MAP_KEY}`
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=en&key=${MAP_KEY}`
     );
     const data = await res.json();
-    return data.results[0]?.formatted_address?.split(",")[0].trim() || null;
+    return addressFromGeocodeResult(data.results[0])?.split(",")[0].trim() || null;
   } catch {
     return null;
   }

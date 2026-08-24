@@ -14,6 +14,7 @@ import {
   faDrumstickBite, faFish, faBowlFood, faLeaf, faCarrot, faLemon, faCakeCandles, faEgg,
 } from "@fortawesome/free-solid-svg-icons";
 import api from "../api";
+import { addressFromGeocodeResult } from "../utils/address";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const LIBRARIES = ["places"];
@@ -273,7 +274,7 @@ export default function MySpotsPage() {
       const result = await geocoder.geocode({ location: { lat, lng } });
       const first = result.results[0];
       return {
-        address: first?.formatted_address || null,
+        address: addressFromGeocodeResult(first),
         city: extractCity(first?.address_components || []),
       };
     } catch { return { address: null, city: "" }; }

@@ -16,6 +16,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
+import { addressFromGeocodeResult } from "../utils/address";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -560,7 +561,7 @@ export default function RouteMap() {
       const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       const geocoder = new window.google.maps.Geocoder();
       const result = await geocoder.geocode({ location: coords });
-      const address = result.results[0]?.formatted_address || "";
+      const address = addressFromGeocodeResult(result.results[0]) || "";
 
       if (!startRef.current) {
         setStart(coords);
@@ -1044,7 +1045,7 @@ export default function RouteMap() {
       setStart(currentLocationRef.current);
       new window.google.maps.Geocoder().geocode(
         { location: currentLocationRef.current },
-        (results) => setStartAddress(results?.[0]?.formatted_address || "My location"),
+        (results) => setStartAddress(addressFromGeocodeResult(results?.[0]) || "My location"),
       );
     }
   }
@@ -1252,7 +1253,7 @@ export default function RouteMap() {
                 onClick={async () => {
                   const geocoder = new window.google.maps.Geocoder();
                   const result = await geocoder.geocode({ location: currentLocation });
-                  const address = result.results[0]?.formatted_address || "My location";
+                  const address = addressFromGeocodeResult(result.results[0]) || "My location";
                   setStart(currentLocation);
                   setStartAddress(address);
                   clearPolylines(polylinesRef);
@@ -1317,7 +1318,7 @@ export default function RouteMap() {
                 onClick={async () => {
                   const geocoder = new window.google.maps.Geocoder();
                   const result = await geocoder.geocode({ location: currentLocation });
-                  const address = result.results[0]?.formatted_address || "My location";
+                  const address = addressFromGeocodeResult(result.results[0]) || "My location";
                   setEnd(currentLocation);
                   setEndAddress(address);
                   clearPolylines(polylinesRef);
