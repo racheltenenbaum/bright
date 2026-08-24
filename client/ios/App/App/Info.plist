@@ -64,5 +64,7 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>bright uses your location to show you on the map and find sunny routes nearby.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

@@ -150,6 +150,7 @@ export default function RouteMap() {
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: API_KEY,
     libraries: LIBRARIES,
+    language: "en",
   });
   const location = useLocation();
 

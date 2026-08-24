@@ -86,7 +86,7 @@ const ICON_GROUPS = [
 const DEFAULT_CENTER = { lat: 51.505, lng: -0.09 };
 
 export default function MySpotsPage() {
-  const { isLoaded } = useLoadScript({ googleMapsApiKey: MAP_KEY, libraries: LIBRARIES });
+  const { isLoaded } = useLoadScript({ googleMapsApiKey: MAP_KEY, libraries: LIBRARIES, language: "en" });
   const navigate = useNavigate();
 
   const [spots, setSpots] = useState([]);
