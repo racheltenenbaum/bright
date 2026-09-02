@@ -104,7 +104,7 @@ def _bbox_key(s: float, w: float, n: float, e: float) -> str:
     return f"{round(s,3)},{round(w,3)},{round(n,3)},{round(e,3)}"
 
 
-def _query_overpass(url: str, query: str, timeout: int) -> dict | None:
+def _query_overpass(url: str, query: str, timeout: int | tuple[int, int]) -> dict | None:
     try:
         resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)
     except Exception as exc:
@@ -131,14 +131,18 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | 
         _overpass_cache[key] = cached
         return cached
 
-    query = f"[out:json][timeout:25];(way[\"building\"]({s},{w},{n},{e}););out body;>;out skel qt;"
+    query = f"[out:json][timeout:40];(way[\"building\"]({s},{w},{n},{e}););out body;>;out skel qt;"
 
     # Mirrors are raced concurrently, not tried one at a time — a dense urban
     # area can make a single mirror take the full timeout, and retrying the
     # rest sequentially after that would multiply the total wait.
+    # timeout=(connect, read): a dead/unreachable mirror should fail fast
+    # rather than burning the whole budget just trying to open a connection;
+    # a mirror that connects but is genuinely slow for a dense area still
+    # gets a fair amount of time to actually respond.
     executor = ThreadPoolExecutor(max_workers=len(OVERPASS_URLS))
     try:
-        futures = [executor.submit(_query_overpass, url, query, 25) for url in OVERPASS_URLS]
+        futures = [executor.submit(_query_overpass, url, query, (5, 40)) for url in OVERPASS_URLS]
         for future in as_completed(futures):
             data = future.result()
             if data is not None:
