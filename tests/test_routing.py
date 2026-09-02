@@ -19,6 +19,7 @@ from src.routing import (
     nodes_to_coords,
     sample_waypoints,
     fetch_osm_road_network,
+    OVERPASS_URLS,
 )
 
 
@@ -153,9 +154,9 @@ def test_nearest_node_between_two():
 def test_compute_edge_weights_sun_prefers_sunny():
     g = build_graph(_simple_osm())
     # First edge midpoint lat ~40.0005 (shaded), second ~40.0015 (sunny)
-    def fake_shaded(lat, lng, polygons, sun_alt):
+    def fake_shaded(lat, lng, polygons, index, sun_alt):
         return lat < 40.001
-    with patch("src.routing.is_point_shaded_by_polygons", side_effect=fake_shaded):
+    with patch("src.routing.is_point_shaded_by_index", side_effect=fake_shaded):
         compute_edge_weights(g, [], 45.0, 180.0, "sun")
     # Shaded edge (1→2) should cost more than sunny edge (2→3)
     assert g.edges[1, 2]["weight"] > g.edges[2, 3]["weight"]
@@ -163,9 +164,9 @@ def test_compute_edge_weights_sun_prefers_sunny():
 
 def test_compute_edge_weights_shade_prefers_shaded():
     g = build_graph(_simple_osm())
-    def fake_shaded(lat, lng, polygons, sun_alt):
+    def fake_shaded(lat, lng, polygons, index, sun_alt):
         return lat < 40.001
-    with patch("src.routing.is_point_shaded_by_polygons", side_effect=fake_shaded):
+    with patch("src.routing.is_point_shaded_by_index", side_effect=fake_shaded):
         compute_edge_weights(g, [], 45.0, 180.0, "shade")
     # Sunny edge (2→3) should cost more than shaded edge (1→2)
     assert g.edges[2, 3]["weight"] > g.edges[1, 2]["weight"]
@@ -182,7 +183,7 @@ def test_compute_edge_weights_penalty_factor():
     g = build_graph(_simple_osm())
     dist_12 = g.edges[1, 2]["distance_m"]
     # All edges shaded, sun preference → all penalized × SUN_PENALTY
-    with patch("src.routing.is_point_shaded_by_polygons", return_value=True):
+    with patch("src.routing.is_point_shaded_by_index", return_value=True):
         compute_edge_weights(g, [], 45.0, 180.0, "sun")
     assert g.edges[1, 2]["weight"] == pytest.approx(dist_12 * 1.5)
 
@@ -193,7 +194,7 @@ def test_compute_edge_shading_dedupes_shared_midpoints():
     """4 directed edges share only 2 unique midpoints (bidirectional pairs) —
     the expensive shading check must run once per unique point, not per edge."""
     g = build_graph(_simple_osm())  # edges: 1-2, 2-1, 2-3, 3-2
-    with patch("src.routing.is_point_shaded_by_polygons", return_value=False) as mock_shaded:
+    with patch("src.routing.is_point_shaded_by_index", return_value=False) as mock_shaded:
         compute_edge_shading(g, [], 45.0, 180.0)
     assert mock_shaded.call_count == 2
 
@@ -427,6 +428,69 @@ def test_fetch_osm_road_network_http_error_returns_empty():
         with patch("src.routing.requests.post", return_value=mock_resp):
             result = fetch_osm_road_network(44.0, -78.01, 44.01, -77.99)
     assert result == {"elements": []}
+
+
+def test_fetch_osm_road_network_falls_back_to_working_mirror():
+    """One mirror failing must not block a working mirror from succeeding —
+    mirrors are tried concurrently, not one-at-a-time, so a single slow/dead
+    mirror shouldn't multiply the total wait before giving up."""
+    key = _road_bbox_key(46.0, -80.01, 46.01, -79.99)
+    _clear_road_cache(key)
+    mock_data = {"elements": []}
+    good_resp = MagicMock()
+    good_resp.status_code = 200
+    good_resp.json.return_value = mock_data
+
+    def fake_post(url, **kwargs):
+        if url == OVERPASS_URLS[0]:
+            raise Exception("mirror down")
+        return good_resp
+
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("src.routing.requests.post", side_effect=fake_post):
+            result = fetch_osm_road_network(46.0, -80.01, 46.01, -79.99)
+    assert result == mock_data
+    _clear_road_cache(key)
+
+
+def test_fetch_osm_road_network_tries_mirrors_concurrently_not_sequentially():
+    """A slow mirror must not add its delay on top of the others' — mirrors
+    are raced in parallel, so total wait should track the slowest single
+    mirror, not the sum of all of them."""
+    import time
+
+    key = _road_bbox_key(48.0, -82.01, 48.01, -81.99)
+    _clear_road_cache(key)
+    good_resp = MagicMock()
+    good_resp.status_code = 200
+    good_resp.json.return_value = {"elements": []}
+
+    def fake_post(url, **kwargs):
+        time.sleep(0.15)
+        if url == OVERPASS_URLS[0]:
+            raise Exception("down")
+        return good_resp
+
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("src.routing.requests.post", side_effect=fake_post):
+            start = time.monotonic()
+            fetch_osm_road_network(48.0, -82.01, 48.01, -81.99)
+            elapsed = time.monotonic() - start
+    # Sequential retries mirror 2 only after mirror 1's 0.15s failure (>=0.3s
+    # total); racing them concurrently should finish in ~0.15s.
+    assert elapsed < 0.25
+    _clear_road_cache(key)
+
+
+def test_fetch_osm_road_network_tries_all_mirrors_when_all_fail():
+    key = _road_bbox_key(47.0, -81.01, 47.01, -80.99)
+    _clear_road_cache(key)
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("src.routing.requests.post", side_effect=Exception("down")) as mock_post:
+            result = fetch_osm_road_network(47.0, -81.01, 47.01, -80.99)
+    assert result == {"elements": []}
+    assert mock_post.call_count == len(OVERPASS_URLS)
+    _clear_road_cache(key)
 
 
 def test_fetch_osm_road_network_exception_returns_empty():

@@ -18,6 +18,7 @@ from src.routers.shadow_analyze import (
     RAY_DISTANCES_M,
     FLAT_TERRAIN_THRESHOLD_M,
     MAX_SUN_ALT_FOR_TERRAIN_DEG,
+    OVERPASS_URLS,
 )
 
 ROUTE = [[51.5, -0.1], [51.502, -0.1], [51.504, -0.1]]
@@ -149,6 +150,18 @@ def test_fetch_buildings_api_call():
     _clear_cache(key)
 
 
+def test_fetch_buildings_api_non_200_status():
+    key = _bbox_key(18.0, 28.0, 18.5, 28.5)
+    _clear_cache(key)
+    bad_resp = MagicMock()
+    bad_resp.status_code = 429
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", return_value=bad_resp):
+            result = _fetch_buildings_for_bbox(18.0, 28.0, 18.5, 28.5)
+    assert result is None
+    _clear_cache(key)
+
+
 def test_fetch_buildings_api_exception():
     key = _bbox_key(13.0, 23.0, 13.5, 23.5)
     _clear_cache(key)
@@ -170,6 +183,68 @@ def test_fetch_buildings_api_success_no_buildings():
         with patch("requests.post", return_value=mock_resp):
             result = _fetch_buildings_for_bbox(14.0, 24.0, 14.5, 24.5)
     assert result == []  # Successful fetch, just no buildings
+    _clear_cache(key)
+
+
+def test_fetch_buildings_falls_back_to_working_mirror():
+    """One mirror failing must not block a working mirror from succeeding —
+    mirrors are tried concurrently, not one-at-a-time, so a single slow/dead
+    mirror shouldn't multiply the total wait before giving up."""
+    key = _bbox_key(15.0, 25.0, 15.5, 25.5)
+    _clear_cache(key)
+    good_resp = MagicMock()
+    good_resp.status_code = 200
+    good_resp.json.return_value = {"elements": []}
+
+    def fake_post(url, **kwargs):
+        if url == OVERPASS_URLS[0]:
+            raise Exception("mirror down")
+        return good_resp
+
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", side_effect=fake_post):
+            result = _fetch_buildings_for_bbox(15.0, 25.0, 15.5, 25.5)
+    assert result == []
+    _clear_cache(key)
+
+
+def test_fetch_buildings_tries_mirrors_concurrently_not_sequentially():
+    """A slow mirror must not add its delay on top of the others' — mirrors
+    are raced in parallel, so total wait should track the slowest single
+    mirror, not the sum of all of them."""
+    import time
+
+    key = _bbox_key(17.0, 27.0, 17.5, 27.5)
+    _clear_cache(key)
+    good_resp = MagicMock()
+    good_resp.status_code = 200
+    good_resp.json.return_value = {"elements": []}
+
+    def fake_post(url, **kwargs):
+        time.sleep(0.15)
+        if url == OVERPASS_URLS[0]:
+            raise Exception("down")
+        return good_resp
+
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", side_effect=fake_post):
+            start = time.monotonic()
+            _fetch_buildings_for_bbox(17.0, 27.0, 17.5, 27.5)
+            elapsed = time.monotonic() - start
+    # Sequential retries mirror 2 only after mirror 1's 0.15s failure (>=0.3s
+    # total); racing them concurrently should finish in ~0.15s.
+    assert elapsed < 0.25
+    _clear_cache(key)
+
+
+def test_fetch_buildings_tries_all_mirrors_when_all_fail():
+    key = _bbox_key(16.0, 26.0, 16.5, 26.5)
+    _clear_cache(key)
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", side_effect=Exception("down")) as mock_post:
+            result = _fetch_buildings_for_bbox(16.0, 26.0, 16.5, 26.5)
+    assert result is None
+    assert mock_post.call_count == len(OVERPASS_URLS)
     _clear_cache(key)
 
 

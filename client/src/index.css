@@ -803,10 +803,27 @@ body.night-mode .auth-card {
   z-index: 50;
 }
 
+.saved-routes-label {
+  display: none;
+}
+
 @media (min-width: 1024px) {
   .saved-routes-bar {
     right: auto;
     width: 540px;
+  }
+
+  /* Desktop keeps the original always-visible list — only mobile collapses. */
+  .saved-routes-toggle {
+    display: none !important;
+  }
+
+  .saved-routes-label {
+    display: block;
+  }
+
+  .saved-routes-list {
+    display: flex !important;
   }
 }
 

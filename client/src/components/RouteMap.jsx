@@ -13,6 +13,8 @@ import {
   faLocationCrosshairs,
   faShareNodes,
   faCompass,
+  faChevronUp,
+  faChevronDown,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -209,6 +211,7 @@ export default function RouteMap() {
 
   const [spots, setSpots] = useState([]);
   const [savedRoutes, setSavedRoutes] = useState([]);
+  const [savedRoutesExpanded, setSavedRoutesExpanded] = useState(false);
   const [mode, setMode] = useState("route");
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
   const [placesSearching, setPlacesSearching] = useState(false);
@@ -2090,13 +2093,34 @@ export default function RouteMap() {
         </div>
       )}
 
-      {/* Saved routes — fixed to bottom of page */}
+      {/* Saved routes — fixed to bottom of page. Collapsible on mobile so it
+          doesn't permanently cover a chunk of the map; always expanded on
+          desktop (see .saved-routes-toggle / .saved-routes-list CSS). */}
       {mode === "route" && !sunData && savedRoutes.length > 0 && (
-        <div className="saved-routes-bar" style={{ background: "var(--color-bg)", borderTop: `1.5px solid ${colors.accentFaint}`, padding: "10px 16px 14px" }}>
-          <p style={{ margin: "0 0 8px", fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.subtext }}>
+        <div className="saved-routes-bar" style={{ background: "var(--color-bg)", borderTop: `1.5px solid ${colors.accentFaint}` }}>
+          <button
+            className="saved-routes-toggle"
+            onClick={() => setSavedRoutesExpanded((e) => !e)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+              width: "100%", padding: "10px 16px", background: "none", border: "none", boxShadow: "none",
+              fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
+              color: colors.subtext, cursor: "pointer",
+            }}
+          >
+            <FontAwesomeIcon icon={savedRoutesExpanded ? faChevronDown : faChevronUp} />
+            Saved routes
+          </button>
+          <p className="saved-routes-label" style={{ margin: "0 0 8px", padding: "10px 16px 0", fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.subtext }}>
             Saved routes
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div
+            className="saved-routes-list"
+            style={{
+              display: savedRoutesExpanded ? "flex" : "none",
+              flexDirection: "column", gap: "6px", padding: "0 16px 14px",
+            }}
+          >
             {savedRoutes.slice(0, 5).map((route) => {
               const distKm = currentLocation
                 ? haversineKm(currentLocation.lat, currentLocation.lng, route.start_lat, route.start_lng)
@@ -2107,7 +2131,7 @@ export default function RouteMap() {
               return (
                 <button
                   key={route.id}
-                  onClick={() => loadSavedRoute(route)}
+                  onClick={() => { loadSavedRoute(route); setSavedRoutesExpanded(false); }}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "10px 14px", borderRadius: "12px", width: "100%",

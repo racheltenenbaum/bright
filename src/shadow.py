@@ -1,5 +1,6 @@
 from math import radians, tan, sin, cos, degrees, atan2, inf
 from shapely.geometry import Polygon, Point
+from shapely.strtree import STRtree
 
 EARTH_RADIUS_M = 6_371_000.0
 
@@ -109,6 +110,32 @@ def is_point_shaded_by_polygons(
         return True
     pt = Point(lat, lng)
     return any(poly.contains(pt) for poly in shadow_polygons)
+
+
+def build_shadow_polygon_index(shadow_polygons: list[Polygon]) -> STRtree | None:
+    """Spatial index over precomputed shadow polygons. In dense areas with
+    thousands of buildings, checking a point against every polygon linearly
+    (is_point_shaded_by_polygons) becomes the dominant cost of a route
+    calculation; the index narrows each check to only nearby candidates.
+    """
+    if not shadow_polygons:
+        return None
+    return STRtree(shadow_polygons)
+
+
+def is_point_shaded_by_index(
+    lat: float,
+    lng: float,
+    shadow_polygons: list[Polygon],
+    index: STRtree | None,
+    sun_altitude: float,
+) -> bool:
+    if sun_altitude <= 0:
+        return True
+    if index is None:
+        return False
+    pt = Point(lat, lng)
+    return any(shadow_polygons[i].contains(pt) for i in index.query(pt))
 
 
 def _bearing(lat1: float, lng1: float, lat2: float, lng2: float) -> float:

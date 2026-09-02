@@ -3,7 +3,7 @@ import math
 import os
 import sqlite3
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import requests
@@ -101,6 +101,13 @@ def _bbox_key(s: float, w: float, n: float, e: float) -> str:
     return f"{round(s,3)},{round(w,3)},{round(n,3)},{round(e,3)}"
 
 
+def _query_overpass(url: str, query: str, timeout: int) -> dict | None:
+    resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)
+    if resp.status_code == 200 and resp.json().get("elements") is not None:
+        return resp.json()
+    return None
+
+
 def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | None:
     """Return buildings list, or None if all API calls failed (vs [] for no buildings found)."""
     key = _bbox_key(s, w, n, e)
@@ -114,22 +121,26 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | 
         return cached
 
     query = f"[out:json][timeout:25];(way[\"building\"]({s},{w},{n},{e}););out body;>;out skel qt;"
-    for url in OVERPASS_URLS:
-        try:
-            resp = requests.post(
-                url,
-                data=query,
-                headers={"User-Agent": "bright-app/1.0"},
-                timeout=25,
-            )
-            if resp.status_code == 200 and resp.json().get("elements") is not None:
-                buildings = extract_buildings_from_overpass(resp.json())
+
+    # Mirrors are raced concurrently, not tried one at a time — a dense urban
+    # area can make a single mirror take the full timeout, and retrying the
+    # rest sequentially after that would multiply the total wait.
+    executor = ThreadPoolExecutor(max_workers=len(OVERPASS_URLS))
+    try:
+        futures = [executor.submit(_query_overpass, url, query, 25) for url in OVERPASS_URLS]
+        for future in as_completed(futures):
+            try:
+                data = future.result()
+            except Exception:
+                continue
+            if data is not None:
+                buildings = extract_buildings_from_overpass(data)
                 _overpass_cache[key] = buildings
                 _sqlite_set(key, buildings)
                 return buildings
-        except Exception:
-            continue
-    return None  # All API calls failed
+        return None  # All API calls failed
+    finally:
+        executor.shutdown(wait=False)
 
 
 def _route_bbox(coords: list[list[float]], padding_m: float = 50) -> tuple[float, float, float, float]:

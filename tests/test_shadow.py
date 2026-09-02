@@ -8,6 +8,8 @@ from src.shadow import (
     cast_shadow_polygon,
     is_point_shaded,
     is_point_shaded_by_polygons,
+    is_point_shaded_by_index,
+    build_shadow_polygon_index,
     precompute_shadow_polygons,
     which_side_sunny,
     extract_buildings_from_overpass,
@@ -175,6 +177,48 @@ def test_precompute_and_by_polygons_matches_is_point_shaded():
     for lat in (51.0, 50.0):
         assert is_point_shaded_by_polygons(lat, 0.0, polygons, 10.0) == is_point_shaded(
             lat, 0.0, [building], 10.0, 0.0
+        )
+
+# ── build_shadow_polygon_index / is_point_shaded_by_index ──────────────────────
+
+def test_build_shadow_polygon_index_empty_returns_none():
+    assert build_shadow_polygon_index([]) is None
+
+def test_build_shadow_polygon_index_returns_tree_for_nonempty():
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building], 10.0, 0.0)
+    assert build_shadow_polygon_index(polygons) is not None
+
+def test_is_point_shaded_by_index_nighttime_always_true():
+    assert is_point_shaded_by_index(51.0, 0.0, [], None, -5.0) is True
+
+def test_is_point_shaded_by_index_none_index_returns_false():
+    assert is_point_shaded_by_index(51.0, 0.0, [], None, 45.0) is False
+
+def test_is_point_shaded_by_index_true_inside():
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building], 10.0, 0.0)
+    index = build_shadow_polygon_index(polygons)
+    assert is_point_shaded_by_index(51.0, 0.0, polygons, index, 10.0) is True
+
+def test_is_point_shaded_by_index_false_outside():
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building], 10.0, 0.0)
+    index = build_shadow_polygon_index(polygons)
+    assert is_point_shaded_by_index(50.0, 0.0, polygons, index, 10.0) is False
+
+def test_is_point_shaded_by_index_matches_linear_scan():
+    """Index-based lookup must agree with the plain linear-scan implementation."""
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building], 10.0, 0.0)
+    index = build_shadow_polygon_index(polygons)
+    for lat in (51.0, 50.0):
+        assert is_point_shaded_by_index(lat, 0.0, polygons, index, 10.0) == is_point_shaded_by_polygons(
+            lat, 0.0, polygons, 10.0
         )
 
 # ── which_side_sunny ───────────────────────────────────────────────────────────

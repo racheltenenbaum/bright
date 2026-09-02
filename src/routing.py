@@ -3,11 +3,18 @@ import math
 import os
 import sqlite3
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import networkx as nx
 import requests
 
-from src.shadow import is_point_shaded, is_point_shaded_by_polygons, precompute_shadow_polygons
+from src.shadow import (
+    is_point_shaded,
+    is_point_shaded_by_polygons,
+    is_point_shaded_by_index,
+    build_shadow_polygon_index,
+    precompute_shadow_polygons,
+)
 
 OVERPASS_URLS = [
     "https://overpass-api.de/api/interpreter",
@@ -85,6 +92,13 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return EARTH_RADIUS_M * 2 * math.asin(math.sqrt(a))
 
 
+def _query_overpass_roads(url: str, query: str, timeout: int) -> dict | None:
+    resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)
+    if resp.status_code == 200 and resp.json().get("elements") is not None:
+        return resp.json()
+    return None
+
+
 def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
     key = _road_bbox_key(s, w, n, e)
 
@@ -102,22 +116,25 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
         f'service|unclassified|tertiary|secondary|primary|cycleway|steps|track)$"]'
         f'({s},{w},{n},{e}););out body;>;out skel qt;'
     )
-    for url in OVERPASS_URLS:
-        try:
-            resp = requests.post(
-                url,
-                data=query,
-                headers={"User-Agent": "bright-app/1.0"},
-                timeout=30,
-            )
-            if resp.status_code == 200 and resp.json().get("elements") is not None:
-                data = resp.json()
+
+    # Mirrors are raced concurrently, not tried one at a time — a dense urban
+    # area can make a single mirror take the full timeout, and retrying the
+    # rest sequentially after that would multiply the total wait.
+    executor = ThreadPoolExecutor(max_workers=len(OVERPASS_URLS))
+    try:
+        futures = [executor.submit(_query_overpass_roads, url, query, 30) for url in OVERPASS_URLS]
+        for future in as_completed(futures):
+            try:
+                data = future.result()
+            except Exception:
+                continue
+            if data is not None:
                 _road_cache[key] = data
                 _road_sqlite_set(key, data)
                 return data
-        except Exception:
-            continue
-    return {"elements": []}
+        return {"elements": []}
+    finally:
+        executor.shutdown(wait=False)
 
 
 def build_graph(osm_data: dict) -> nx.DiGraph:
@@ -186,11 +203,14 @@ def compute_edge_shading(
         return
 
     shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
+    shadow_index = build_shadow_polygon_index(shadow_polygons)
     shaded_cache: dict[tuple[float, float], bool] = {}
     for _, _, data in graph.edges(data=True):
         key = (data["mid_lat"], data["mid_lng"])
         if key not in shaded_cache:
-            shaded_cache[key] = is_point_shaded_by_polygons(key[0], key[1], shadow_polygons, sun_altitude)
+            shaded_cache[key] = is_point_shaded_by_index(
+                key[0], key[1], shadow_polygons, shadow_index, sun_altitude
+            )
         data["shaded"] = shaded_cache[key]
 
 
