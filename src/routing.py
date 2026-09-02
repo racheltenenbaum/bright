@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -15,6 +16,8 @@ from src.shadow import (
     build_shadow_polygon_index,
     precompute_shadow_polygons,
 )
+
+logger = logging.getLogger(__name__)
 
 OVERPASS_URLS = [
     "https://overpass-api.de/api/interpreter",
@@ -93,9 +96,17 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 def _query_overpass_roads(url: str, query: str, timeout: int) -> dict | None:
-    resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)
+    try:
+        resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)
+    except Exception as exc:
+        logger.warning("Overpass road request to %s failed: %r", url, exc)
+        return None
     if resp.status_code == 200 and resp.json().get("elements") is not None:
         return resp.json()
+    logger.warning(
+        "Overpass road request to %s returned status %s: %s",
+        url, resp.status_code, resp.text[:300],
+    )
     return None
 
 
@@ -124,10 +135,7 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
     try:
         futures = [executor.submit(_query_overpass_roads, url, query, 30) for url in OVERPASS_URLS]
         for future in as_completed(futures):
-            try:
-                data = future.result()
-            except Exception:
-                continue
+            data = future.result()
             if data is not None:
                 _road_cache[key] = data
                 _road_sqlite_set(key, data)

@@ -172,6 +172,19 @@ def test_fetch_buildings_api_exception():
     _clear_cache(key)
 
 
+def test_fetch_buildings_logs_failure_reason(caplog):
+    """A silent None on total failure is undiagnosable in production — the
+    actual reason (timeout, rate limit, DNS, etc.) must be logged."""
+    key = _bbox_key(19.0, 29.0, 19.5, 29.5)
+    _clear_cache(key)
+    with caplog.at_level("WARNING"):
+        with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+            with patch("requests.post", side_effect=Exception("rate limited")):
+                _fetch_buildings_for_bbox(19.0, 29.0, 19.5, 29.5)
+    assert "rate limited" in caplog.text
+    _clear_cache(key)
+
+
 def test_fetch_buildings_api_success_no_buildings():
     """API succeeds but finds no buildings — returns [], not None."""
     key = _bbox_key(14.0, 24.0, 14.5, 24.5)

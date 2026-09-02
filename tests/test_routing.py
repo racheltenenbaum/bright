@@ -502,6 +502,19 @@ def test_fetch_osm_road_network_exception_returns_empty():
     assert result == {"elements": []}
 
 
+def test_fetch_osm_road_network_logs_failure_reason(caplog):
+    """A silent empty result on total failure is undiagnosable in production —
+    the actual reason (timeout, rate limit, DNS, etc.) must be logged."""
+    key = _road_bbox_key(49.0, -83.01, 49.01, -82.99)
+    _clear_road_cache(key)
+    with caplog.at_level("WARNING"):
+        with patch("src.routing._road_sqlite_get", return_value=None):
+            with patch("src.routing.requests.post", side_effect=Exception("rate limited")):
+                fetch_osm_road_network(49.0, -83.01, 49.01, -82.99)
+    assert "rate limited" in caplog.text
+    _clear_road_cache(key)
+
+
 # ── endpoint tests ────────────────────────────────────────────────────────────
 
 _OSM_DATA = {

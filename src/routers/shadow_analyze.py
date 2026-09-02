@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -15,6 +16,8 @@ from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.shadow import extract_buildings_from_overpass, is_point_shaded, which_side_sunny, _offset_point
 from src.utils.astronomy import get_sun_position
+
+logger = logging.getLogger(__name__)
 
 RAY_DISTANCES_M: list[float] = [150.0, 400.0, 900.0, 2000.0, 4000.0]
 FLAT_TERRAIN_THRESHOLD_M: float = 20.0
@@ -102,9 +105,17 @@ def _bbox_key(s: float, w: float, n: float, e: float) -> str:
 
 
 def _query_overpass(url: str, query: str, timeout: int) -> dict | None:
-    resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)
+    try:
+        resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)
+    except Exception as exc:
+        logger.warning("Overpass building request to %s failed: %r", url, exc)
+        return None
     if resp.status_code == 200 and resp.json().get("elements") is not None:
         return resp.json()
+    logger.warning(
+        "Overpass building request to %s returned status %s: %s",
+        url, resp.status_code, resp.text[:300],
+    )
     return None
 
 
@@ -129,10 +140,7 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | 
     try:
         futures = [executor.submit(_query_overpass, url, query, 25) for url in OVERPASS_URLS]
         for future in as_completed(futures):
-            try:
-                data = future.result()
-            except Exception:
-                continue
+            data = future.result()
             if data is not None:
                 buildings = extract_buildings_from_overpass(data)
                 _overpass_cache[key] = buildings
