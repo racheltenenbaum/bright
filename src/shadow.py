@@ -71,6 +71,46 @@ def is_point_shaded(
     return False
 
 
+def precompute_shadow_polygons(
+    buildings: list[dict],
+    sun_altitude: float,
+    sun_azimuth: float,
+    point_elevation: float = 0.0,
+) -> list[Polygon]:
+    """Build each building's shadow polygon once. Unlike is_point_shaded, this
+    depends only on building geometry and sun position, never on the query
+    point, so it must not be recomputed per point when checking many points
+    (e.g. every edge midpoint in a routing graph) against the same buildings.
+    """
+    if sun_altitude <= 0:
+        return []
+    polygons = []
+    for building in buildings:
+        effective_height = building["height"] + building.get("base_elevation", 0.0) - point_elevation
+        if effective_height <= 0:
+            continue
+        poly = cast_shadow_polygon(building["footprint"], effective_height, sun_altitude, sun_azimuth)
+        if poly is not None:
+            polygons.append(poly)
+    return polygons
+
+
+def is_point_shaded_by_polygons(
+    lat: float,
+    lng: float,
+    shadow_polygons: list[Polygon],
+    sun_altitude: float,
+) -> bool:
+    """Like is_point_shaded, but against polygons already built by
+    precompute_shadow_polygons — for checking many points against the same
+    set of buildings without rebuilding each building's polygon every time.
+    """
+    if sun_altitude <= 0:
+        return True
+    pt = Point(lat, lng)
+    return any(poly.contains(pt) for poly in shadow_polygons)
+
+
 def _bearing(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """Forward bearing in degrees from point 1 to point 2."""
     lat1, lng1, lat2, lng2 = map(radians, [lat1, lng1, lat2, lng2])

@@ -7,7 +7,7 @@ import threading
 import networkx as nx
 import requests
 
-from src.shadow import is_point_shaded
+from src.shadow import is_point_shaded, is_point_shaded_by_polygons, precompute_shadow_polygons
 
 OVERPASS_URLS = [
     "https://overpass-api.de/api/interpreter",
@@ -15,6 +15,12 @@ OVERPASS_URLS = [
     "https://overpass.openstreetmap.ru/api/interpreter",
 ]
 SUN_PENALTY = 1.5
+# Shade routes structurally need a bigger detour than sun routes: at any given
+# moment most street edges are unshaded, so avoiding them (shade) requires
+# deviating much further than avoiding the shaded minority (sun). Without this,
+# shade paths routinely blow the same flat detour cap sun paths comfortably
+# clear, and silently collapse to the plain distance path.
+SHADE_DETOUR_MULTIPLIER = 2.5
 EXCLUDED_HIGHWAY_TYPES = {"motorway", "trunk", "motorway_link", "trunk_link"}
 
 EARTH_RADIUS_M = 6_371_000.0
@@ -164,6 +170,37 @@ def nearest_node(graph: nx.DiGraph, lat: float, lng: float) -> int:
     )
 
 
+def compute_edge_shading(
+    graph: nx.DiGraph,
+    buildings: list,
+    sun_altitude: float,
+    sun_azimuth: float,
+) -> None:
+    """Tag each edge with data["shaded"]. Each building's shadow polygon is
+    built once (not per edge — it doesn't depend on the point being tested),
+    and bidirectional edge pairs share a midpoint so are checked only once.
+    """
+    if sun_altitude <= 0:
+        for _, _, data in graph.edges(data=True):
+            data["shaded"] = True
+        return
+
+    shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
+    shaded_cache: dict[tuple[float, float], bool] = {}
+    for _, _, data in graph.edges(data=True):
+        key = (data["mid_lat"], data["mid_lng"])
+        if key not in shaded_cache:
+            shaded_cache[key] = is_point_shaded_by_polygons(key[0], key[1], shadow_polygons, sun_altitude)
+        data["shaded"] = shaded_cache[key]
+
+
+def apply_preference_weights(graph: nx.DiGraph, preference: str, penalty: float) -> None:
+    for _, _, data in graph.edges(data=True):
+        wants_sunny = preference == "sun"
+        unwanted = data["shaded"] if wants_sunny else not data["shaded"]
+        data["weight"] = data["distance_m"] * (penalty if unwanted else 1.0)
+
+
 def compute_edge_weights(
     graph: nx.DiGraph,
     buildings: list,
@@ -171,15 +208,12 @@ def compute_edge_weights(
     sun_azimuth: float,
     preference: str,
 ) -> None:
-    for u, v, data in graph.edges(data=True):
-        if sun_altitude <= 0:
+    if sun_altitude <= 0:
+        for _, _, data in graph.edges(data=True):
             data["weight"] = data["distance_m"]
-            continue
-        shaded = is_point_shaded(data["mid_lat"], data["mid_lng"], buildings, sun_altitude, sun_azimuth)
-        if preference == "sun":
-            data["weight"] = data["distance_m"] * (SUN_PENALTY if shaded else 1.0)
-        else:
-            data["weight"] = data["distance_m"] * (SUN_PENALTY if not shaded else 1.0)
+        return
+    compute_edge_shading(graph, buildings, sun_altitude, sun_azimuth)
+    apply_preference_weights(graph, preference, SUN_PENALTY)
 
 
 def _path_length_m(graph: nx.DiGraph, path: list[int]) -> float:

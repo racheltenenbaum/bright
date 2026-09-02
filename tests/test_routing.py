@@ -11,7 +11,9 @@ from src.routing import (
     _road_sqlite_set,
     build_graph,
     nearest_node,
+    compute_edge_shading,
     compute_edge_weights,
+    apply_preference_weights,
     find_distance_path,
     find_optimized_path,
     nodes_to_coords,
@@ -151,9 +153,9 @@ def test_nearest_node_between_two():
 def test_compute_edge_weights_sun_prefers_sunny():
     g = build_graph(_simple_osm())
     # First edge midpoint lat ~40.0005 (shaded), second ~40.0015 (sunny)
-    def fake_shaded(lat, lng, buildings, sun_alt, sun_az, elev=0.0):
+    def fake_shaded(lat, lng, polygons, sun_alt):
         return lat < 40.001
-    with patch("src.routing.is_point_shaded", side_effect=fake_shaded):
+    with patch("src.routing.is_point_shaded_by_polygons", side_effect=fake_shaded):
         compute_edge_weights(g, [], 45.0, 180.0, "sun")
     # Shaded edge (1→2) should cost more than sunny edge (2→3)
     assert g.edges[1, 2]["weight"] > g.edges[2, 3]["weight"]
@@ -161,9 +163,9 @@ def test_compute_edge_weights_sun_prefers_sunny():
 
 def test_compute_edge_weights_shade_prefers_shaded():
     g = build_graph(_simple_osm())
-    def fake_shaded(lat, lng, buildings, sun_alt, sun_az, elev=0.0):
+    def fake_shaded(lat, lng, polygons, sun_alt):
         return lat < 40.001
-    with patch("src.routing.is_point_shaded", side_effect=fake_shaded):
+    with patch("src.routing.is_point_shaded_by_polygons", side_effect=fake_shaded):
         compute_edge_weights(g, [], 45.0, 180.0, "shade")
     # Sunny edge (2→3) should cost more than shaded edge (1→2)
     assert g.edges[2, 3]["weight"] > g.edges[1, 2]["weight"]
@@ -180,9 +182,49 @@ def test_compute_edge_weights_penalty_factor():
     g = build_graph(_simple_osm())
     dist_12 = g.edges[1, 2]["distance_m"]
     # All edges shaded, sun preference → all penalized × SUN_PENALTY
-    with patch("src.routing.is_point_shaded", return_value=True):
+    with patch("src.routing.is_point_shaded_by_polygons", return_value=True):
         compute_edge_weights(g, [], 45.0, 180.0, "sun")
     assert g.edges[1, 2]["weight"] == pytest.approx(dist_12 * 1.5)
+
+
+# ── compute_edge_shading (dedup) ───────────────────────────────────────────────
+
+def test_compute_edge_shading_dedupes_shared_midpoints():
+    """4 directed edges share only 2 unique midpoints (bidirectional pairs) —
+    the expensive shading check must run once per unique point, not per edge."""
+    g = build_graph(_simple_osm())  # edges: 1-2, 2-1, 2-3, 3-2
+    with patch("src.routing.is_point_shaded_by_polygons", return_value=False) as mock_shaded:
+        compute_edge_shading(g, [], 45.0, 180.0)
+    assert mock_shaded.call_count == 2
+
+
+def test_compute_edge_shading_nighttime_all_shaded():
+    g = build_graph(_simple_osm())
+    compute_edge_shading(g, [], 0.0, 180.0)
+    assert g.edges[1, 2]["shaded"] is True
+    assert g.edges[2, 3]["shaded"] is True
+
+
+# ── apply_preference_weights ───────────────────────────────────────────────────
+
+def test_apply_preference_weights_sun_penalizes_shaded():
+    g = build_graph(_simple_osm())
+    for _, _, data in g.edges(data=True):
+        data["shaded"] = False
+    g.edges[1, 2]["shaded"] = True
+    apply_preference_weights(g, "sun", 2.0)
+    assert g.edges[1, 2]["weight"] == pytest.approx(g.edges[1, 2]["distance_m"] * 2.0)
+    assert g.edges[2, 3]["weight"] == pytest.approx(g.edges[2, 3]["distance_m"])
+
+
+def test_apply_preference_weights_shade_penalizes_sunny():
+    g = build_graph(_simple_osm())
+    for _, _, data in g.edges(data=True):
+        data["shaded"] = False
+    g.edges[1, 2]["shaded"] = True
+    apply_preference_weights(g, "shade", 2.0)
+    assert g.edges[1, 2]["weight"] == pytest.approx(g.edges[1, 2]["distance_m"])
+    assert g.edges[2, 3]["weight"] == pytest.approx(g.edges[2, 3]["distance_m"] * 2.0)
 
 
 # ── find_optimized_path ───────────────────────────────────────────────────────
@@ -542,6 +584,35 @@ def test_optimized_route_uses_user_pref_max_detour(client, auth_headers):
         )
     assert resp.status_code == 200
     assert len(resp.json()["waypoints"]) == 2
+
+
+def test_optimized_route_shade_gets_larger_detour_allowance(client, auth_headers):
+    """Shade routes structurally need more detour than sun routes (most street
+    edges are unshaded at once), so the same flat % cap used for sun would
+    almost always reject shade routes and silently fall back to the plain
+    distance path. Shade must get a larger effective detour allowance."""
+    # sun_len=350 is >30% over dist_len=200 (a plain cap would reject this),
+    # but must be kept for preference="shade" thanks to the larger allowance.
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
+        patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
+        patch("src.routers.routing._path_length_m", side_effect=[350.0, 200.0]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": [40.000, -74.000],
+                "end": [40.002, -74.000],
+                "datetime": "2026-05-24T14:00:00",
+                "preference": "shade",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert len(resp.json()["waypoints"]) == 3
 
 
 def test_optimized_route_endpoint_no_road_network(client, auth_headers):

@@ -7,6 +7,8 @@ from src.shadow import (
     _parse_height,
     cast_shadow_polygon,
     is_point_shaded,
+    is_point_shaded_by_polygons,
+    precompute_shadow_polygons,
     which_side_sunny,
     extract_buildings_from_overpass,
 )
@@ -132,6 +134,48 @@ def test_is_point_shaded_sunny_side_no_false_positive():
     # 5 m south of the building's sunny (south-facing) wall — clearly in direct sunlight
     point_lat = 51.001 - 5 / 111_000
     assert is_point_shaded(point_lat, 0.0, [building], 45.0, 180.0) is False
+
+# ── precompute_shadow_polygons / is_point_shaded_by_polygons ───────────────────
+
+def test_precompute_shadow_polygons_empty_at_night():
+    building = {"footprint": [[51.001, -0.001], [51.001, 0.001], [51.0, 0.001]], "height": 20.0}
+    assert precompute_shadow_polygons([building], 0.0, 180.0) == []
+
+def test_precompute_shadow_polygons_one_per_building():
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building, building], 10.0, 0.0)
+    assert len(polygons) == 2
+
+def test_precompute_shadow_polygons_skips_zero_effective_height():
+    building = {"footprint": [[51.001, -0.001], [51.001, 0.001], [51.0, 0.001]], "height": 0.0}
+    assert precompute_shadow_polygons([building], 45.0, 180.0) == []
+
+def test_is_point_shaded_by_polygons_nighttime_always_true():
+    assert is_point_shaded_by_polygons(51.0, 0.0, [], -5.0) is True
+
+def test_is_point_shaded_by_polygons_true_inside():
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building], 10.0, 0.0)
+    assert is_point_shaded_by_polygons(51.0, 0.0, polygons, 10.0) is True
+
+def test_is_point_shaded_by_polygons_false_outside():
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building], 10.0, 0.0)
+    # Far south of the building, well outside any shadow it casts north
+    assert is_point_shaded_by_polygons(50.0, 0.0, polygons, 10.0) is False
+
+def test_precompute_and_by_polygons_matches_is_point_shaded():
+    """Precomputed-polygon path must agree with the per-point implementation."""
+    fp = [[51.0005, -0.0005], [51.0005, 0.0005], [51.001, 0.0005], [51.001, -0.0005]]
+    building = {"footprint": fp, "height": 50.0, "base_elevation": 0.0}
+    polygons = precompute_shadow_polygons([building], 10.0, 0.0)
+    for lat in (51.0, 50.0):
+        assert is_point_shaded_by_polygons(lat, 0.0, polygons, 10.0) == is_point_shaded(
+            lat, 0.0, [building], 10.0, 0.0
+        )
 
 # ── which_side_sunny ───────────────────────────────────────────────────────────
 

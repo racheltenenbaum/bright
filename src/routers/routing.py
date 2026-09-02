@@ -8,6 +8,7 @@ from src.auth import get_current_user
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routing import (
+    SHADE_DETOUR_MULTIPLIER,
     _path_length_m,
     build_graph,
     compute_edge_weights,
@@ -93,6 +94,8 @@ def optimized_route(
         raise HTTPException(status_code=400, detail="No path found between these locations")
 
     max_detour = current_user.pref_max_detour / 100
+    if body.preference == "shade":
+        max_detour *= SHADE_DETOUR_MULTIPLIER
     dist_path_nodes = find_distance_path(graph, start_node, end_node)
     if dist_path_nodes:
         sun_len = _path_length_m(graph, path_nodes)
