@@ -128,6 +128,11 @@ def test_share_route_wrong_user(client, db):
     assert response.status_code in (401, 404)
 
 
+def test_share_route_nonexistent_id(client, auth_headers):
+    response = client.post("/routes/999999/share", headers=auth_headers)
+    assert response.status_code == 404
+
+
 def test_create_route_with_path(client, auth_headers):
     payload = {**ROUTE_PAYLOAD, "route_path": "[[51.5,-0.1],[51.505,-0.1],[51.51,-0.1]]"}
     response = client.post("/routes", json=payload, headers=auth_headers)

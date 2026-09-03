@@ -692,6 +692,97 @@ def test_optimized_route_shade_gets_larger_detour_allowance(client, auth_headers
     assert len(resp.json()["waypoints"]) == 3
 
 
+_SHADE_VS_SUN_OSM = {
+    "elements": [
+        {"type": "node", "id": 1, "lat": 40.0000, "lon": -74.000000},   # start
+        {"type": "node", "id": 2, "lat": 40.0009, "lon": -74.000000},   # direct-path midpoint (unshaded)
+        {"type": "node", "id": 3, "lat": 40.0018, "lon": -74.000000},   # end
+        {"type": "node", "id": 4, "lat": 40.0009, "lon": -74.001147},   # detour-path midpoint (shaded)
+        {"type": "way", "id": 100, "nodes": [1, 2, 3], "tags": {"highway": "residential"}},
+        {"type": "way", "id": 101, "nodes": [1, 4, 3], "tags": {"highway": "residential"}},
+    ]
+}
+
+
+def test_optimized_route_sun_and_shade_produce_different_routes(client, auth_headers):
+    """Regression test: shade once silently collapsed to the exact same route
+    as sun, because a flat detour cap disproportionately rejected shade's
+    larger structural detour (see SHADE_DETOUR_MULTIPLIER). This must run the
+    real endpoint end-to-end — graph build, Dijkstra, and the detour cap —
+    rather than mocking path selection directly, since mocking path selection
+    is exactly what let the original bug hide behind passing tests."""
+    assert client.patch("/users/me", json={"pref_max_detour": 30}, headers=auth_headers).status_code == 200
+
+    def fake_shaded(lat, lng, polygons, index, sun_alt):
+        # Detour-path edges sit near lng=-74.001147; direct-path edges at lng=-74.000.
+        return abs(lng - (-74.000)) > 0.0005
+
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_osm_road_network", return_value=_SHADE_VS_SUN_OSM),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routing.is_point_shaded_by_index", side_effect=fake_shaded),
+    ):
+        sun_resp = client.post(
+            "/sun/optimized-route",
+            json={"start": [40.0000, -74.000000], "end": [40.0018, -74.000000],
+                  "datetime": "2026-05-24T14:00:00", "preference": "sun"},
+            headers=auth_headers,
+        )
+        shade_resp = client.post(
+            "/sun/optimized-route",
+            json={"start": [40.0000, -74.000000], "end": [40.0018, -74.000000],
+                  "datetime": "2026-05-24T14:00:00", "preference": "shade"},
+            headers=auth_headers,
+        )
+
+    assert sun_resp.status_code == 200
+    assert shade_resp.status_code == 200
+
+    sun_mid_lng = sun_resp.json()["waypoints"][1][1]
+    shade_mid_lng = shade_resp.json()["waypoints"][1][1]
+
+    # Sun takes the direct (unshaded) path through node 2 (lng ≈ -74.000)...
+    assert sun_mid_lng == pytest.approx(-74.000, abs=1e-4)
+    # ...shade must take the detour through node 4 (lng ≈ -74.001147) — not
+    # silently fall back to the identical route sun took.
+    assert shade_mid_lng == pytest.approx(-74.001147, abs=1e-4)
+    assert sun_mid_lng != pytest.approx(shade_mid_lng, abs=1e-4)
+
+
+_DISCONNECTED_OSM = {
+    "elements": [
+        {"type": "node", "id": 1, "lat": 40.000, "lon": -74.000},
+        {"type": "node", "id": 2, "lat": 40.0005, "lon": -74.000},
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+        # Disconnected component — reachable by nearest_node but not by any path.
+        {"type": "node", "id": 3, "lat": 41.000, "lon": -74.000},
+        {"type": "node", "id": 4, "lat": 41.0005, "lon": -74.000},
+        {"type": "way", "id": 101, "nodes": [3, 4], "tags": {"highway": "residential"}},
+    ]
+}
+
+
+def test_optimized_route_endpoint_no_path_found(client, auth_headers):
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_osm_road_network", return_value=_DISCONNECTED_OSM),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": [40.000, -74.000],
+                "end": [41.0005, -74.000],
+                "datetime": "2026-05-24T14:00:00",
+                "preference": "sun",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 400
+    assert "No path found" in resp.json()["detail"]
+
+
 def test_optimized_route_endpoint_no_road_network(client, auth_headers):
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),

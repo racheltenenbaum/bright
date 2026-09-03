@@ -885,6 +885,16 @@ def test_sun_check_unauthenticated(client):
     assert response.status_code == 401
 
 
+def test_sun_check_lat_out_of_range(client, auth_headers):
+    response = client.post("/places/sun-check", json={"lat": 91.0, "lng": -0.1}, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_sun_check_lng_out_of_range(client, auth_headers):
+    response = client.post("/places/sun-check", json={"lat": 51.5, "lng": 181.0}, headers=auth_headers)
+    assert response.status_code == 422
+
+
 def test_place_search_radius_too_large(client, auth_headers):
     response = client.post("/places/search", json={
         "lat": 51.5, "lng": -0.1, "radius": 99999,

@@ -53,6 +53,12 @@ def test_update_name_blank_rejected(client, auth_headers):
     assert response.status_code == 422
 
 
+def test_update_name_explicit_null_allowed(client, auth_headers):
+    """first_name: null means 'leave unchanged', distinct from a blank string."""
+    response = client.patch("/users/me", json={"first_name": None}, headers=auth_headers)
+    assert response.status_code == 200
+
+
 def test_update_name_unauthenticated(client):
     response = client.patch("/users/me", json={"first_name": "Rachel"})
     assert response.status_code == 401

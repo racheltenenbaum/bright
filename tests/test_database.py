@@ -1,4 +1,4 @@
-from src.database import _normalize_db_url
+from src.database import _normalize_db_url, get_db
 
 
 def test_normalize_db_url_converts_raw_mysql_scheme():
@@ -12,3 +12,10 @@ def test_normalize_db_url_leaves_pymysql_scheme_unchanged():
 
 def test_normalize_db_url_leaves_other_schemes_unchanged():
     assert _normalize_db_url("sqlite:///test.db") == "sqlite:///test.db"
+
+
+def test_get_db_yields_session_and_closes_it():
+    gen = get_db()
+    db = next(gen)
+    assert db is not None
+    gen.close()  # triggers the generator's finally: db.close()

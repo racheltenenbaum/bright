@@ -130,6 +130,11 @@ def test_update_spot_wrong_user(client, db):
     assert response.status_code in (401, 404)
 
 
+def test_update_spot_nonexistent_id(client, auth_headers):
+    response = client.patch("/spots/999999", json=SPOT_PAYLOAD, headers=auth_headers)
+    assert response.status_code == 404
+
+
 def test_delete_spot(client, auth_headers, test_user, db):
     spot = Spot(name="Gym", address="Gym St", lat=51.5, lng=-0.1,
                 icon="faDumbbell", city="London", user_id=test_user.id)
@@ -292,6 +297,11 @@ def test_share_spot_wrong_user(client, db):
     headers = {"Authorization": f"Bearer {create_access_token(other.id + 999)}"}
     response = client.post(f"/spots/{spot.id}/share", headers=headers)
     assert response.status_code in (401, 404)
+
+
+def test_share_spot_nonexistent_id(client, auth_headers):
+    response = client.post("/spots/999999/share", headers=auth_headers)
+    assert response.status_code == 404
 
 
 def test_get_shared_spot_public(client, test_user, db):

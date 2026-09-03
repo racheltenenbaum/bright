@@ -104,6 +104,17 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.asin(Math.sqrt(a));
 }
 
+function computeBearing(lat1, lng1, lat2, lng2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const dLng = toRad(lng2 - lng1);
+  const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+  const x =
+    Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
 function formatRouteStats(waypoints) {
   const distKm = waypoints.reduce((sum, pt, i) => {
     if (i === 0) return 0;
@@ -203,6 +214,8 @@ export default function RouteMap() {
   const [routeSegments, setRouteSegments] = useState(null);
   const [goMode, setGoMode] = useState(false);
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
+  const prevGoLocationRef = useRef(null);
+  const preGoZoomRef = useRef(null);
   const [planning, setPlanning] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [mapCenter, setMapCenter] = useState(null);
@@ -547,7 +560,20 @@ export default function RouteMap() {
       if (d < minDist) { minDist = d; nearestIdx = i; }
     });
     setGoSegmentIdx(nearestIdx);
-    mapRef.current?.panTo(currentLocation);
+
+    const map = mapRef.current;
+    if (map) {
+      map.panTo(currentLocation);
+      const prev = prevGoLocationRef.current;
+      // Only rotate on real movement — GPS jitter while stationary would
+      // otherwise spin the heading erratically.
+      if (prev && haversineKm(prev.lat, prev.lng, currentLocation.lat, currentLocation.lng) * 1000 > 3) {
+        const bearing = computeBearing(prev.lat, prev.lng, currentLocation.lat, currentLocation.lng);
+        map.setHeading(bearing);
+        setMapHeading(bearing);
+      }
+    }
+    prevGoLocationRef.current = currentLocation;
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-register click listener whenever start/end change
@@ -623,6 +649,20 @@ export default function RouteMap() {
       });
     }
   }, [end, isLoaded, preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function exitGoMode() {
+    setGoMode(false);
+    prevGoLocationRef.current = null;
+    const map = mapRef.current;
+    if (map) {
+      map.setHeading(0);
+      setMapHeading(0);
+      if (preGoZoomRef.current != null) {
+        map.setZoom(preGoZoomRef.current);
+        preGoZoomRef.current = null;
+      }
+    }
+  }
 
   function togglePreference() {
     setPreference((p) => (p === "sun" ? "shade" : "sun"));
@@ -1062,7 +1102,7 @@ export default function RouteMap() {
       setSunData(null); setRouteStats(null);
       setRouteCoords(null); setRouteSegments(null);
       setRouteSaved(false); setSavedRouteName(null);
-      setGoMode(false); setSaveForm(null);
+      exitGoMode(); setSaveForm(null);
     } else {
       clearPlaceMarkers();
       setSelectedPlace(null);
@@ -1111,7 +1151,7 @@ export default function RouteMap() {
     setRouteStats(null);
     setRouteCoords(null);
     setRouteSegments(null);
-    setGoMode(false);
+    exitGoMode();
     clearPolylines(polylinesRef);
     clearPlaceMarkers();
     setSelectedPlace(null);
@@ -1665,7 +1705,19 @@ export default function RouteMap() {
           )}
           {sunData && !planning && (
             <button
-              onClick={() => goMode ? setGoMode(false) : (setGoMode(true), setGoSegmentIdx(0))}
+              onClick={() => {
+                if (goMode) {
+                  exitGoMode();
+                } else {
+                  const map = mapRef.current;
+                  if (map) {
+                    preGoZoomRef.current = map.getZoom();
+                    map.setZoom(19);
+                  }
+                  setGoMode(true);
+                  setGoSegmentIdx(0);
+                }
+              }}
               style={{
                 position: "absolute", top: "52px", right: "10px", zIndex: 10,
                 width: "64px", height: "64px", borderRadius: "50%",
