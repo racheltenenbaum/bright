@@ -10,6 +10,8 @@ from src.routing import (
     _road_sqlite_get,
     _road_sqlite_set,
     build_graph,
+    build_graph_from_edges,
+    fetch_road_graph,
     nearest_node,
     compute_edge_shading,
     compute_edge_weights,
@@ -133,6 +135,141 @@ def test_build_graph_empty_data():
     g = build_graph({"elements": []})
     assert g.number_of_nodes() == 0
     assert g.number_of_edges() == 0
+
+
+# ── build_graph_from_edges (bulk-imported roads) ────────────────────────────
+
+def _simple_edges(oneway: bool = False) -> list[dict]:
+    return [{
+        "from_lat": 40.000, "from_lng": -74.000,
+        "to_lat": 40.001, "to_lng": -74.000,
+        "distance_m": 111.2, "oneway": oneway,
+    }]
+
+
+def test_build_graph_from_edges_creates_nodes_and_edge():
+    g = build_graph_from_edges(_simple_edges())
+    assert g.number_of_nodes() == 2
+    assert g.has_edge((40.000, -74.000), (40.001, -74.000))
+
+
+def test_build_graph_from_edges_bidirectional_by_default():
+    g = build_graph_from_edges(_simple_edges(oneway=False))
+    assert g.has_edge((40.000, -74.000), (40.001, -74.000))
+    assert g.has_edge((40.001, -74.000), (40.000, -74.000))
+
+
+def test_build_graph_from_edges_respects_oneway():
+    g = build_graph_from_edges(_simple_edges(oneway=True))
+    assert g.has_edge((40.000, -74.000), (40.001, -74.000))
+    assert not g.has_edge((40.001, -74.000), (40.000, -74.000))
+
+
+def test_build_graph_from_edges_sets_distance_and_midpoint():
+    g = build_graph_from_edges(_simple_edges())
+    edge = g.edges[(40.000, -74.000), (40.001, -74.000)]
+    assert edge["distance_m"] == 111.2
+    assert edge["weight"] == 111.2
+    assert edge["mid_lat"] == pytest.approx(40.0005)
+    assert edge["mid_lng"] == pytest.approx(-74.000)
+
+
+def test_build_graph_from_edges_shares_nodes_across_edges():
+    # A(1)-B(2)-C(3): B must be a single shared node, not duplicated.
+    edges = [
+        {"from_lat": 40.000, "from_lng": -74.000, "to_lat": 40.001, "to_lng": -74.000,
+         "distance_m": 111.2, "oneway": False},
+        {"from_lat": 40.001, "from_lng": -74.000, "to_lat": 40.002, "to_lng": -74.000,
+         "distance_m": 111.2, "oneway": False},
+    ]
+    g = build_graph_from_edges(edges)
+    assert g.number_of_nodes() == 3
+
+
+def test_build_graph_from_edges_empty():
+    g = build_graph_from_edges([])
+    assert g.number_of_nodes() == 0
+
+
+# ── fetch_road_graph (region-aware local lookup) ────────────────────────────
+
+def test_fetch_roads_from_db_excludes_out_of_bbox_rows(db):
+    from src.models import OsmRoad
+    road = OsmRoad(
+        region="la", min_lat=34.000, max_lat=34.001, min_lng=-118.300, max_lng=-118.299,
+        from_lat=34.000, from_lng=-118.300, to_lat=34.001, to_lng=-118.299,
+        distance_m=120.0, oneway=False,
+    )
+    db.add(road)
+    db.commit()
+
+    result = routing_module._fetch_roads_from_db("la", 33.900, -118.200, 33.901, -118.199)
+    assert result == []
+
+
+def test_fetch_roads_from_db_includes_matching_rows(db):
+    from src.models import OsmRoad
+    road = OsmRoad(
+        region="la", min_lat=34.000, max_lat=34.001, min_lng=-118.300, max_lng=-118.299,
+        from_lat=34.000, from_lng=-118.300, to_lat=34.001, to_lng=-118.299,
+        distance_m=120.0, oneway=True,
+    )
+    db.add(road)
+    db.commit()
+
+    result = routing_module._fetch_roads_from_db("la", 33.999, -118.301, 34.002, -118.298)
+    assert result == [{
+        "from_lat": 34.000, "from_lng": -118.300,
+        "to_lat": 34.001, "to_lng": -118.299,
+        "distance_m": 120.0, "oneway": True,
+    }]
+
+
+def test_fetch_road_graph_imported_region_uses_local_db(db):
+    from src.models import OsmRoad
+    db.add(OsmRoad(
+        region="la", min_lat=34.000, max_lat=34.001, min_lng=-118.300, max_lng=-118.299,
+        from_lat=34.000, from_lng=-118.300, to_lat=34.001, to_lng=-118.299,
+        distance_m=120.0, oneway=False,
+    ))
+    db.commit()
+
+    with patch("requests.post") as mock_post:
+        graph = routing_module.fetch_road_graph(33.999, -118.301, 34.002, -118.298)
+
+    mock_post.assert_not_called()
+    assert graph.has_edge((34.000, -118.300), (34.001, -118.299))
+
+
+def test_fetch_road_graph_imported_region_empty_db_falls_back_to_overpass():
+    """Same ambiguity as buildings: an imported region with zero local rows
+    for this bbox might just be unimported yet, so this must not silently
+    return an empty graph — it should fall back to live Overpass."""
+    key = _road_bbox_key(34.100, -118.100, 34.101, -118.099)
+    _clear_road_cache(key)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"elements": []}
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            graph = routing_module.fetch_road_graph(34.100, -118.100, 34.101, -118.099)
+    assert mock_post.called
+    assert graph.number_of_nodes() == 0
+    _clear_road_cache(key)
+
+
+def test_fetch_road_graph_unimported_region_uses_overpass():
+    key = _road_bbox_key(51.50, -0.10, 51.51, -0.09)
+    _clear_road_cache(key)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = _simple_osm()
+    with patch("src.routing._road_sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            graph = routing_module.fetch_road_graph(51.50, -0.10, 51.51, -0.09)
+    assert mock_post.called
+    assert graph.number_of_nodes() == 3
+    _clear_road_cache(key)
 
 
 # ── nearest_node ─────────────────────────────────────────────────────────────
@@ -530,7 +667,7 @@ _OSM_DATA = {
 def test_optimized_route_endpoint_success(client, auth_headers):
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
         patch("src.routing.is_point_shaded", return_value=False),
     ):
@@ -554,7 +691,7 @@ def test_optimized_route_endpoint_success(client, auth_headers):
 def test_optimized_route_endpoint_nighttime(client, auth_headers):
     with (
         patch("src.routers.routing.get_sun_position", return_value=(-5.0, 270.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
     ):
         resp = client.post(
@@ -593,7 +730,7 @@ def test_optimized_route_detour_cap_exceeded(client, auth_headers):
     """Sun path >30% longer than direct → fall back to distance path (fewer waypoints)."""
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
         patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
         patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
@@ -618,7 +755,7 @@ def test_optimized_route_detour_within_cap(client, auth_headers):
     """Sun path ≤30% longer than direct → keep sun path (more waypoints)."""
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
         patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
         patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
@@ -647,7 +784,7 @@ def test_optimized_route_uses_user_pref_max_detour(client, auth_headers):
     # sun_len=300 > dist_len*1.10=220 → cap exceeded → distance path (2 waypoints)
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
         patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
         patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
@@ -672,7 +809,7 @@ def test_optimized_route_shade_gets_larger_detour_allowance(client, auth_headers
     # but must be kept for preference="shade" thanks to the larger allowance.
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
         patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
         patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
@@ -719,7 +856,7 @@ def test_optimized_route_sun_and_shade_produce_different_routes(client, auth_hea
 
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_SHADE_VS_SUN_OSM),
+        patch("src.routing.fetch_osm_road_network", return_value=_SHADE_VS_SUN_OSM),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
         patch("src.routing.is_point_shaded_by_index", side_effect=fake_shaded),
     ):
@@ -766,7 +903,7 @@ _DISCONNECTED_OSM = {
 def test_optimized_route_endpoint_no_path_found(client, auth_headers):
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value=_DISCONNECTED_OSM),
+        patch("src.routing.fetch_osm_road_network", return_value=_DISCONNECTED_OSM),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
     ):
         resp = client.post(
@@ -786,7 +923,7 @@ def test_optimized_route_endpoint_no_path_found(client, auth_headers):
 def test_optimized_route_endpoint_no_road_network(client, auth_headers):
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
-        patch("src.routers.routing.fetch_osm_road_network", return_value={"elements": []}),
+        patch("src.routing.fetch_osm_road_network", return_value={"elements": []}),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
     ):
         resp = client.post(

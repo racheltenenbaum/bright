@@ -201,6 +201,7 @@ export default function RouteMap() {
   const [startAddress, setStartAddress] = useState("");
   const [endAddress, setEndAddress] = useState("");
   const [sunData, setSunData] = useState(null);
+  const [usedFallbackRouting, setUsedFallbackRouting] = useState(false);
   const [error, setError] = useState(null);
   const [saveForm, setSaveForm] = useState(null); // null = hidden, {} = open
   const [saveError, setSaveError] = useState(null);
@@ -726,6 +727,7 @@ export default function RouteMap() {
   async function planRoute() {
     setError(null);
     setSunData(null);
+    setUsedFallbackRouting(false);
     setPlanning(true);
     clearPolylines(polylinesRef);
     try {
@@ -760,6 +762,9 @@ export default function RouteMap() {
         );
         waypoints = routeRes.data.waypoints;
       } catch {
+        // Google Directions has no concept of sun/shade — this route will
+        // look identical regardless of preference, so the user must be told.
+        setUsedFallbackRouting(true);
         const directionsService = new window.google.maps.DirectionsService();
         const result = await directionsService.route({
           origin: start,
@@ -1577,6 +1582,26 @@ export default function RouteMap() {
             style={{ color: "#C0392B", fontWeight: 700, fontSize: "0.88em" }}
           >
             {error}
+          </span>
+        </div>
+      )}
+
+      {usedFallbackRouting && (
+        <div
+          style={{
+            marginBottom: "8px",
+            padding: "8px 14px",
+            borderRadius: "12px",
+            background: isNighttime ? colors.surface : "#FFFBEA",
+            border: "2px solid #F0B429",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#F0B429", fontSize: "1em" }} />
+          <span style={{ color: "#7D5A00", fontWeight: 700, fontSize: "0.82em" }}>
+            Sun/shade-optimized routing unavailable right now - showing a standard walking route instead
           </span>
         </div>
       )}

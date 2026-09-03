@@ -10,9 +10,8 @@ from src.models import User
 from src.routing import (
     SHADE_DETOUR_MULTIPLIER,
     _path_length_m,
-    build_graph,
     compute_edge_weights,
-    fetch_osm_road_network,
+    fetch_road_graph,
     find_distance_path,
     find_optimized_path,
     nearest_node,
@@ -74,13 +73,12 @@ def optimized_route(
 
     # Fetch road network and buildings in parallel
     with ThreadPoolExecutor(max_workers=2) as pool:
-        road_future = pool.submit(fetch_osm_road_network, s, w, n, e)
+        road_future = pool.submit(fetch_road_graph, s, w, n, e)
         bldg_future = pool.submit(_fetch_buildings_for_bbox, s, w, n, e)
-        osm_data = road_future.result()
+        graph = road_future.result()
         bldg_result = bldg_future.result() if sun_altitude > 0 else []
         buildings = bldg_result if bldg_result is not None else []
 
-    graph = build_graph(osm_data)
     if graph.number_of_nodes() == 0:
         raise HTTPException(status_code=400, detail="No road network found for this area")
 

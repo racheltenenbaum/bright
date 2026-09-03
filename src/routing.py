@@ -9,6 +9,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import networkx as nx
 import requests
 
+from src.database import SessionLocal
+from src.models import OsmRoad
+from src.regions import region_for_bbox
 from src.shadow import (
     is_point_shaded,
     is_point_shaded_by_polygons,
@@ -147,6 +150,74 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
         return {"elements": []}
     finally:
         executor.shutdown(wait=False)
+
+
+def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) -> list[dict]:
+    db = SessionLocal()
+    try:
+        rows = db.query(OsmRoad).filter(
+            OsmRoad.region == region,
+            OsmRoad.min_lat <= n,
+            OsmRoad.max_lat >= s,
+            OsmRoad.min_lng <= e,
+            OsmRoad.max_lng >= w,
+        ).all()
+        return [
+            {
+                "from_lat": row.from_lat, "from_lng": row.from_lng,
+                "to_lat": row.to_lat, "to_lng": row.to_lng,
+                "distance_m": row.distance_m, "oneway": row.oneway,
+            }
+            for row in rows
+        ]
+    finally:
+        db.close()
+
+
+def fetch_road_graph(s: float, w: float, n: float, e: float) -> nx.DiGraph:
+    """Region-aware entry point: bulk-imported regions build the graph
+    directly from local edges (no live Overpass call); everywhere else keeps
+    the existing live-Overpass path unchanged.
+
+    An empty local result is treated the same as "not imported yet" (see
+    src.routers.shadow_analyze._fetch_buildings_for_bbox for the identical
+    reasoning) and falls back to Overpass rather than silently returning an
+    empty graph.
+    """
+    region = region_for_bbox(s, w, n, e)
+    if region:
+        edges = _fetch_roads_from_db(region, s, w, n, e)
+        if edges:
+            return build_graph_from_edges(edges)
+
+    return build_graph(fetch_osm_road_network(s, w, n, e))
+
+
+def build_graph_from_edges(edges: list[dict]) -> nx.DiGraph:
+    """Build a routing graph directly from bulk-imported road edges, which
+    are already split/deduplicated the same way build_graph() splits raw OSM
+    ways — so no OSM node IDs exist to key nodes on. Coordinates themselves
+    are used as node identity instead, which is safe here because imported
+    edges share exact endpoint coordinates by construction.
+    """
+    g = nx.DiGraph()
+    for edge in edges:
+        u = (edge["from_lat"], edge["from_lng"])
+        v = (edge["to_lat"], edge["to_lng"])
+        mid_lat = (u[0] + v[0]) / 2
+        mid_lng = (u[1] + v[1]) / 2
+        edge_data = {
+            "distance_m": edge["distance_m"],
+            "mid_lat": mid_lat,
+            "mid_lng": mid_lng,
+            "weight": edge["distance_m"],
+        }
+        g.add_node(u, lat=u[0], lng=u[1])
+        g.add_node(v, lat=v[0], lng=v[1])
+        g.add_edge(u, v, **edge_data)
+        if not edge["oneway"]:
+            g.add_edge(v, u, **edge_data)
+    return g
 
 
 def build_graph(osm_data: dict) -> nx.DiGraph:

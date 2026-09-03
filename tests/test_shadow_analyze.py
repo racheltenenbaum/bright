@@ -1,9 +1,12 @@
+import json
 import sqlite3
 from unittest.mock import patch, MagicMock, call
 
 import src.routers.shadow_analyze as sa_module
+from src.models import OsmBuilding
 from src.routers.shadow_analyze import (
     _bbox_key,
+    _region_for_bbox,
     _route_bbox,
     _sample_coords,
     _nearest_shaded,
@@ -182,6 +185,170 @@ def test_fetch_buildings_logs_failure_reason(caplog):
             with patch("requests.post", side_effect=Exception("rate limited")):
                 _fetch_buildings_for_bbox(19.0, 29.0, 19.5, 29.5)
     assert "rate limited" in caplog.text
+    _clear_cache(key)
+
+
+# ── _region_for_bbox ────────────────────────────────────────────────────────
+
+def test_region_for_bbox_vienna():
+    # A small bbox well inside Vienna's administrative extent.
+    assert _region_for_bbox(48.20, 16.35, 48.21, 16.36) == "vienna"
+
+
+def test_region_for_bbox_nyc():
+    # A small bbox well inside NYC's five boroughs.
+    assert _region_for_bbox(40.70, -74.00, 40.71, -73.99) == "nyc"
+
+
+def test_region_for_bbox_unimported_area():
+    # London — not one of our pre-loaded regions.
+    assert _region_for_bbox(51.50, -0.10, 51.51, -0.09) is None
+
+
+def test_region_for_bbox_straddling_boundary_is_unimported():
+    # A bbox that only partially overlaps Vienna's bounds must not be treated
+    # as fully covered — we'd silently return incomplete local data otherwise.
+    assert _region_for_bbox(48.05, 16.35, 48.21, 16.36) is None
+
+
+# ── _fetch_buildings_for_bbox (local DB, imported regions) ────────────────────
+
+def test_fetch_buildings_uses_local_db_for_imported_region(db):
+    building = OsmBuilding(
+        region="vienna", source="vienna_wfs",
+        min_lat=48.200, max_lat=48.201, min_lng=16.350, max_lng=16.351,
+        footprint=json.dumps([[48.200, 16.350], [48.200, 16.351], [48.201, 16.351]]),
+        height=15.0,
+    )
+    db.add(building)
+    db.commit()
+
+    with patch("requests.post") as mock_post:
+        result = _fetch_buildings_for_bbox(48.199, 16.349, 48.202, 16.352)
+
+    mock_post.assert_not_called()
+    assert result == [{"footprint": [[48.200, 16.350], [48.200, 16.351], [48.201, 16.351]], "height": 15.0}]
+
+
+def test_fetch_buildings_local_db_excludes_out_of_bbox_rows(db):
+    building = OsmBuilding(
+        region="vienna", source="vienna_wfs",
+        min_lat=48.250, max_lat=48.251, min_lng=16.400, max_lng=16.401,
+        footprint=json.dumps([[48.250, 16.400], [48.250, 16.401], [48.251, 16.401]]),
+        height=10.0,
+    )
+    db.add(building)
+    db.commit()
+
+    # Query bbox far from the seeded building, but still inside Vienna overall.
+    # No local rows match, so this now falls back to live Overpass (see
+    # test_fetch_buildings_imported_region_empty_db_falls_back_to_overpass).
+    key = _bbox_key(48.100, 16.200, 48.101, 16.201)
+    _clear_cache(key)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"elements": []}
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp):
+            result = _fetch_buildings_for_bbox(48.100, 16.200, 48.101, 16.201)
+    assert result == []
+    _clear_cache(key)
+
+
+def test_fetch_buildings_imported_region_empty_db_falls_back_to_overpass(db):
+    """A bbox with no local rows is ambiguous: it might genuinely have no
+    buildings, or the region might be registered but not actually imported
+    yet (e.g. NYC's bounds exist before its import ran). Trusting an empty
+    local result unconditionally risks silently returning no shading data
+    for an unimported region, so this must fall back to live Overpass."""
+    key = _bbox_key(48.300, 16.500, 48.301, 16.501)
+    _clear_cache(key)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"elements": []}
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            result = _fetch_buildings_for_bbox(48.300, 16.500, 48.301, 16.501)
+    assert mock_post.called
+    assert result == []
+    _clear_cache(key)
+
+
+def test_remember_bbox_evicts_oldest_beyond_cap():
+    sa_module._overpass_bbox_cache.clear()
+    for i in range(sa_module._BBOX_CACHE_MAX_ENTRIES + 1):
+        sa_module._remember_bbox(float(i), 0.0, float(i) + 1, 1.0, [])
+    assert len(sa_module._overpass_bbox_cache) == sa_module._BBOX_CACHE_MAX_ENTRIES
+    # The very first entry (s=0.0) must have been evicted.
+    assert all(entry[0] != 0.0 for entry in sa_module._overpass_bbox_cache)
+    sa_module._overpass_bbox_cache.clear()
+
+
+def test_fetch_buildings_reuses_containing_cached_bbox():
+    """A route's own bbox (e.g. shadow-analyze's route-shaped box) is often
+    fully inside a bbox already fetched moments earlier for the same trip
+    (e.g. optimized-route's start/end box). Re-fetching from Overpass for
+    the smaller box wastes a live call the app already paid for — serving
+    the superset's buildings instead is correct (they cover the same or
+    more ground) and avoids a second unreliable network round trip."""
+    outer_key = _bbox_key(10.00, 20.00, 10.10, 20.10)
+    _clear_cache(outer_key)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 10.05, "lon": 20.05},
+            {"type": "node", "id": 2, "lat": 10.05, "lon": 20.06},
+            {"type": "node", "id": 3, "lat": 10.06, "lon": 20.06},
+            {"type": "way", "id": 100, "nodes": [1, 2, 3], "tags": {"building": "yes"}},
+        ]
+    }
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            outer_result = _fetch_buildings_for_bbox(10.00, 20.00, 10.10, 20.10)
+            assert mock_post.called
+
+            # A smaller, inner bbox fully contained within the one just fetched.
+            with patch("requests.post") as inner_mock_post:
+                inner_result = _fetch_buildings_for_bbox(10.02, 20.02, 10.04, 20.04)
+
+    inner_mock_post.assert_not_called()
+    assert inner_result == outer_result
+    _clear_cache(outer_key)
+
+
+def test_fetch_buildings_does_not_reuse_non_containing_bbox():
+    """A bbox that merely overlaps (not fully contains) a cached one must
+    still hit Overpass — serving a partial box's data as if it were
+    complete would silently drop real buildings from the result."""
+    key1 = _bbox_key(20.00, 30.00, 20.05, 30.05)
+    key2 = _bbox_key(20.10, 30.10, 20.15, 30.15)
+    _clear_cache(key1, key2)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"elements": []}
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp):
+            _fetch_buildings_for_bbox(20.00, 30.00, 20.05, 30.05)
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            _fetch_buildings_for_bbox(20.10, 30.10, 20.15, 30.15)
+    assert mock_post.called
+    _clear_cache(key1, key2)
+
+
+def test_fetch_buildings_unimported_region_still_uses_overpass():
+    """Regions we haven't imported must keep using the existing live-Overpass
+    path unchanged — this is the safety net for anywhere outside coverage."""
+    key = _bbox_key(51.50, -0.10, 51.51, -0.09)
+    _clear_cache(key)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"elements": []}
+    with patch("src.routers.shadow_analyze._sqlite_get", return_value=None):
+        with patch("requests.post", return_value=mock_resp) as mock_post:
+            result = _fetch_buildings_for_bbox(51.50, -0.10, 51.51, -0.09)
+    assert result == []
+    assert mock_post.called
     _clear_cache(key)
 
 

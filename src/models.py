@@ -54,6 +54,51 @@ class Feedback(Base):
     user = relationship("User", back_populates="feedback")
 
 
+class OsmBuilding(Base):
+    """Bulk-imported building footprint + height, used instead of a live
+    Overpass query for regions we've pre-loaded (see src/routers/shadow_analyze.py
+    _region_for_bbox). Bounding-box columns mirror the simple rectangle-filter
+    bbox queries already used throughout this codebase — no spatial extension
+    needed.
+    """
+    __tablename__ = "osm_buildings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    region = Column(String(20), nullable=False, index=True)  # e.g. "vienna", "nyc"
+    source = Column(String(20), nullable=False)  # e.g. "osm", "vienna_wfs"
+    min_lat = Column(Float, nullable=False, index=True)
+    max_lat = Column(Float, nullable=False, index=True)
+    min_lng = Column(Float, nullable=False, index=True)
+    max_lng = Column(Float, nullable=False, index=True)
+    footprint = Column(Text, nullable=False)  # JSON: [[lat, lng], ...]
+    height = Column(Float, nullable=False)
+
+
+class OsmRoad(Base):
+    """Bulk-imported road edge, used instead of a live Overpass query for
+    regions we've pre-loaded (see src/routing.py _region_for_bbox). One row
+    per directed edge (already split from ways the same way build_graph does
+    it), so local lookups can build the routing graph directly without
+    reparsing raw OSM node/way elements. Bounding-box columns mirror the
+    simple rectangle-filter bbox queries already used throughout this
+    codebase — no spatial extension needed.
+    """
+    __tablename__ = "osm_roads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    region = Column(String(20), nullable=False, index=True)  # e.g. "la"
+    min_lat = Column(Float, nullable=False, index=True)
+    max_lat = Column(Float, nullable=False, index=True)
+    min_lng = Column(Float, nullable=False, index=True)
+    max_lng = Column(Float, nullable=False, index=True)
+    from_lat = Column(Float, nullable=False)
+    from_lng = Column(Float, nullable=False)
+    to_lat = Column(Float, nullable=False)
+    to_lng = Column(Float, nullable=False)
+    distance_m = Column(Float, nullable=False)
+    oneway = Column(Boolean, nullable=False, default=False)
+
+
 class Spot(Base):
     __tablename__ = "spots"
 

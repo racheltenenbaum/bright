@@ -12,8 +12,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from src.auth import get_current_user
+from src.database import SessionLocal
 from src.limiter import limiter, RATE_LIMIT_SHADOW
-from src.models import User
+from src.models import OsmBuilding, User
+from src.regions import REGION_BOUNDS, region_for_bbox as _region_for_bbox
 from src.shadow import extract_buildings_from_overpass, is_point_shaded, which_side_sunny, _offset_point
 from src.utils.astronomy import get_sun_position
 
@@ -22,6 +24,20 @@ logger = logging.getLogger(__name__)
 RAY_DISTANCES_M: list[float] = [150.0, 400.0, 900.0, 2000.0, 4000.0]
 FLAT_TERRAIN_THRESHOLD_M: float = 20.0
 MAX_SUN_ALT_FOR_TERRAIN_DEG: float = 25.0
+
+def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float) -> list:
+    db = SessionLocal()
+    try:
+        rows = db.query(OsmBuilding).filter(
+            OsmBuilding.region == region,
+            OsmBuilding.min_lat <= n,
+            OsmBuilding.max_lat >= s,
+            OsmBuilding.min_lng <= e,
+            OsmBuilding.max_lng >= w,
+        ).all()
+        return [{"footprint": json.loads(row.footprint), "height": row.height} for row in rows]
+    finally:
+        db.close()
 
 router = APIRouter(prefix="/sun", tags=["sun"])
 
@@ -35,6 +51,31 @@ GOOGLE_ELEVATION_URL = "https://maps.googleapis.com/maps/api/elevation/json"
 
 # L1: in-memory cache (fast, lost on restart)
 _overpass_cache: dict[str, list] = {}
+
+# L1b: recent fetched bboxes, kept separately from the exact-match cache
+# above so a query can be served by any bbox that fully contains it, not
+# just an identical one. This matters because a single route search makes
+# two independently-shaped building queries — /sun/optimized-route uses the
+# start/end bbox, /sun/shadow-analyze uses the actual path's bbox — and the
+# second is always a subset of the first (the routing graph itself can't
+# contain nodes outside the first bbox), so without this the second call
+# always re-hits live Overpass for no reason. Capped to bound memory since
+# this never persists to SQLite or gets evicted otherwise.
+_BBOX_CACHE_MAX_ENTRIES = 200
+_overpass_bbox_cache: list[tuple[float, float, float, float, list]] = []
+
+
+def _remember_bbox(s: float, w: float, n: float, e: float, buildings: list) -> None:
+    _overpass_bbox_cache.append((s, w, n, e, buildings))
+    if len(_overpass_bbox_cache) > _BBOX_CACHE_MAX_ENTRIES:
+        del _overpass_bbox_cache[0]
+
+
+def _find_containing_cached_bbox(s: float, w: float, n: float, e: float) -> list | None:
+    for cs, cw, cn, ce, buildings in reversed(_overpass_bbox_cache):
+        if cs <= s and cw <= w and cn >= n and ce >= e:
+            return buildings
+    return None
 
 # L2: SQLite cache (persists across restarts)
 _CACHE_DB = os.path.join(os.path.dirname(__file__), "../../overpass_cache.db")
@@ -121,6 +162,17 @@ def _query_overpass(url: str, query: str, timeout: int | tuple[int, int]) -> dic
 
 def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | None:
     """Return buildings list, or None if all API calls failed (vs [] for no buildings found)."""
+    region = _region_for_bbox(s, w, n, e)
+    if region:
+        db_buildings = _fetch_buildings_from_db(region, s, w, n, e)
+        # An empty result here is ambiguous: it could mean "this region has
+        # no buildings in this bbox" (a park) or "this region is registered
+        # but hasn't actually been imported yet." Falling back to live
+        # Overpass in both cases is slightly wasteful in the first case but
+        # avoids silently returning no shading data in the second.
+        if db_buildings:
+            return db_buildings
+
     key = _bbox_key(s, w, n, e)
 
     if key in _overpass_cache:
@@ -130,6 +182,10 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | 
     if cached is not None:
         _overpass_cache[key] = cached
         return cached
+
+    containing = _find_containing_cached_bbox(s, w, n, e)
+    if containing is not None:
+        return containing
 
     query = f"[out:json][timeout:40];(way[\"building\"]({s},{w},{n},{e}););out body;>;out skel qt;"
 
@@ -149,6 +205,7 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | 
                 buildings = extract_buildings_from_overpass(data)
                 _overpass_cache[key] = buildings
                 _sqlite_set(key, buildings)
+                _remember_bbox(s, w, n, e, buildings)
                 return buildings
         return None  # All API calls failed
     finally:

@@ -9,9 +9,11 @@ from alembic import context
 
 load_dotenv()
 
+from src.database import _normalize_db_url
+
 config = context.config
 
-_db_url = os.getenv("DATABASE_URL", "").replace("mysql://", "mysql+pymysql://", 1)
+_db_url = _normalize_db_url(os.getenv("DATABASE_URL", ""))
 config.set_main_option("sqlalchemy.url", _db_url)
 
 if config.config_file_name is not None:
