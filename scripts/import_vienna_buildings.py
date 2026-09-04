@@ -93,7 +93,7 @@ def feature_to_building(feature: dict) -> dict | None:
     }
 
 
-def import_bbox(s: float, w: float, n: float, e: float, dry_run: bool = False) -> int:
+def import_bbox(s: float, w: float, n: float, e: float, dry_run: bool = False, db=None) -> int:
     data = fetch_tile(s, w, n, e)
     features = data.get("features", [])
     buildings = [b for f in features if (b := feature_to_building(f)) is not None]
@@ -102,7 +102,14 @@ def import_bbox(s: float, w: float, n: float, e: float, dry_run: bool = False) -
     if dry_run or not buildings:
         return len(buildings)
 
-    db = SessionLocal()
+    # A single-tile validation run (no `db` passed) opens/closes its own
+    # session; import_full_city() passes one shared session across every
+    # tile instead — opening ~880 short-lived connections in under two hours
+    # exhausted local ephemeral ports mid-run in production (Errno 49:
+    # Can't assign requested address).
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
     try:
         # bulk_insert_mappings issues one batched INSERT instead of one
         # round-trip per row via the ORM's session.add() — negligible
@@ -121,24 +128,43 @@ def import_bbox(s: float, w: float, n: float, e: float, dry_run: bool = False) -
         ])
         db.commit()
     finally:
-        db.close()
+        if owns_session:
+            db.close()
     return len(buildings)
 
 
 def import_full_city() -> None:
     s0, w0, n0, e0 = VIENNA_BBOX
     total = 0
-    lat = s0
-    while lat < n0:
-        lat_end = min(lat + TILE_SIZE_DEG, n0)
-        lng = w0
-        while lng < e0:
-            lng_end = min(lng + TILE_SIZE_DEG, e0)
-            total += import_bbox(lat, lng, lat_end, lng_end)
-            lng = lng_end
-            time.sleep(0.2)  # be polite to Vienna's WFS
-        lat = lat_end
+    failed_tiles: list[tuple[float, float, float, float]] = []
+    db = SessionLocal()
+    try:
+        lat = s0
+        while lat < n0:
+            lat_end = min(lat + TILE_SIZE_DEG, n0)
+            lng = w0
+            while lng < e0:
+                lng_end = min(lng + TILE_SIZE_DEG, e0)
+                try:
+                    total += import_bbox(lat, lng, lat_end, lng_end, db=db)
+                except Exception as exc:
+                    # A single tile's transient failure (WFS blip, dropped
+                    # connection) shouldn't kill a multi-hour run — log it,
+                    # roll back so the shared session stays usable, and keep
+                    # going. Failed tiles print at the end for a retry pass.
+                    print(f"tile ({lat},{lng},{lat_end},{lng_end}) FAILED: {exc!r}")
+                    failed_tiles.append((lat, lng, lat_end, lng_end))
+                    db.rollback()
+                lng = lng_end
+                time.sleep(0.2)  # be polite to Vienna's WFS
+            lat = lat_end
+    finally:
+        db.close()
     print(f"\nTOTAL buildings imported: {total}")
+    if failed_tiles:
+        print(f"\n{len(failed_tiles)} tile(s) failed — retry with --bbox for each:")
+        for s, w, n, e in failed_tiles:
+            print(f"  python scripts/import_vienna_buildings.py --bbox {s},{w},{n},{e}")
 
 
 if __name__ == "__main__":
