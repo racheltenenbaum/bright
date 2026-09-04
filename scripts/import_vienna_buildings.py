@@ -104,14 +104,21 @@ def import_bbox(s: float, w: float, n: float, e: float, dry_run: bool = False) -
 
     db = SessionLocal()
     try:
-        for b in buildings:
-            db.add(OsmBuilding(
-                region=REGION, source=SOURCE,
-                min_lat=b["min_lat"], max_lat=b["max_lat"],
-                min_lng=b["min_lng"], max_lng=b["max_lng"],
-                footprint=json.dumps(b["footprint"]),
-                height=b["height"],
-            ))
+        # bulk_insert_mappings issues one batched INSERT instead of one
+        # round-trip per row via the ORM's session.add() — negligible
+        # difference against a local DB, but essential against a remote one
+        # (a per-tile ORM-add loop against production over the network was
+        # observed taking minutes per tile instead of seconds).
+        db.bulk_insert_mappings(OsmBuilding, [
+            {
+                "region": REGION, "source": SOURCE,
+                "min_lat": b["min_lat"], "max_lat": b["max_lat"],
+                "min_lng": b["min_lng"], "max_lng": b["max_lng"],
+                "footprint": json.dumps(b["footprint"]),
+                "height": b["height"],
+            }
+            for b in buildings
+        ])
         db.commit()
     finally:
         db.close()
