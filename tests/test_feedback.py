@@ -40,28 +40,36 @@ def test_feedback_strips_whitespace(client, auth_headers, db):
     assert db.query(Feedback).first().message == "great app"
 
 
-def test_send_feedback_email_smtp_configured():
-    """Exercises the SMTP sending path when credentials are set."""
+def test_send_feedback_email_resend_configured():
+    """Exercises the Resend HTTP API sending path when credentials are set.
+
+    Uses Resend instead of raw SMTP because Railway blocks outbound SMTP
+    ports entirely (confirmed via OSError: [Errno 101] Network is
+    unreachable in production logs) — an HTTPS API call has no such
+    restriction.
+    """
     import src.routers.feedback as fb_module
-    mock_server = MagicMock()
-    with patch.object(fb_module, "_SMTP_USER", "user@example.com"), \
-         patch.object(fb_module, "_SMTP_PASS", "secret"), \
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    with patch.object(fb_module, "_RESEND_API_KEY", "re_test_key"), \
          patch.object(fb_module, "_FEEDBACK_EMAIL", "dest@example.com"), \
-         patch("smtplib.SMTP") as mock_smtp:
-        mock_smtp.return_value.__enter__ = MagicMock(return_value=mock_server)
-        mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+         patch("requests.post", return_value=mock_resp) as mock_post:
         fb_module._send_feedback_email("hello", "sender@example.com")
-    mock_server.starttls.assert_called_once()
-    mock_server.login.assert_called_once_with("user@example.com", "secret")
-    mock_server.send_message.assert_called_once()
+    mock_post.assert_called_once()
+    _, kwargs = mock_post.call_args
+    assert kwargs["headers"]["Authorization"] == "Bearer re_test_key"
+    assert kwargs["json"]["to"] == "dest@example.com"
+    assert kwargs["json"]["from"] == fb_module._RESEND_FROM
+    assert "sender@example.com" in kwargs["json"]["text"]
+    assert "hello" in kwargs["json"]["text"]
+    mock_resp.raise_for_status.assert_called_once()
 
 
 def test_send_feedback_email_no_credentials_is_noop():
-    """When SMTP credentials are missing, _send_feedback_email returns without error."""
+    """When Resend credentials are missing, _send_feedback_email returns without error."""
     import src.routers.feedback as fb_module
-    with patch.object(fb_module, "_SMTP_USER", None), \
-         patch.object(fb_module, "_SMTP_PASS", None), \
+    with patch.object(fb_module, "_RESEND_API_KEY", None), \
          patch.object(fb_module, "_FEEDBACK_EMAIL", None), \
-         patch("smtplib.SMTP") as mock_smtp:
+         patch("requests.post") as mock_post:
         fb_module._send_feedback_email("hello", "sender@example.com")
-    mock_smtp.assert_not_called()
+    mock_post.assert_not_called()

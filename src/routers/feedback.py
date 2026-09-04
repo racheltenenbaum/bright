@@ -1,8 +1,7 @@
 import logging
 import os
-import smtplib
-from email.mime.text import MIMEText
 
+import requests
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
@@ -15,11 +14,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
-_SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-_SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-_SMTP_USER = os.getenv("SMTP_USER")
-_SMTP_PASS = os.getenv("SMTP_PASS")
+# Feedback emails go through Resend's HTTP API rather than raw SMTP — Railway
+# blocks outbound SMTP ports entirely (confirmed via a production
+# "OSError: [Errno 101] Network is unreachable" trying to reach
+# smtp.gmail.com:587), so no SMTP credentials could ever have worked here.
+# An HTTPS API call has no such restriction.
+_RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 _FEEDBACK_EMAIL = os.getenv("FEEDBACK_EMAIL")
+_RESEND_FROM = "onboarding@resend.dev"  # Resend's default sender — no domain verification needed
 
 
 class FeedbackRequest(BaseModel):
@@ -34,20 +36,24 @@ class FeedbackRequest(BaseModel):
 
 
 def _send_feedback_email(message: str, from_email: str) -> None:
-    if not all([_SMTP_USER, _SMTP_PASS, _FEEDBACK_EMAIL]):
+    if not all([_RESEND_API_KEY, _FEEDBACK_EMAIL]):
         logger.warning(
-            "Feedback email skipped: missing SMTP env var(s) (user=%s pass=%s feedback_email=%s)",
-            bool(_SMTP_USER), bool(_SMTP_PASS), bool(_FEEDBACK_EMAIL),
+            "Feedback email skipped: missing Resend env var(s) (api_key=%s feedback_email=%s)",
+            bool(_RESEND_API_KEY), bool(_FEEDBACK_EMAIL),
         )
         return
-    msg = MIMEText(f"From: {from_email}\n\n{message}")
-    msg["Subject"] = "bright - app feedback"
-    msg["From"] = _SMTP_USER
-    msg["To"] = _FEEDBACK_EMAIL
-    with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=10) as server:
-        server.starttls()
-        server.login(_SMTP_USER, _SMTP_PASS)
-        server.send_message(msg)
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {_RESEND_API_KEY}"},
+        json={
+            "from": _RESEND_FROM,
+            "to": _FEEDBACK_EMAIL,
+            "subject": "bright - app feedback",
+            "text": f"From: {from_email}\n\n{message}",
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
 
 
 @router.post("")
