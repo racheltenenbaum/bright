@@ -275,6 +275,7 @@ export default function RouteMap() {
   const [placeTypes, setPlaceTypes] = useState(["cafe"]);
   const [placesSearching, setPlacesSearching] = useState(false);
   const [placesSunAltitude, setPlacesSunAltitude] = useState(() => computeSunAltitude(MAP_CENTER.lat, MAP_CENTER.lng));
+  const [routeSunAltitude, setRouteSunAltitude] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [placeDetails, setPlaceDetails] = useState(null);
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState(false);
@@ -290,7 +291,16 @@ export default function RouteMap() {
   startRef.current = start;
   endRef.current = end;
   sunDataRef.current = sunData;
-  const isNighttime = placesSunAltitude <= 0;
+  // placesSunAltitude tracks wherever the device physically is (it's
+  // continuously overwritten by the geolocation watcher), which is correct
+  // for the Find Places tab but wrong for a route planned somewhere else —
+  // it kept re-asserting the device's own day/night state (e.g. Vienna at
+  // night) over a route being planned in a different, still-daylight city.
+  // Once both endpoints of a route are set, use the route's own location
+  // instead.
+  const isNighttime = (mode === "route" && start && end && routeSunAltitude != null
+    ? routeSunAltitude
+    : placesSunAltitude) <= 0;
   currentLocationRef.current = currentLocation;
   modeRef.current = mode;
 
@@ -508,6 +518,16 @@ export default function RouteMap() {
     bounds.extend(end);
     mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
   }, [start, end, isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track the route's own day/night state, independent of wherever the
+  // device physically is — see isNighttime above for why this matters.
+  useEffect(() => {
+    if (!start || !end) {
+      setRouteSunAltitude(null);
+      return;
+    }
+    setRouteSunAltitude(computeSunAltitude((start.lat + end.lat) / 2, (start.lng + end.lng) / 2));
+  }, [start, end]);
 
   // Show current location dot
   useEffect(() => {
