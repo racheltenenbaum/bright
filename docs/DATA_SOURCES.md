@@ -20,8 +20,11 @@ Update this file whenever a region's data is (re-)imported.
   the import (see the quarterly reminder routine) since the underlying
   cadastral data updates on the city's own schedule, not ours.
 
-**Roads** — not yet imported (as of 2026-09-04). Vienna still falls back to
-live Overpass for road data.
+**Roads** — source: OSM data via a BBBike pre-clipped extract (`Wien.osm.pbf`),
+downloaded from `download.bbbike.org` **2026-09-03 11:39 (local time)**.
+
+- Imported: 2026-09-04 (production), via
+  `scripts/import_osm_roads.py --region vienna --full` — 1,544,326 edges.
 
 ## New York City
 
@@ -83,6 +86,10 @@ available in the source layer if ever needed but not currently stored.
   `scripts/import_telaviv_buildings.py --full` (43,875 of 45,795 total rows
   had usable height + geometry data).
 
-**Roads** — not yet imported (as of 2026-09-04). Tel Aviv still falls back
-to live Overpass for road data. OSM's own road coverage there was checked
-and found reasonable (~17,700 routable ways) when this region was scoped.
+**Roads** — source: OSM data via Geofabrik's `israel-and-palestine-latest.osm.pbf`
+extract, downloaded 2026-09-04 (whole-country file, filtered to Tel Aviv's
+bbox at import time — no pre-clipped city extract was available).
+
+- Imported: 2026-09-04 (production), via
+  `scripts/import_osm_roads.py --region telaviv --bbox 32.02,34.74,32.15,34.85`
+  — 121,940 edges.
