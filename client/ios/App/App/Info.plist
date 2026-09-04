@@ -64,6 +64,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>bright uses your location to show you on the map and find sunny routes nearby.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>bright uses your device's compass to show which direction you're facing while navigating.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

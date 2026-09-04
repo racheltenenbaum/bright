@@ -115,6 +115,25 @@ function computeBearing(lat1, lng1, lat2, lng2) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
+// Real nav apps don't display raw compass heading while on a route — GPS/
+// magnetometer noise (or just holding the phone at an angle) would make the
+// indicator point across the street instead of along it. Snap to whichever
+// direction the current route segment actually runs — forward or backward,
+// whichever is closer to the raw heading — so the indicator always points
+// along the road.
+function snapHeadingToRoute(rawHeading, routeCoords, segmentIdx) {
+  if (rawHeading == null || !routeCoords || routeCoords.length < 2) return rawHeading;
+  const i = Math.min(Math.max(segmentIdx, 0), routeCoords.length - 2);
+  const [lat1, lng1] = routeCoords[i];
+  const [lat2, lng2] = routeCoords[i + 1];
+  const segBearing = computeBearing(lat1, lng1, lat2, lng2);
+  const reverseBearing = (segBearing + 180) % 360;
+  const angularDiff = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+  return angularDiff(rawHeading, segBearing) <= angularDiff(rawHeading, reverseBearing)
+    ? segBearing
+    : reverseBearing;
+}
+
 function formatRouteStats(waypoints) {
   const distKm = waypoints.reduce((sum, pt, i) => {
     if (i === 0) return 0;
@@ -129,6 +148,30 @@ function formatRouteStats(waypoints) {
 function clearPolylines(ref) {
   ref.current.forEach((p) => p.setMap(null));
   ref.current = [];
+}
+
+// A location dot with a directional cone, rotated to the given compass
+// heading (0 = north, clockwise) — matches the "which way am I facing"
+// convention of turn-by-turn nav apps, not the plain dot used when we don't
+// have a heading yet.
+function headingDotSvg(headingDeg) {
+  return encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">' +
+      `<g transform="rotate(${headingDeg} 16 16)">` +
+      '<path d="M16 1 L25 21 L16 15.5 L7 21 Z" fill="#FFD600" opacity="0.55"/>' +
+      "</g>" +
+      '<circle cx="16" cy="16" r="7" fill="#FFD600" stroke="white" stroke-width="2"/>' +
+      "</svg>",
+  );
+}
+
+function plainDotSvg() {
+  return encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">' +
+      '<circle cx="11" cy="11" r="11" fill="rgba(255,214,0,0.25)"/>' +
+      '<circle cx="11" cy="11" r="6" fill="#FFD600" stroke="white" stroke-width="2"/>' +
+      "</svg>",
+  );
 }
 
 function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, preference) {
@@ -215,8 +258,10 @@ export default function RouteMap() {
   const [routeSegments, setRouteSegments] = useState(null);
   const [goMode, setGoMode] = useState(false);
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
+  const [deviceHeading, setDeviceHeading] = useState(null);
   const prevGoLocationRef = useRef(null);
   const preGoZoomRef = useRef(null);
+  const lastHeadingUpdateRef = useRef(0);
   const [planning, setPlanning] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [mapCenter, setMapCenter] = useState(null);
@@ -468,13 +513,6 @@ export default function RouteMap() {
   useEffect(() => {
     if (!isLoaded) return;
 
-    const blueDotSvg = encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">' +
-        '<circle cx="11" cy="11" r="11" fill="rgba(255,214,0,0.25)"/>' +
-        '<circle cx="11" cy="11" r="6" fill="#FFD600" stroke="white" stroke-width="2"/>' +
-        "</svg>",
-    );
-
     let initialPanDone = false;
     let cancelled = false;
 
@@ -509,7 +547,7 @@ export default function RouteMap() {
           position: { lat, lng },
           map: mapRef.current,
           icon: {
-            url: `data:image/svg+xml;charset=UTF-8,${blueDotSvg}`,
+            url: `data:image/svg+xml;charset=UTF-8,${plainDotSvg()}`,
             scaledSize: new window.google.maps.Size(22, 22),
             anchor: new window.google.maps.Point(11, 11),
           },
@@ -576,6 +614,78 @@ export default function RouteMap() {
     }
     prevGoLocationRef.current = currentLocation;
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Compass heading while navigating — shows which way the phone is
+  // physically pointed (works standing still), not the direction of travel.
+  // iOS requires this to be requested from a user gesture, which the "Go"
+  // tap that sets goMode true satisfies.
+  useEffect(() => {
+    if (!goMode) {
+      setDeviceHeading(null);
+      return;
+    }
+
+    function handleOrientation(event) {
+      // iOS WKWebView gives compass heading directly (0 = north, clockwise).
+      // Other platforms only expose `alpha` (device rotation around z from
+      // an arbitrary start point, counter-clockwise) — 360-alpha is the
+      // standard approximation, not a true compass without a magnetometer
+      // fusion the browser doesn't expose, but it's the best available.
+      const heading =
+        typeof event.webkitCompassHeading === "number"
+          ? event.webkitCompassHeading
+          : event.alpha != null
+          ? (360 - event.alpha) % 360
+          : null;
+      if (heading == null) return;
+
+      const now = Date.now();
+      if (now - lastHeadingUpdateRef.current < 100) return; // throttle to ~10fps
+      lastHeadingUpdateRef.current = now;
+      setDeviceHeading(heading);
+    }
+
+    let cancelled = false;
+    function attach() {
+      if (cancelled) return;
+      window.addEventListener("deviceorientation", handleOrientation);
+    }
+
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+      DeviceOrientationEvent.requestPermission().then((state) => {
+        if (state === "granted") attach();
+      }).catch(() => {});
+    } else {
+      attach();
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("deviceorientation", handleOrientation);
+    };
+  }, [goMode]);
+
+  // Rotate the location marker to match the compass heading (snapped onto
+  // the road's actual direction) while navigating; revert to the plain dot
+  // the moment we're not (no heading, or Go stopped).
+  useEffect(() => {
+    const marker = currentLocationMarkerRef.current;
+    if (!marker) return;
+    const snapped = goMode ? snapHeadingToRoute(deviceHeading, routeCoords, goSegmentIdx) : null;
+    if (goMode && snapped != null) {
+      marker.setIcon({
+        url: `data:image/svg+xml;charset=UTF-8,${headingDotSvg(snapped)}`,
+        scaledSize: new window.google.maps.Size(32, 32),
+        anchor: new window.google.maps.Point(16, 16),
+      });
+    } else {
+      marker.setIcon({
+        url: `data:image/svg+xml;charset=UTF-8,${plainDotSvg()}`,
+        scaledSize: new window.google.maps.Size(22, 22),
+        anchor: new window.google.maps.Point(11, 11),
+      });
+    }
+  }, [goMode, deviceHeading, routeCoords, goSegmentIdx]);
 
   // Re-register click listener whenever start/end change
   useEffect(() => {

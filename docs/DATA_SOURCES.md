@@ -7,6 +7,33 @@ region bounding boxes and `scripts/import_*.py` for the ingestion scripts.
 
 Update this file whenever a region's data is (re-)imported.
 
+## Tree canopy (all regions, via `scripts/import_tree_rows.py`)
+
+OSM's `natural=tree_row` tag (a line of street trees) is converted into
+small rectangular canopy footprints (`src/shadow.py:tree_row_to_canopy_segments`,
+assumed 5m width / 9m height — no per-tree data exists in OSM) and stored in
+`osm_buildings` with `source="tree_row"`, so they shade routes exactly like
+buildings with zero changes to the shadow-casting code. Live-fetched
+(unimported) regions get this automatically via the same Overpass query
+that fetches buildings; bulk-imported regions needed this separate import
+since they bypass that live query entirely.
+
+**Coverage is real but patchy everywhere checked — this is additive, not a
+complete fix.** OSM's tree-row tagging is inconsistent city to city and even
+street to street; e.g. Vienna's Praterstrasse (fully tree-lined in reality)
+has only 1 tagged way in OSM. Expect some correctly-shaded tree-lined
+streets and many still showing as unshaded due to missing tags, not a data
+bug.
+
+| Region | Tree-row ways found | Canopy segments imported | Imported |
+|---|---|---|---|
+| Vienna | 2,046 | 4,681 | 2026-09-04 |
+| NYC | 409 | 1,103 | 2026-09-04 |
+| Tel Aviv | 15 | 33 | 2026-09-04 |
+
+Uses the same extracts already listed below for each region's roads/buildings
+import — no separate download needed.
+
 ## Vienna
 
 **Buildings** — source: Vienna's own WFS, layer `ogdwien:FMZKBKMOGD`

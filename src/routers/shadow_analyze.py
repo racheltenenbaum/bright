@@ -187,7 +187,13 @@ def _fetch_buildings_for_bbox(s: float, w: float, n: float, e: float) -> list | 
     if containing is not None:
         return containing
 
-    query = f"[out:json][timeout:40];(way[\"building\"]({s},{w},{n},{e}););out body;>;out skel qt;"
+    # natural=tree_row alongside building — extract_buildings_from_overpass
+    # converts tree rows into small shadow-casting canopy rectangles using
+    # the same {"footprint","height"} shape as buildings.
+    query = (
+        f'[out:json][timeout:40];(way["building"]({s},{w},{n},{e});'
+        f'way["natural"="tree_row"]({s},{w},{n},{e}););out body;>;out skel qt;'
+    )
 
     # Mirrors are raced concurrently, not tried one at a time — a dense urban
     # area can make a single mirror take the full timeout, and retrying the

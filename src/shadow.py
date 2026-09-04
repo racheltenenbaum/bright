@@ -293,10 +293,43 @@ def place_is_sunny(
     return sunny_side == side
 
 
+# OSM's natural=tree_row tags a line of trees (e.g. an avenue's street
+# trees) with no per-tree height or canopy-width data — these are estimates
+# for a mature street tree. Treating tree-lined streets as fully unshaded
+# (the only option with no tree data at all) is a worse approximation than
+# a rough canopy estimate for the streets that do have tree_row coverage.
+TREE_CANOPY_WIDTH_M = 5.0
+TREE_CANOPY_HEIGHT_M = 9.0
+
+
+def tree_row_to_canopy_segments(line_coords: list[tuple[float, float]]) -> list[dict]:
+    """Convert a tree-row line into small rectangular canopy footprints, one
+    per line segment, each buffered to TREE_CANOPY_WIDTH_M and given
+    TREE_CANOPY_HEIGHT_M — reusing the exact same {"footprint", "height"}
+    shape as a building, so no other shadow-casting code needs to change.
+    """
+    segments = []
+    half_width = TREE_CANOPY_WIDTH_M / 2
+    for i in range(len(line_coords) - 1):
+        lat1, lng1 = line_coords[i]
+        lat2, lng2 = line_coords[i + 1]
+        if (lat1, lng1) == (lat2, lng2):
+            continue
+        bearing = _bearing(lat1, lng1, lat2, lng2)
+        perp = (bearing + 90) % 360
+        p1a = _offset_point(lat1, lng1, perp, half_width)
+        p1b = _offset_point(lat1, lng1, perp, -half_width)
+        p2a = _offset_point(lat2, lng2, perp, half_width)
+        p2b = _offset_point(lat2, lng2, perp, -half_width)
+        footprint = [list(p1a), list(p2a), list(p2b), list(p1b)]
+        segments.append({"footprint": footprint, "height": TREE_CANOPY_HEIGHT_M})
+    return segments
+
+
 def extract_buildings_from_overpass(overpass_data: dict) -> list[dict]:
     """
-    Parse Overpass API JSON response into a list of building dicts.
-    Returns [{"footprint": [[lat,lng],...], "height": float}, ...]
+    Parse Overpass API JSON response into a list of building (and tree-row
+    canopy) dicts. Returns [{"footprint": [[lat,lng],...], "height": float}, ...]
     """
     elements = overpass_data.get("elements", [])
 
@@ -310,15 +343,18 @@ def extract_buildings_from_overpass(overpass_data: dict) -> list[dict]:
         if el["type"] != "way":
             continue
         tags = el.get("tags", {})
-        if "building" not in tags:
-            continue
 
-        footprint = [nodes[nid] for nid in el.get("nodes", []) if nid in nodes]
-        if len(footprint) < 3:
-            continue
-
-        height = _parse_height(tags)
-        buildings.append({"footprint": footprint, "height": height})
+        if "building" in tags:
+            footprint = [nodes[nid] for nid in el.get("nodes", []) if nid in nodes]
+            if len(footprint) < 3:
+                continue
+            height = _parse_height(tags)
+            buildings.append({"footprint": footprint, "height": height})
+        elif tags.get("natural") == "tree_row":
+            line = [nodes[nid] for nid in el.get("nodes", []) if nid in nodes]
+            if len(line) < 2:
+                continue
+            buildings.extend(tree_row_to_canopy_segments(line))
 
     return buildings
 

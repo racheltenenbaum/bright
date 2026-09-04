@@ -1,3 +1,4 @@
+from math import cos, radians
 from unittest.mock import patch
 from shapely.geometry import Polygon
 
@@ -13,6 +14,9 @@ from src.shadow import (
     precompute_shadow_polygons,
     which_side_sunny,
     extract_buildings_from_overpass,
+    tree_row_to_canopy_segments,
+    TREE_CANOPY_WIDTH_M,
+    TREE_CANOPY_HEIGHT_M,
 )
 
 # ── _offset_point ──────────────────────────────────────────────────────────────
@@ -301,3 +305,56 @@ def test_extract_buildings_invalid_height_falls_to_default():
 def test_extract_buildings_invalid_levels_falls_to_default():
     data = _make_overpass([{"type": "way", "id": 10, "tags": {"building": "yes", "building:levels": "many"}, "nodes": [1, 2, 3]}])
     assert extract_buildings_from_overpass(data)[0]["height"] == 10.0
+
+
+# ── tree_row_to_canopy_segments ─────────────────────────────────────────────────
+
+def test_tree_row_to_canopy_segments_count():
+    line = [(51.0, 0.0), (51.001, 0.0), (51.001, 0.001)]
+    segments = tree_row_to_canopy_segments(line)
+    assert len(segments) == 2  # one per pair of consecutive points
+
+
+def test_tree_row_to_canopy_segments_height():
+    line = [(51.0, 0.0), (51.001, 0.0)]
+    segments = tree_row_to_canopy_segments(line)
+    assert segments[0]["height"] == TREE_CANOPY_HEIGHT_M
+
+
+def test_tree_row_to_canopy_segments_width():
+    # A north-south segment buffered east-west by half the canopy width —
+    # the two long edges of the rectangle should be ~TREE_CANOPY_WIDTH_M apart.
+    line = [(51.0, 0.0), (51.001, 0.0)]
+    footprint = tree_row_to_canopy_segments(line)[0]["footprint"]
+    assert len(footprint) == 4
+    lngs = [p[1] for p in footprint]
+    width_deg = max(lngs) - min(lngs)
+    width_m = width_deg * 111_320 * cos(radians(51.0))
+    assert abs(width_m - TREE_CANOPY_WIDTH_M) < 0.5
+
+
+def test_tree_row_to_canopy_segments_too_short():
+    assert tree_row_to_canopy_segments([(51.0, 0.0)]) == []
+
+
+def test_tree_row_to_canopy_segments_skips_duplicate_points():
+    line = [(51.0, 0.0), (51.0, 0.0), (51.001, 0.0)]
+    segments = tree_row_to_canopy_segments(line)
+    assert len(segments) == 1
+
+
+def test_extract_buildings_includes_tree_row_canopy():
+    data = _make_overpass([
+        {"type": "way", "id": 20, "tags": {"natural": "tree_row"}, "nodes": [1, 2]},
+    ])
+    result = extract_buildings_from_overpass(data)
+    assert len(result) == 1
+    assert result[0]["height"] == TREE_CANOPY_HEIGHT_M
+    assert len(result[0]["footprint"]) == 4
+
+
+def test_extract_buildings_skips_tree_row_too_few_nodes():
+    data = _make_overpass([
+        {"type": "way", "id": 20, "tags": {"natural": "tree_row"}, "nodes": [1]},
+    ])
+    assert extract_buildings_from_overpass(data) == []
