@@ -918,7 +918,20 @@ export default function RouteMap() {
 
       const bounds = new window.google.maps.LatLngBounds();
       waypoints.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
-      mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
+      // setRouteStats/setSunData above make a stats panel appear as a flex
+      // sibling above the map, shrinking the map's actual rendered height —
+      // fitBounds computed synchronously here would zoom to fit the
+      // pre-shrink (taller) area, then look over-zoomed once the layout
+      // settles into its smaller final size. Deferring two frames lets that
+      // reflow finish, and triggering "resize" makes the map re-measure its
+      // container before we fit to it.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!mapRef.current) return;
+          window.google.maps.event.trigger(mapRef.current, "resize");
+          mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
+        });
+      });
 
       if (
         !weatherLocationRef.current ||
@@ -2095,20 +2108,20 @@ export default function RouteMap() {
           {goMode && routeSegments && (() => {
             const side = routeSegments[goSegmentIdx]?.sunny_side;
             const instructions = {
-              left:    { text: "← Walk on the left",   color: "#3D2C00" },
-              right:   { text: "Walk on the right →",  color: "#3D2C00" },
-              both:    { text: "☀️ Both sides sunny",  color: "#3D2C00" },
-              neither: { text: "Shaded section",        color: "#888888" },
+              left:    { text: "← Left",   color: "#3D2C00" },
+              right:   { text: "Right →",  color: "#3D2C00" },
+              both:    { text: "☀️ Both sides sunny", color: "#3D2C00" },
+              neither: { text: "Shaded",   color: "#888888" },
             };
             const inst = instructions[side] ?? instructions.neither;
             return (
               <div style={{
-                position: "absolute", bottom: "20px", left: "50%", transform: "translateX(-50%)",
-                background: colors.surface, padding: "14px 28px", borderRadius: "20px",
-                border: `2px solid ${colors.accent}`, boxShadow: `0 4px 20px ${colors.accentGlow}`,
-                textAlign: "center", whiteSpace: "nowrap", zIndex: 10,
+                position: "absolute", top: "10px", left: "50%", transform: "translateX(-50%)",
+                background: colors.surface, padding: "6px 16px", borderRadius: "14px",
+                border: `1.5px solid ${colors.accentFaint}`, boxShadow: `0 2px 10px ${colors.accentGlow}`,
+                textAlign: "center", whiteSpace: "nowrap", zIndex: 5,
               }}>
-                <div style={{ fontSize: "1.25em", fontWeight: 800, color: inst.color }}>
+                <div style={{ fontSize: "0.9em", fontWeight: 700, color: inst.color }}>
                   {inst.text}
                 </div>
               </div>
@@ -2308,12 +2321,20 @@ export default function RouteMap() {
             style={{
               display: savedRoutesExpanded ? "flex" : "none",
               flexDirection: "column", gap: "6px", padding: "0 16px 14px",
+              maxHeight: "260px", overflowY: "auto",
             }}
           >
-            {savedRoutes.slice(0, 5).map((route) => {
-              const distKm = currentLocation
-                ? haversineKm(currentLocation.lat, currentLocation.lng, route.start_lat, route.start_lng)
-                : null;
+            {savedRoutes
+              .map((route) => ({
+                route,
+                distKm: currentLocation
+                  ? haversineKm(currentLocation.lat, currentLocation.lng, route.start_lat, route.start_lng)
+                  : null,
+              }))
+              // Routes without a known distance (no current location yet)
+              // sort to the end rather than scrambling the list.
+              .sort((a, b) => (a.distKm ?? Infinity) - (b.distKm ?? Infinity))
+              .map(({ route, distKm }) => {
               const distText = distKm == null ? null
                 : distKm >= 1 ? `${distKm.toFixed(1)} km away`
                 : `${Math.round(distKm * 1000)} m away`;
