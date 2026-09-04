@@ -255,7 +255,6 @@ export default function RouteMap() {
   const [sharePlaceCopied, setSharePlaceCopied] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [routeCoords, setRouteCoords] = useState(null);
-  const [routeSegments, setRouteSegments] = useState(null);
   const [goMode, setGoMode] = useState(false);
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
   const [deviceHeading, setDeviceHeading] = useState(null);
@@ -615,6 +614,21 @@ export default function RouteMap() {
     prevGoLocationRef.current = currentLocation;
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fade the portion of the route already walked, so it's visually distinct
+  // from what's ahead. polylinesRef holds one polyline per segment, in the
+  // same order drawRoute created them in, so index i here lines up exactly
+  // with goSegmentIdx.
+  useEffect(() => {
+    if (!goMode) {
+      // Restore full opacity in case a previous Go session left segments faded.
+      polylinesRef.current.forEach((p) => p.setOptions({ strokeOpacity: 1 }));
+      return;
+    }
+    polylinesRef.current.forEach((polyline, i) => {
+      polyline.setOptions({ strokeOpacity: i < goSegmentIdx ? 0.25 : 1 });
+    });
+  }, [goMode, goSegmentIdx]);
+
   // Compass heading while navigating — shows which way the phone is
   // physically pointed (works standing still), not the direction of travel.
   // iOS requires this to be requested from a user gesture, which the "Go"
@@ -915,7 +929,6 @@ export default function RouteMap() {
       setSunData({ sun_altitude, sun_azimuth, date, shadow_available });
       setPlacesSunAltitude(sun_altitude);
       setRouteCoords(waypoints);
-      setRouteSegments(segments);
       drawRoute(mapRef.current, polylinesRef, waypoints, segments, sun_altitude, preference);
 
       const bounds = new window.google.maps.LatLngBounds();
@@ -1232,7 +1245,7 @@ export default function RouteMap() {
       setStart(null); setEnd(null);
       setStartAddress(""); setEndAddress("");
       setSunData(null); setRouteStats(null);
-      setRouteCoords(null); setRouteSegments(null);
+      setRouteCoords(null);
       setRouteSaved(false); setSavedRouteName(null);
       exitGoMode(); setSaveForm(null);
     } else {
@@ -1256,7 +1269,6 @@ export default function RouteMap() {
     setError(null);
     setRouteStats(null);
     setRouteCoords(null);
-    setRouteSegments(null);
     setRouteSaved(true);
     setSavedRouteName(route.name);
     setSavedRouteId(route.id);
@@ -1282,7 +1294,6 @@ export default function RouteMap() {
     setSavedRouteName(null);
     setRouteStats(null);
     setRouteCoords(null);
-    setRouteSegments(null);
     exitGoMode();
     clearPolylines(polylinesRef);
     clearPlaceMarkers();
@@ -2115,28 +2126,6 @@ export default function RouteMap() {
             </div>
           )}
 
-          {goMode && routeSegments && (() => {
-            const side = routeSegments[goSegmentIdx]?.sunny_side;
-            const instructions = {
-              left:    { text: "← Left",   color: "#3D2C00" },
-              right:   { text: "Right →",  color: "#3D2C00" },
-              both:    { text: "☀️ Both sides sunny", color: "#3D2C00" },
-              neither: { text: "Shaded",   color: "#888888" },
-            };
-            const inst = instructions[side] ?? instructions.neither;
-            return (
-              <div style={{
-                position: "absolute", top: "10px", left: "50%", transform: "translateX(-50%)",
-                background: colors.surface, padding: "6px 16px", borderRadius: "14px",
-                border: `1.5px solid ${colors.accentFaint}`, boxShadow: `0 2px 10px ${colors.accentGlow}`,
-                textAlign: "center", whiteSpace: "nowrap", zIndex: 5,
-              }}>
-                <div style={{ fontSize: "0.9em", fontWeight: 700, color: inst.color }}>
-                  {inst.text}
-                </div>
-              </div>
-            );
-          })()}
           <div style={{
             position: "absolute", top: "10px", right: "10px", zIndex: 5,
             display: "flex",
