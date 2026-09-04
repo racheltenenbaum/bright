@@ -35,6 +35,14 @@ SUN_PENALTY = 1.5
 # clear, and silently collapse to the plain distance path.
 SHADE_DETOUR_MULTIPLIER = 2.5
 EXCLUDED_HIGHWAY_TYPES = {"motorway", "trunk", "motorway_link", "trunk_link"}
+# highway=service covers real minor streets (needed for pedestrian routing
+# where no separate sidewalk data exists) but also driveways, parking-lot
+# access lanes, and drive-throughs — car maneuvering areas through private
+# lots, not real through-routes. Including them let the router find
+# unrealistic loopy "shortcuts" criss-crossing parking lots, especially in
+# commercial corridors (confirmed: 73% of service ways near a real reported
+# bad route in East Hollywood, LA were exactly these sub-types).
+EXCLUDED_SERVICE_SUBTYPES = {"driveway", "parking_aisle", "drive-through"}
 
 EARTH_RADIUS_M = 6_371_000.0
 
@@ -238,6 +246,8 @@ def build_graph(osm_data: dict) -> nx.DiGraph:
         tags = el.get("tags", {})
         highway = tags.get("highway")
         if not highway or highway in EXCLUDED_HIGHWAY_TYPES:
+            continue
+        if highway == "service" and tags.get("service") in EXCLUDED_SERVICE_SUBTYPES:
             continue
 
         node_ids = [nid for nid in el.get("nodes", []) if nid in node_coords]

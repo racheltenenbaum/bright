@@ -119,6 +119,57 @@ def test_build_graph_trunk_excluded():
     assert g.number_of_edges() == 0
 
 
+def test_build_graph_service_driveway_excluded():
+    """highway=service with service=driveway/parking_aisle/drive-through is
+    a car-only path through private lots, not a real pedestrian route — a
+    plain residential/service way (no service sub-tag) is still included."""
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.0, "lon": -74.0},
+            {"type": "node", "id": 2, "lat": 40.001, "lon": -74.0},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "service", "service": "driveway"}},
+        ]
+    }
+    g = build_graph(data)
+    assert g.number_of_edges() == 0
+
+
+def test_build_graph_service_parking_aisle_excluded():
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.0, "lon": -74.0},
+            {"type": "node", "id": 2, "lat": 40.001, "lon": -74.0},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "service", "service": "parking_aisle"}},
+        ]
+    }
+    g = build_graph(data)
+    assert g.number_of_edges() == 0
+
+
+def test_build_graph_service_drivethrough_excluded():
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.0, "lon": -74.0},
+            {"type": "node", "id": 2, "lat": 40.001, "lon": -74.0},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "service", "service": "drive-through"}},
+        ]
+    }
+    g = build_graph(data)
+    assert g.number_of_edges() == 0
+
+
+def test_build_graph_plain_service_included():
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.0, "lon": -74.0},
+            {"type": "node", "id": 2, "lat": 40.001, "lon": -74.0},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "service"}},
+        ]
+    }
+    g = build_graph(data)
+    assert g.number_of_edges() == 2  # bidirectional by default
+
+
 def test_build_graph_edge_has_distance():
     g = build_graph(_simple_osm())
     expected = _haversine_m(40.000, -74.0, 40.001, -74.0)

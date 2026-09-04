@@ -35,12 +35,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.database import SessionLocal
 from src.models import OsmRoad
 
-# Must match fetch_osm_road_network's Overpass query in src/routing.py.
+# Must match build_graph's filtering in src/routing.py.
 ALLOWED_HIGHWAY_TYPES = {
     "footway", "path", "pedestrian", "living_street", "residential",
     "service", "unclassified", "tertiary", "secondary", "primary",
     "cycleway", "steps", "track",
 }
+# service=driveway/parking_aisle/drive-through are car-only paths through
+# private lots, not real pedestrian through-routes — including them let the
+# router find unrealistic loopy "shortcuts" across parking lots. See
+# src/routing.py's EXCLUDED_SERVICE_SUBTYPES for the full rationale.
+EXCLUDED_SERVICE_SUBTYPES = {"driveway", "parking_aisle", "drive-through"}
 
 EARTH_RADIUS_M = 6_371_000.0
 BATCH_SIZE = 20_000
@@ -64,6 +69,8 @@ class RoadHandler(osmium.SimpleHandler):
     def way(self, w):
         highway = w.tags.get("highway")
         if highway not in ALLOWED_HIGHWAY_TYPES:
+            return
+        if highway == "service" and w.tags.get("service") in EXCLUDED_SERVICE_SUBTYPES:
             return
         oneway = w.tags.get("oneway") == "yes"
 

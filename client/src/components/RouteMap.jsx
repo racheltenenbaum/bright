@@ -256,6 +256,7 @@ export default function RouteMap() {
   const [routeStats, setRouteStats] = useState(null);
   const [routeCoords, setRouteCoords] = useState(null);
   const [goMode, setGoMode] = useState(false);
+  const goModeRef = useRef(false);
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
   const [deviceHeading, setDeviceHeading] = useState(null);
   const prevGoLocationRef = useRef(null);
@@ -634,12 +635,20 @@ export default function RouteMap() {
   // iOS requires this to be requested from a user gesture, which the "Go"
   // tap that sets goMode true satisfies.
   useEffect(() => {
+    goModeRef.current = goMode;
     if (!goMode) {
       setDeviceHeading(null);
       return;
     }
 
     function handleOrientation(event) {
+      // Belt-and-suspenders: even if this listener somehow outlives Go mode
+      // (e.g. a late-arriving event from just before removeEventListener
+      // takes effect), never let it touch state once Go mode is off — this
+      // is what drives the map's rotation, so a leaked update here would
+      // otherwise look like "the compass is moving the map on its own."
+      if (!goModeRef.current) return;
+
       // iOS WKWebView gives compass heading directly (0 = north, clockwise).
       // Other platforms only expose `alpha` (device rotation around z from
       // an arbitrary start point, counter-clockwise) — 360-alpha is the
@@ -710,6 +719,7 @@ export default function RouteMap() {
     map.addListener("click", async (e) => {
       setError(null);
       setUsedFallbackRouting(false);
+      setRouteStats(null);
       if (modeRef.current === "places") {
         setSelectedPlace(null);
         return;
@@ -1407,6 +1417,7 @@ export default function RouteMap() {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setRouteStats(null);
                 }}
                 placeholder="Start address (or click map)"
                 style={
@@ -1450,6 +1461,7 @@ export default function RouteMap() {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setRouteStats(null);
                 }}
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
@@ -1476,6 +1488,7 @@ export default function RouteMap() {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setRouteStats(null);
                 }}
                 placeholder="End address (or click map)"
                 style={
@@ -1519,6 +1532,7 @@ export default function RouteMap() {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setRouteStats(null);
                 }}
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
