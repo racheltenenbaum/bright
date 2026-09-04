@@ -30,6 +30,7 @@ bug.
 | Vienna | 2,046 | 4,681 | 2026-09-04 |
 | NYC | 409 | 1,103 | 2026-09-04 |
 | Tel Aviv | 15 | 33 | 2026-09-04 |
+| LA | ~150 | 357 | 2026-09-04 |
 
 Uses the same extracts already listed below for each region's roads/buildings
 import — no separate download needed.
@@ -77,14 +78,17 @@ rectangles missed at their edges.
 
 ## Los Angeles
 
-**Not yet live in production** (as of 2026-09-04) — `la` is registered in
-`REGION_BOUNDS` but has zero rows in either table, so it currently falls
-back to live Overpass for everything.
+**Buildings, roads, and tree canopy** — source: OSM data via a BBBike
+pre-clipped extract (`LosAngeles.osm.pbf`), downloaded from
+`download.bbbike.org` **2026-09-03 22:24 (local time)**. Height parsed via
+`src/shadow.py:_parse_height`, same as NYC.
 
-- Extract on hand for whenever this is picked up: `LosAngeles.osm.pbf`
-  (BBBike), downloaded **2026-09-03 22:24 (local time)**.
-- A small validation tile (roads only) was imported and verified working,
-  then deleted — no real data has been committed anywhere.
+- Imported: 2026-09-04 (production), in 4 quadrants (splitting LA's bbox at
+  its midpoint lat/lng) via `scripts/import_osm_buildings.py --region la`
+  and `scripts/import_osm_roads.py --region la` for each quadrant, plus
+  `scripts/import_tree_rows.py --region la --full` (whole extract, no
+  quadranting needed — tree-row count was small enough).
+- Totals: 1,468,294 buildings, 1,620,590 road edges, 357 tree canopy segments.
 
 ## Tel Aviv
 

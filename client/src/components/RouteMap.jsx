@@ -694,6 +694,8 @@ export default function RouteMap() {
     window.google.maps.event.clearListeners(map, "click");
 
     map.addListener("click", async (e) => {
+      setError(null);
+      setUsedFallbackRouting(false);
       if (modeRef.current === "places") {
         setSelectedPlace(null);
         return;
@@ -1392,6 +1394,8 @@ export default function RouteMap() {
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
+                  setError(null);
+                  setUsedFallbackRouting(false);
                 }}
                 placeholder="Start address (or click map)"
                 style={
@@ -1433,6 +1437,8 @@ export default function RouteMap() {
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
+                  setError(null);
+                  setUsedFallbackRouting(false);
                 }}
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
@@ -1457,6 +1463,8 @@ export default function RouteMap() {
                   setEndAddress(e.target.value);
                   setSavedRouteName(null);
                   setRouteSaved(false);
+                  setError(null);
+                  setUsedFallbackRouting(false);
                 }}
                 placeholder="End address (or click map)"
                 style={
@@ -1498,6 +1506,8 @@ export default function RouteMap() {
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
+                  setError(null);
+                  setUsedFallbackRouting(false);
                 }}
                 style={{
                   position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
