@@ -14,6 +14,7 @@ export default function Navbar() {
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackDone, setFeedbackDone] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -89,7 +90,7 @@ export default function Navbar() {
               </button>
             ))}
             <button
-              onClick={() => { setOpen(false); setFeedbackOpen(true); setFeedbackText(""); setFeedbackDone(false); }}
+              onClick={() => { setOpen(false); setFeedbackOpen(true); setFeedbackText(""); setFeedbackDone(false); setFeedbackError(false); }}
               style={{
                 display: "block", width: "100%", textAlign: "left",
                 background: "none", border: "none", boxShadow: "none",
@@ -141,6 +142,10 @@ export default function Navbar() {
               <p style={{ margin: 0, fontSize: "0.9em", fontWeight: 600, color: "#5A8F5A" }}>
                 Thanks for your feedback!
               </p>
+            ) : feedbackError ? (
+              <p style={{ margin: 0, fontSize: "0.9em", fontWeight: 600, color: "#C0392B" }}>
+                Couldn't send feedback. Please try again.
+              </p>
             ) : (
               <>
                 <textarea
@@ -168,11 +173,18 @@ export default function Navbar() {
                     onClick={async () => {
                       if (!feedbackText.trim()) return;
                       setFeedbackSubmitting(true);
+                      const token = localStorage.getItem("token");
                       try {
-                        await api.post("/feedback", { message: feedbackText });
+                        await api.post(
+                          "/feedback",
+                          { message: feedbackText },
+                          { headers: { Authorization: `Bearer ${token}` } },
+                        );
+                        setFeedbackDone(true);
+                      } catch {
+                        setFeedbackError(true);
                       } finally {
                         setFeedbackSubmitting(false);
-                        setFeedbackDone(true);
                       }
                     }}
                     disabled={feedbackSubmitting || !feedbackText.trim()}

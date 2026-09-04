@@ -1,3 +1,4 @@
+import logging
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 from src.auth import get_current_user
 from src.database import get_db
 from src.models import Feedback, User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -32,12 +35,16 @@ class FeedbackRequest(BaseModel):
 
 def _send_feedback_email(message: str, from_email: str) -> None:
     if not all([_SMTP_USER, _SMTP_PASS, _FEEDBACK_EMAIL]):
+        logger.warning(
+            "Feedback email skipped: missing SMTP env var(s) (user=%s pass=%s feedback_email=%s)",
+            bool(_SMTP_USER), bool(_SMTP_PASS), bool(_FEEDBACK_EMAIL),
+        )
         return
     msg = MIMEText(f"From: {from_email}\n\n{message}")
     msg["Subject"] = "bright - app feedback"
     msg["From"] = _SMTP_USER
     msg["To"] = _FEEDBACK_EMAIL
-    with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT) as server:
+    with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=10) as server:
         server.starttls()
         server.login(_SMTP_USER, _SMTP_PASS)
         server.send_message(msg)
@@ -60,6 +67,6 @@ def submit_feedback(
     try:
         _send_feedback_email(body.message, current_user.email)
     except Exception:
-        pass
+        logger.exception("Failed to send feedback email")
 
     return {"ok": True}
