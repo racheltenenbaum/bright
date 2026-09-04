@@ -20,6 +20,7 @@ from src.routing import (
     find_optimized_path,
     nodes_to_coords,
     sample_waypoints,
+    simplify_path,
     fetch_osm_road_network,
     OVERPASS_URLS,
 )
@@ -520,6 +521,57 @@ def test_sample_waypoints_more_than_n():
     assert len(result) == 10
     assert result[0] == coords[0]
     assert result[-1] == coords[-1]
+
+
+# ── simplify_path ────────────────────────────────────────────────────────────
+# Geometry-preserving simplification (Douglas-Peucker) — unlike
+# sample_waypoints' blind index-based thinning (which could skip a real turn
+# and draw a straight line cutting across a street), this only ever drops a
+# point that's within `tolerance_m` of the straight line between its
+# neighbors, so every real turn beyond that tolerance survives.
+
+def test_simplify_path_too_short_returned_as_is():
+    coords = [(40.000, -74.000), (40.001, -74.000)]
+    assert simplify_path(coords) == coords
+
+
+def test_simplify_path_collinear_points_collapse_to_endpoints():
+    # A straight north-south line with several redundant intermediate points.
+    coords = [(40.0000 + i * 0.0001, -74.000) for i in range(10)]
+    result = simplify_path(coords, tolerance_m=1.0)
+    assert result == [coords[0], coords[-1]]
+
+
+def test_simplify_path_keeps_real_turn_beyond_tolerance():
+    # A clear 90-degree turn ~11m off the straight line — must survive a 3m tolerance.
+    coords = [(40.0000, -74.0000), (40.0000, -73.9999), (40.0001, -73.9999)]
+    result = simplify_path(coords, tolerance_m=3.0)
+    assert coords[1] in result
+
+
+def test_simplify_path_drops_jog_within_tolerance():
+    # A tiny sub-meter wobble that shouldn't survive a several-meter tolerance.
+    coords = [(40.00000, -74.00000), (40.000001, -74.000005), (40.00010, -74.00010)]
+    result = simplify_path(coords, tolerance_m=5.0)
+    assert result == [coords[0], coords[-1]]
+
+
+def test_simplify_path_preserves_endpoints():
+    coords = [(40.0 + i * 0.0002, -74.0 + (i % 3) * 0.0001) for i in range(15)]
+    result = simplify_path(coords, tolerance_m=2.0)
+    assert result[0] == coords[0]
+    assert result[-1] == coords[-1]
+
+
+def test_simplify_path_degenerate_loop_back_to_start():
+    # start == end (a path that loops back on itself) — the perpendicular
+    # distance falls back to a plain point-to-point distance rather than
+    # dividing by a zero-length segment.
+    coords = [(40.0000, -74.0000), (40.0010, -73.9990), (40.0000, -74.0000)]
+    result = simplify_path(coords, tolerance_m=3.0)
+    assert result[0] == coords[0]
+    assert result[-1] == coords[-1]
+    assert coords[1] in result
 
 
 # ── _road_bbox_key / _road_sqlite_get / _road_sqlite_set ─────────────────────

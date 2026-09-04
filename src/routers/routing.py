@@ -16,6 +16,7 @@ from src.routing import (
     find_optimized_path,
     nearest_node,
     nodes_to_coords,
+    simplify_path,
 )
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
 from src.utils.astronomy import get_sun_position
@@ -100,15 +101,17 @@ def optimized_route(
         if dist_len > 0 and sun_len > dist_len * (1 + max_detour):
             path_nodes = dist_path_nodes
 
-    # The full node-by-node path is returned rather than downsampled to a
-    # fixed count — thinning to evenly-spaced indices was cutting straight
-    # lines across curves and intersections whenever a real turn fell
-    # between two sampled points, making the drawn route visibly cut across
-    # the street. /sun/shadow-analyze already handles a full-resolution
-    # coordinate list correctly (it does its own internal sampling for the
-    # expensive shading computation, then fills every index via nearest-
-    # neighbor), so nothing downstream needs the point count capped.
-    waypoints = nodes_to_coords(graph, path_nodes)
+    # Geometry-preserving simplification, not the fixed-count downsampling
+    # this used to do — thinning to evenly-spaced indices could skip a real
+    # turn entirely and draw a straight line cutting across the street.
+    # simplify_path only drops a point when it's within a few meters of the
+    # line between its neighbors, so every real turn survives while the many
+    # near-duplicate OSM shape points along straight stretches collapse away
+    # instead of rendering as visual noise. /sun/shadow-analyze still
+    # handles whatever length list comes out of this correctly (its own
+    # internal sampling for the shading computation, then nearest-neighbor
+    # fill for every index).
+    waypoints = simplify_path(nodes_to_coords(graph, path_nodes))
 
     return OptimizedRouteResponse(
         waypoints=[list(c) for c in waypoints],

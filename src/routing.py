@@ -358,3 +358,58 @@ def sample_waypoints(coords: list, n: int = 10) -> list:
         return coords
     step = (len(coords) - 1) / (n - 1)
     return [coords[round(i * step)] for i in range(n)]
+
+
+def _latlng_to_xy_m(lat: float, lng: float, ref_lat: float) -> tuple[float, float]:
+    """Local equirectangular projection to meters — accurate enough over the
+    short spans a single route covers, and only used for the perpendicular-
+    distance check below, not for real distance/routing math."""
+    x = lng * math.cos(math.radians(ref_lat)) * 111_320
+    y = lat * 111_320
+    return x, y
+
+
+def _perp_distance_m(pt: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> float:
+    (x, y), (x1, y1), (x2, y2) = pt, a, b
+    dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0:
+        return math.hypot(x - x1, y - y1)
+    t = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)))
+    proj_x, proj_y = x1 + t * dx, y1 + t * dy
+    return math.hypot(x - proj_x, y - proj_y)
+
+
+def simplify_path(coords: list[tuple[float, float]], tolerance_m: float = 3.0) -> list[tuple[float, float]]:
+    """Douglas-Peucker simplification — drops a point only if it's within
+    tolerance_m of the straight line between its neighbors, so any real turn
+    beyond that tolerance survives. This is what actually fixes routes
+    visually cutting across streets/looking artificially jagged: unlike
+    sample_waypoints' blind index-based thinning (which could skip a real
+    turn entirely and draw a straight line across a street), or showing
+    every raw graph node (which renders every OSM shape point, including
+    ones a few centimeters apart that add visual noise with no real turn),
+    this keeps exactly the points that matter geometrically.
+    """
+    if len(coords) < 3:
+        return coords
+
+    ref_lat = coords[0][0]
+    xy = [_latlng_to_xy_m(lat, lng, ref_lat) for lat, lng in coords]
+
+    def rdp(indices: list[int]) -> list[int]:
+        if len(indices) < 3:
+            return indices
+        start, end = indices[0], indices[-1]
+        max_dist, max_idx = -1.0, None
+        for i in indices[1:-1]:
+            d = _perp_distance_m(xy[i], xy[start], xy[end])
+            if d > max_dist:
+                max_dist, max_idx = d, i
+        if max_dist > tolerance_m:
+            left = rdp([i for i in indices if i <= max_idx])
+            right = rdp([i for i in indices if i >= max_idx])
+            return left[:-1] + right
+        return [start, end]
+
+    kept = rdp(list(range(len(coords))))
+    return [coords[i] for i in kept]
