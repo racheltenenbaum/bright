@@ -200,6 +200,11 @@ def test_region_for_bbox_nyc():
     assert _region_for_bbox(40.70, -74.00, 40.71, -73.99) == "nyc"
 
 
+def test_region_for_bbox_telaviv():
+    # A small bbox well inside Tel Aviv's municipal extent.
+    assert _region_for_bbox(32.06, 34.77, 32.07, 34.78) == "telaviv"
+
+
 def test_region_for_bbox_unimported_area():
     # London — not one of our pre-loaded regions.
     assert _region_for_bbox(51.50, -0.10, 51.51, -0.09) is None
