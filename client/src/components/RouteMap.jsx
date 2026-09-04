@@ -730,7 +730,9 @@ export default function RouteMap() {
       const pinColor = isNighttime ? "#3D6E8C" : (preference === "shade" ? "#7AB3CF" : "#FFD600");
       startMarkerRef.current = new window.google.maps.Marker({
         position: start,
-        map: mapRef.current,
+        // Hidden in Go mode — it'd overlap the live location dot, which
+        // marks the same point once navigation begins.
+        map: goMode ? null : mapRef.current,
         icon: {
           url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36"><path fill="${pinColor}" stroke="#fff" stroke-width="1.5" d="M12 0C5.4 0 0 5.4 0 12c0 9 12 24 12 24S24 21 24 12C24 5.4 18.6 0 12 0z"/><circle cx="12" cy="12" r="5" fill="white"/></svg>`)}`,
           scaledSize: new window.google.maps.Size(24, 36),
@@ -738,7 +740,7 @@ export default function RouteMap() {
         },
       });
     }
-  }, [start, isLoaded, preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [start, isLoaded, preference, isNighttime, goMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync end marker
   useEffect(() => {
