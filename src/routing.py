@@ -379,7 +379,7 @@ def _perp_distance_m(pt: tuple[float, float], a: tuple[float, float], b: tuple[f
     return math.hypot(x - proj_x, y - proj_y)
 
 
-def simplify_path(coords: list[tuple[float, float]], tolerance_m: float = 3.0) -> list[tuple[float, float]]:
+def simplify_path(coords: list[tuple[float, float]], tolerance_m: float = 8.0) -> list[tuple[float, float]]:
     """Douglas-Peucker simplification — drops a point only if it's within
     tolerance_m of the straight line between its neighbors, so any real turn
     beyond that tolerance survives. This is what actually fixes routes
@@ -387,8 +387,16 @@ def simplify_path(coords: list[tuple[float, float]], tolerance_m: float = 3.0) -
     sample_waypoints' blind index-based thinning (which could skip a real
     turn entirely and draw a straight line across a street), or showing
     every raw graph node (which renders every OSM shape point, including
-    ones a few centimeters apart that add visual noise with no real turn),
-    this keeps exactly the points that matter geometrically.
+    ones a few meters apart with no real turn between them), this keeps
+    exactly the points that matter geometrically.
+
+    8m (not a stricter 3m) because a real Vienna route was found to have
+    near-continuous few-meter-scale wobble along nearly its entire length —
+    typical OSM node-position noise / minor way-endpoint misalignment at
+    intersections, not actual street curvature — that a 3m tolerance mostly
+    preserved (117 raw points down to only 74). 8m removed the noise (down
+    to 27 points) while still preserving every real intersection turn,
+    which involves a much larger deviation than a few meters.
     """
     if len(coords) < 3:
         return coords

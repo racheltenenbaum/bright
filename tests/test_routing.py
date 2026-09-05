@@ -792,15 +792,17 @@ def test_optimized_route_endpoint_success(client, auth_headers):
 
 
 def test_optimized_route_endpoint_returns_full_path_not_downsampled(client, auth_headers):
-    """A path with more real shape points than the old fixed sample count
-    (25) must come back in full — downsampling to evenly-spaced indices was
+    """A path with more real turns than the old fixed sample count (25) must
+    still show every one of them — downsampling to evenly-spaced indices was
     cutting straight lines across real turns whenever one fell between two
-    sampled points, drawing the route diagonally across the street."""
+    sampled points, drawing the route diagonally across the street. Each
+    zigzag point here is offset ~25m (well beyond simplify_path's 8m
+    tolerance), so every one is a genuine turn that must survive."""
     n_nodes = 40
     zigzag_osm = {
         "elements": (
             [
-                {"type": "node", "id": i, "lat": 40.000 + i * 0.0001, "lon": -74.000 + (i % 2) * 0.0001}
+                {"type": "node", "id": i, "lat": 40.000 + i * 0.0001, "lon": -74.000 + (i % 2) * 0.0003}
                 for i in range(1, n_nodes + 1)
             ]
             + [{"type": "way", "id": 100, "nodes": list(range(1, n_nodes + 1)), "tags": {"highway": "residential"}}]
@@ -823,7 +825,9 @@ def test_optimized_route_endpoint_returns_full_path_not_downsampled(client, auth
             headers=auth_headers,
         )
     assert resp.status_code == 200
-    assert len(resp.json()["waypoints"]) == n_nodes
+    # Not the old fixed cap of 25 — every genuine zigzag turn survives
+    # simplification (allow the endpoint itself to merge into its neighbor).
+    assert len(resp.json()["waypoints"]) >= n_nodes - 1
 
 
 def test_optimized_route_endpoint_nighttime(client, auth_headers):
