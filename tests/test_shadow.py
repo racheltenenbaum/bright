@@ -226,30 +226,36 @@ def test_is_point_shaded_by_index_matches_linear_scan():
         )
 
 # ── which_side_sunny ───────────────────────────────────────────────────────────
+# Takes precomputed shadow_polygons + a spatial index (like
+# is_point_shaded_by_index) rather than raw buildings — it used to call the
+# linear-scan is_point_shaded twice per call, which was the dominant cost of
+# /sun/shadow-analyze (5s+ for 25 sample points against a few thousand
+# buildings) since it was called once per sample with no caching between
+# calls, unlike routing's edge-shading which already precomputes once.
 
 def test_which_side_sunny_night():
-    assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], 0, 180) == "neither"
+    assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], None, 0) == "neither"
 
 def test_which_side_sunny_negative_altitude():
-    assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], -5, 180) == "neither"
+    assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], None, -5) == "neither"
 
 def test_which_side_sunny_both_open_sky():
-    # No buildings → both sides sunny
-    assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], 45, 180) == "both"
+    # No shadow polygons → both sides sunny
+    assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], None, 45) == "both"
 
 def test_which_side_sunny_neither():
-    with patch("src.shadow.is_point_shaded", return_value=True):
-        assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], 45, 180) == "neither"
+    with patch("src.shadow.is_point_shaded_by_index", return_value=True):
+        assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], None, 45) == "neither"
 
 def test_which_side_sunny_right():
     # left shaded, right sunny → "right"
-    with patch("src.shadow.is_point_shaded", side_effect=[True, False]):
-        assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], 45, 180) == "right"
+    with patch("src.shadow.is_point_shaded_by_index", side_effect=[True, False]):
+        assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], None, 45) == "right"
 
 def test_which_side_sunny_left():
     # left sunny, right shaded → "left"
-    with patch("src.shadow.is_point_shaded", side_effect=[False, True]):
-        assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], 45, 180) == "left"
+    with patch("src.shadow.is_point_shaded_by_index", side_effect=[False, True]):
+        assert which_side_sunny(51.0, 0.0, 51.001, 0.0, [], None, 45) == "left"
 
 # ── extract_buildings_from_overpass ────────────────────────────────────────────
 

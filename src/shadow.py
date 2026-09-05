@@ -150,15 +150,21 @@ def _bearing(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 def which_side_sunny(
     lat1: float, lng1: float,
     lat2: float, lng2: float,
-    buildings: list[dict],
+    shadow_polygons: list[Polygon],
+    index: STRtree | None,
     sun_altitude: float,
-    sun_azimuth: float,
-    elevation: float = 0.0,
 ) -> str:
     """
     Returns 'left', 'right', 'both', or 'neither' — which sidewalk is in sun
     for the segment running from (lat1,lng1) to (lat2,lng2).
     Left/right are relative to the direction of travel.
+
+    Takes precomputed shadow polygons + spatial index (from
+    precompute_shadow_polygons/build_shadow_polygon_index) rather than raw
+    buildings, so a caller checking many segments against the same buildings
+    (e.g. every sample point along a route) builds the polygons/index once
+    instead of rescanning all buildings on every call — this used to be the
+    dominant cost of shadow-analyze.
     """
     if sun_altitude <= 0:
         return "neither"
@@ -170,8 +176,8 @@ def which_side_sunny(
     left_lat, left_lng = _offset_point(mid_lat, mid_lng, (bearing - 90) % 360, 4.0)
     right_lat, right_lng = _offset_point(mid_lat, mid_lng, (bearing + 90) % 360, 4.0)
 
-    left_shaded = is_point_shaded(left_lat, left_lng, buildings, sun_altitude, sun_azimuth, elevation)
-    right_shaded = is_point_shaded(right_lat, right_lng, buildings, sun_altitude, sun_azimuth, elevation)
+    left_shaded = is_point_shaded_by_index(left_lat, left_lng, shadow_polygons, index, sun_altitude)
+    right_shaded = is_point_shaded_by_index(right_lat, right_lng, shadow_polygons, index, sun_altitude)
 
     if not left_shaded and not right_shaded:
         return "both"
@@ -280,10 +286,12 @@ def place_is_sunny(
         return not is_point_shaded(plat, plng, buildings, sun_altitude, sun_azimuth)
 
     side = _side_of_segment(plat, plng, nearest["lat1"], nearest["lng1"], nearest["lat2"], nearest["lng2"])
+    shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
+    index = build_shadow_polygon_index(shadow_polygons)
     sunny_side = which_side_sunny(
         nearest["lat1"], nearest["lng1"],
         nearest["lat2"], nearest["lng2"],
-        buildings, sun_altitude, sun_azimuth,
+        shadow_polygons, index, sun_altitude,
     )
 
     if sunny_side == "both":

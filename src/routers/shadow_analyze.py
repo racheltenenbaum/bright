@@ -16,7 +16,14 @@ from src.database import SessionLocal
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import OsmBuilding, User
 from src.regions import REGION_BOUNDS, region_for_bbox as _region_for_bbox
-from src.shadow import extract_buildings_from_overpass, is_point_shaded, which_side_sunny, _offset_point
+from src.shadow import (
+    build_shadow_polygon_index,
+    extract_buildings_from_overpass,
+    is_point_shaded_by_index,
+    precompute_shadow_polygons,
+    which_side_sunny,
+    _offset_point,
+)
 from src.utils.astronomy import get_sun_position
 
 logger = logging.getLogger(__name__)
@@ -299,12 +306,19 @@ def shadow_analyze(
     buildings = buildings_result if buildings_result is not None else []
 
     samples = _sample_coords(body.coordinates, target=25)
-    sample_coords_list = [(lat, lng) for _, lat, lng in samples]
-    elevations = _fetch_elevations(sample_coords_list)
+
+    # Precomputed once for all 25 samples rather than rescanning every
+    # building per point (is_point_shaded) — that linear scan against a
+    # few thousand buildings was the dominant cost of this endpoint,
+    # sometimes 5s+ on its own. Matches the indexed approach routing's
+    # compute_edge_shading already uses, including ignoring per-point
+    # elevation (point_elevation=0.0) for the same reason.
+    shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
+    shadow_index = build_shadow_polygon_index(shadow_polygons)
 
     shaded_map: dict[int, bool] = {}
-    for (idx, lat, lng), elevation in zip(samples, elevations):
-        shaded_map[idx] = is_point_shaded(lat, lng, buildings, sun_altitude, sun_azimuth, elevation)
+    for idx, lat, lng in samples:
+        shaded_map[idx] = is_point_shaded_by_index(lat, lng, shadow_polygons, shadow_index, sun_altitude)
 
     segments = [
         SegmentResult(
@@ -386,14 +400,17 @@ def _analyze_route(route: list[list[float]], buildings: list, sun_altitude: floa
     if sun_altitude <= MAX_SUN_ALT_FOR_TERRAIN_DEG:
         terrain_shaded_map = _check_terrain_shadows(samples, elevations, sun_altitude, sun_azimuth)
 
+    shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
+    shadow_index = build_shadow_polygon_index(shadow_polygons)
+
     shaded_map: dict[int, bool] = {}
     side_map: dict[int, str] = {}
-    for (idx, lat, lng), elevation in zip(samples, elevations):
-        building_shaded = is_point_shaded(lat, lng, buildings, sun_altitude, sun_azimuth, elevation)
+    for idx, lat, lng in samples:
+        building_shaded = is_point_shaded_by_index(lat, lng, shadow_polygons, shadow_index, sun_altitude)
         shaded_map[idx] = building_shaded or terrain_shaded_map.get(idx, False)
         next_idx = min(idx + 1, len(route) - 1)
         lat2, lng2 = route[next_idx][0], route[next_idx][1]
-        side_map[idx] = which_side_sunny(lat, lng, lat2, lng2, buildings, sun_altitude, sun_azimuth, elevation)
+        side_map[idx] = which_side_sunny(lat, lng, lat2, lng2, shadow_polygons, shadow_index, sun_altitude)
 
     segments = [
         SegmentResult(
