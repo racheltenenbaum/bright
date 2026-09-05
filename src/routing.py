@@ -106,6 +106,28 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return EARTH_RADIUS_M * 2 * math.asin(math.sqrt(a))
 
 
+ROUTE_BBOX_MIN_PADDING_M = 100.0
+ROUTE_BBOX_MAX_PADDING_M = 800.0
+ROUTE_BBOX_PADDING_FRACTION = 0.2
+
+
+def route_bbox_padding_m(straight_line_m: float) -> float:
+    """How far to pad a route's start/end bounding box when fetching roads
+    and buildings. A fixed 100m pad works for short routes, but a real
+    walking path often has to jog sideways to reach a bridge or avoid a
+    one-way street — for a multi-km route that detour can be hundreds of
+    meters wide, and a too-narrow box then has no road connecting start to
+    end at all (start and end resolve to nodes in disconnected components).
+    Padding scales with the route's straight-line distance instead of
+    staying fixed, clamped so short routes still get a sane minimum and
+    very long routes don't balloon the fetched area unboundedly.
+    """
+    return min(
+        ROUTE_BBOX_MAX_PADDING_M,
+        max(ROUTE_BBOX_MIN_PADDING_M, straight_line_m * ROUTE_BBOX_PADDING_FRACTION),
+    )
+
+
 def _query_overpass_roads(url: str, query: str, timeout: int | tuple[int, int]) -> dict | None:
     try:
         resp = requests.post(url, data=query, headers={"User-Agent": "bright-app/1.0"}, timeout=timeout)

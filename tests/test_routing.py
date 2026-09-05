@@ -19,6 +19,7 @@ from src.routing import (
     find_distance_path,
     find_optimized_path,
     nodes_to_coords,
+    route_bbox_padding_m,
     sample_waypoints,
     simplify_path,
     fetch_osm_road_network,
@@ -322,6 +323,25 @@ def test_fetch_road_graph_unimported_region_uses_overpass():
     assert mock_post.called
     assert graph.number_of_nodes() == 3
     _clear_road_cache(key)
+
+
+# ── route_bbox_padding_m ─────────────────────────────────────────────────────
+# A fixed 100m pad was too narrow for longer routes: a real walking path
+# often has to jog sideways (a bridge crossing, a one-way detour) by more
+# than that, and a too-narrow bbox then has no road connecting start to end
+# at all — reproduced in production for a ~3.4km Vienna route that needed to
+# reach a specific canal crossing outside the fixed 100m-wide box.
+
+def test_route_bbox_padding_m_short_route_uses_minimum():
+    assert route_bbox_padding_m(50.0) == 100.0
+
+
+def test_route_bbox_padding_m_scales_with_distance():
+    assert route_bbox_padding_m(2000.0) == pytest.approx(400.0)
+
+
+def test_route_bbox_padding_m_caps_at_maximum():
+    assert route_bbox_padding_m(50_000.0) == 800.0
 
 
 # ── nearest_node ─────────────────────────────────────────────────────────────
@@ -1060,6 +1080,59 @@ def test_optimized_route_endpoint_no_path_found(client, auth_headers):
         )
     assert resp.status_code == 400
     assert "No path found" in resp.json()["detail"]
+
+
+def test_optimized_route_endpoint_needs_wide_bbox_for_sideways_detour(client, auth_headers):
+    """Reproduces a real production failure: a ~1.1km north-south route whose
+    only connecting path jogs ~150m sideways (e.g. to reach a bridge/crossing).
+    A fixed 100m pad excludes the connecting node entirely, splitting the
+    route into two disconnected one-edge stubs and returning "No path found"
+    even though a real walking path exists. route_bbox_padding_m scales the
+    pad with distance so the real end-to-end request (not a mocked graph)
+    actually finds it — a mocked fetch_osm_road_network that ignores its bbox
+    args, like the other endpoint tests here use, would never catch this."""
+    start = (40.000, -74.000)
+    end = (40.010, -74.000)
+    detour = (40.005, -73.998241)  # ~150m east of the direct line
+
+    full_osm = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": start[0], "lon": start[1]},
+            {"type": "node", "id": 2, "lat": detour[0], "lon": detour[1]},
+            {"type": "node", "id": 3, "lat": end[0], "lon": end[1]},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+            {"type": "way", "id": 101, "nodes": [2, 3], "tags": {"highway": "residential"}},
+        ]
+    }
+
+    def fake_fetch(s, w, n, e):
+        elements = [
+            el for el in full_osm["elements"]
+            if el["type"] != "node" or (s <= el["lat"] <= n and w <= el["lon"] <= e)
+        ]
+        kept_ids = {el["id"] for el in elements if el["type"] == "node"}
+        for el in full_osm["elements"]:
+            if el["type"] == "way" and all(nid in kept_ids for nid in el["nodes"]):
+                elements.append(el)
+        return {"elements": elements}
+
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", side_effect=fake_fetch),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": list(start),
+                "end": list(end),
+                "datetime": "2026-05-24T14:00:00",
+                "preference": "sun",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert len(resp.json()["waypoints"]) >= 2
 
 
 def test_optimized_route_endpoint_no_road_network(client, auth_headers):

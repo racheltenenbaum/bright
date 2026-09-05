@@ -9,6 +9,7 @@ from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routing import (
     SHADE_DETOUR_MULTIPLIER,
+    _haversine_m,
     _path_length_m,
     compute_edge_weights,
     fetch_road_graph,
@@ -16,6 +17,7 @@ from src.routing import (
     find_optimized_path,
     nearest_node,
     nodes_to_coords,
+    route_bbox_padding_m,
     simplify_path,
 )
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
@@ -69,7 +71,8 @@ def optimized_route(
     sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng)
 
     all_coords = [body.start, body.end]
-    s, w, n, e = _route_bbox(all_coords, padding_m=100)
+    straight_line_m = _haversine_m(body.start[0], body.start[1], body.end[0], body.end[1])
+    s, w, n, e = _route_bbox(all_coords, padding_m=route_bbox_padding_m(straight_line_m))
 
     # Fetch road network and buildings in parallel
     with ThreadPoolExecutor(max_workers=2) as pool:
