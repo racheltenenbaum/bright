@@ -737,13 +737,22 @@ export default function RouteMap() {
     window.google.maps.event.clearListeners(map, "click");
 
     map.addListener("click", async (e) => {
-      setError(null);
-      setUsedFallbackRouting(false);
-      setRouteStats(null);
       if (modeRef.current === "places") {
+        setError(null);
+        setUsedFallbackRouting(false);
+        setRouteStats(null);
         setSelectedPlace(null);
         return;
       }
+      // Once both endpoints are set, a plain map tap shouldn't touch the
+      // planned route at all — only clearing an address field (or Reset)
+      // should. Without this, tapping anywhere on the map after planning a
+      // route silently replaced the end point and wiped it.
+      if (startRef.current && endRef.current) return;
+
+      setError(null);
+      setUsedFallbackRouting(false);
+      setRouteStats(null);
       const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       const geocoder = new window.google.maps.Geocoder();
       const result = await geocoder.geocode({ location: coords });
