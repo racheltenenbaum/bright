@@ -516,7 +516,7 @@ export default function RouteMap() {
     const bounds = new window.google.maps.LatLngBounds();
     bounds.extend(start);
     bounds.extend(end);
-    mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
+    mapRef.current.fitBounds(bounds, { top: 80, right: 20, bottom: 30, left: 20 });
   }, [start, end, isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track the route's own day/night state, independent of wherever the
@@ -983,7 +983,11 @@ export default function RouteMap() {
         requestAnimationFrame(() => {
           if (!mapRef.current) return;
           window.google.maps.event.trigger(mapRef.current, "resize");
-          mapRef.current.fitBounds(bounds, { top: 60, right: 20, bottom: 20, left: 20 });
+          // Extra top/bottom clearance beyond the pre-calc fitBounds — once
+          // a route exists, the weather/compass badges and the sunny/shaded
+          // legend both overlay the map and would otherwise sit on top of
+          // the endpoint pins.
+          mapRef.current.fitBounds(bounds, { top: 100, right: 20, bottom: 80, left: 20 });
         });
       });
 
