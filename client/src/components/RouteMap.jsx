@@ -928,7 +928,16 @@ export default function RouteMap() {
           { headers: { Authorization: `Bearer ${token}` }, timeout: 35000 },
         );
         waypoints = routeRes.data.waypoints;
-      } catch {
+      } catch (optimizedRouteErr) {
+        // Logged so an intermittent failure here (seen recurring with no
+        // obvious cause) can actually be diagnosed next time instead of
+        // being silently swallowed by the fallback below.
+        console.error(
+          "optimized-route failed, falling back to Google Directions:",
+          optimizedRouteErr?.response?.status,
+          optimizedRouteErr?.response?.data,
+          optimizedRouteErr?.message,
+        );
         // Google Directions has no concept of sun/shade — this route will
         // look identical regardless of preference, so the user must be told.
         setUsedFallbackRouting(true);
