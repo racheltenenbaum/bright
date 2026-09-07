@@ -803,44 +803,37 @@ body.night-mode .auth-card {
 }
 
 /* ── Saved routes bar ──────────────────────────────────── */
-/* A side column next to the map at every width — narrower on mobile, wider
-   on desktop — rather than a block below the map, so it never adds page
-   scroll height or covers the map. Always shown expanded, since as a side
-   column (rather than a bar competing for vertical space) there's no need
-   to collapse it. */
+/* A side column next to the map at every width, collapsed by default to a
+   narrow vertical label + arrow (no name previews) — clicking it opens a
+   wider panel with the actual list. Being a side column rather than a bar
+   below the map, it never adds page-scroll height or covers the map. */
 
 .saved-routes-bar {
   grid-area: saved;
-  width: 110px;
+  width: 40px;
   height: 100%;
   overflow-y: auto;
-  border-top: none !important;
+  overflow-x: hidden;
+  transition: width 0.2s;
   border-left: 1.5px solid var(--color-border);
 }
 
-.saved-routes-toggle {
-  display: none !important;
-}
-
-.saved-routes-label {
-  display: block;
-  font-size: 0.62em !important;
+.saved-routes-bar.expanded {
+  width: 160px;
 }
 
 .saved-routes-list {
-  display: flex !important;
-  max-height: none !important;
-  overflow-y: visible !important;
+  overflow-y: visible;
 }
 
 @media (min-width: 1024px) {
   .saved-routes-bar {
-    width: 260px;
+    border-left: none;
     border-right: 1.5px solid var(--color-border);
   }
 
-  .saved-routes-label {
-    font-size: 0.72em !important;
+  .saved-routes-bar.expanded {
+    width: 280px;
   }
 }
 

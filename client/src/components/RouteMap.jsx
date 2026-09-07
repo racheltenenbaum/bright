@@ -14,8 +14,8 @@ import {
   faLocationCrosshairs,
   faShareNodes,
   faCompass,
-  faChevronUp,
-  faChevronDown,
+  faChevronLeft,
+  faChevronRight,
   faMapLocationDot,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
@@ -2462,33 +2462,41 @@ export default function RouteMap({ regions }) {
         </div>
       )}
 
-      {/* Saved routes — fixed to bottom of page. Collapsible on mobile so it
-          doesn't permanently cover a chunk of the map; always expanded on
-          desktop (see .saved-routes-toggle / .saved-routes-list CSS). */}
+      {/* Saved routes — a collapsed vertical-label strip beside the map by
+          default (no name previews); clicking it opens a side panel with
+          the actual list. See saved-routes-bar CSS for the width toggle. */}
       {mode === "route" && !sunData && savedRoutes.length > 0 && (
-        <div className="saved-routes-bar" style={{ background: "var(--color-bg)", borderTop: `1.5px solid ${colors.accentFaint}` }}>
+        <div
+          className={`saved-routes-bar${savedRoutesExpanded ? " expanded" : ""}`}
+          style={{ background: "var(--color-bg)", borderColor: colors.accentFaint }}
+        >
           <button
             className="saved-routes-toggle"
             onClick={() => setSavedRoutesExpanded((e) => !e)}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-              width: "100%", padding: "10px 16px", background: "none", border: "none", boxShadow: "none",
+            style={savedRoutesExpanded ? {
+              display: "flex", alignItems: "center", gap: "8px",
+              width: "100%", padding: "10px 12px", background: "none", border: "none", boxShadow: "none",
+              fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
+              color: colors.subtext, cursor: "pointer",
+            } : {
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: "10px", width: "100%", height: "100%", padding: "16px 4px",
+              background: "none", border: "none", boxShadow: "none",
               fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
               color: colors.subtext, cursor: "pointer",
             }}
           >
-            <FontAwesomeIcon icon={savedRoutesExpanded ? faChevronDown : faChevronUp} />
-            Saved routes
+            <FontAwesomeIcon icon={savedRoutesExpanded ? faChevronRight : faChevronLeft} />
+            <span style={!savedRoutesExpanded ? { writingMode: "vertical-rl", textOrientation: "mixed" } : undefined}>
+              Saved routes
+            </span>
           </button>
-          <p className="saved-routes-label" style={{ margin: "0 0 8px", padding: "10px 16px 0", fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.subtext }}>
-            Saved routes
-          </p>
           <div
             className="saved-routes-list"
             style={{
               display: savedRoutesExpanded ? "flex" : "none",
               flexDirection: "column", gap: "6px", padding: "0 16px 14px",
-              maxHeight: "260px", overflowY: "auto",
+              overflowY: "auto",
             }}
           >
             {savedRoutes
