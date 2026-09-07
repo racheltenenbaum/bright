@@ -54,6 +54,17 @@ class Feedback(Base):
     user = relationship("User", back_populates="feedback")
 
 
+class RegionNotifyRequest(Base):
+    __tablename__ = "region_notify_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    email = Column(String(255), nullable=False)
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class OsmBuilding(Base):
     """Bulk-imported building footprint + height, used instead of a live
     Overpass query for regions we've pre-loaded (see src/routers/shadow_analyze.py

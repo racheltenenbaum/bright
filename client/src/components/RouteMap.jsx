@@ -249,7 +249,8 @@ export default function RouteMap({ regions }) {
   const [sunData, setSunData] = useState(null);
   const [usedFallbackRouting, setUsedFallbackRouting] = useState(false);
   const [error, setError] = useState(null);
-  const [coverageNotice, setCoverageNotice] = useState(null);
+  const [coverageNotice, setCoverageNotice] = useState(null); // { lat, lng } of an uncovered point, or null
+  const [notifyStatus, setNotifyStatus] = useState("idle"); // idle | sending | done
   const [saveForm, setSaveForm] = useState(null); // null = hidden, {} = open
   const [saveError, setSaveError] = useState(null);
   const [routeSaved, setRouteSaved] = useState(false);
@@ -848,14 +849,30 @@ export default function RouteMap({ regions }) {
       return true;
     }
     const points = [newStart, newEnd].filter(Boolean);
-    const uncovered = points.some((p) => !isCovered(p.lat, p.lng, regions));
-    if (uncovered) {
-      const cityNames = regions.map((r) => r.name).join(", ");
-      setCoverageNotice(`bright doesn't have sun/shade data here yet — it currently covers ${cityNames}.`);
+    const uncoveredPoint = points.find((p) => !isCovered(p.lat, p.lng, regions));
+    if (uncoveredPoint) {
+      setCoverageNotice(uncoveredPoint);
+      setNotifyStatus("idle");
       return false;
     }
     setCoverageNotice(null);
     return true;
+  }
+
+  async function handleNotifyMe() {
+    if (!coverageNotice || notifyStatus !== "idle") return;
+    setNotifyStatus("sending");
+    const token = localStorage.getItem("token");
+    try {
+      await api.post(
+        "/regions/notify",
+        { lat: coverageNotice.lat, lng: coverageNotice.lng },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setNotifyStatus("done");
+    } catch (_) {
+      setNotifyStatus("idle");
+    }
   }
 
   function handlePlaceSelected(type) {
@@ -1366,6 +1383,7 @@ export default function RouteMap({ regions }) {
     setSunData(null);
     setError(null);
     setCoverageNotice(null);
+    setNotifyStatus("idle");
     setSaveForm(null);
     setSaveError(null);
     setRouteSaved(false);
@@ -1503,6 +1521,7 @@ export default function RouteMap({ regions }) {
                   setStartAddress("");
                   setStart(null);
                   setCoverageNotice(null);
+                  setNotifyStatus("idle");
                   clearPolylines(polylinesRef);
                   setSunData(null);
                   setSavedRouteName(null);
@@ -1575,6 +1594,7 @@ export default function RouteMap({ regions }) {
                   setEndAddress("");
                   setEnd(null);
                   setCoverageNotice(null);
+                  setNotifyStatus("idle");
                   clearPolylines(polylinesRef);
                   setSunData(null);
                   setSavedRouteName(null);
@@ -1626,11 +1646,16 @@ export default function RouteMap({ regions }) {
         {/* Spot chips — shown when start or end is empty, filtered to map region */}
         {(() => {
           if (!spots.length || (start && end) || sunData) return null;
-          const nearbySpots = mapCenter
+          const currentRegion = mapCenter && regions?.length
+            ? regions.find((r) => isCovered(mapCenter.lat, mapCenter.lng, [r]))
+            : null;
+          const nearbySpots = currentRegion
+            ? spots.filter((s) => isCovered(s.lat, s.lng, [currentRegion]))
+            : mapCenter
             ? spots.filter((s) => {
                 const dlat = (s.lat - mapCenter.lat) * 111;
                 const dlng = (s.lng - mapCenter.lng) * 111 * Math.cos((mapCenter.lat * Math.PI) / 180);
-                return Math.sqrt(dlat * dlat + dlng * dlng) < 800;
+                return Math.sqrt(dlat * dlat + dlng * dlng) < 50;
               })
             : spots;
           if (!nearbySpots.length) return null;
@@ -1886,42 +1911,58 @@ export default function RouteMap({ regions }) {
           )}
           {coverageNotice && (
             <div
+              onClick={(e) => { if (e.target === e.currentTarget) setCoverageNotice(null); }}
               style={{
                 position: "absolute", inset: 0, zIndex: 15,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                padding: "24px",
-                pointerEvents: "none",
+                padding: "20px",
+                background: "rgba(60,60,60,0.45)",
               }}
             >
               <div
                 style={{
-                  pointerEvents: "auto",
                   position: "relative",
-                  width: "100%", maxWidth: "340px",
+                  width: "92%", maxWidth: "420px",
                   display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
-                  gap: "12px",
-                  background: colors.surface.replace(/[\d.]+\)$/, "0.8)"),
-                  backdropFilter: "blur(4px)",
-                  border: `1.5px solid ${colors.accentFaint}`,
-                  boxShadow: `0 8px 24px ${colors.accentGlow}`,
-                  borderRadius: "24px",
-                  padding: "32px 26px",
+                  gap: "14px",
+                  background: "rgba(130,130,130,0.55)",
+                  backdropFilter: "blur(8px)",
+                  border: "1.5px solid rgba(255,255,255,0.3)",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+                  borderRadius: "28px",
+                  padding: "44px 30px",
                 }}
               >
                 <button
                   onClick={() => setCoverageNotice(null)}
                   style={{
-                    position: "absolute", top: "10px", right: "12px",
+                    position: "absolute", top: "10px", right: "14px",
                     background: "none", border: "none", boxShadow: "none", cursor: "pointer",
-                    color: colors.subtext, fontSize: "17px", padding: "4px", lineHeight: 1,
+                    color: "#fff", fontSize: "18px", padding: "4px", lineHeight: 1,
                   }}
                 >
                   ×
                 </button>
-                <FontAwesomeIcon icon={faMapLocationDot} style={{ color: colors.accent, fontSize: "2em" }} />
-                <span style={{ color: colors.subtext, fontWeight: 600, fontSize: "0.9em", lineHeight: 1.5 }}>
-                  {coverageNotice}
-                </span>
+                <FontAwesomeIcon icon={faMapLocationDot} style={{ color: "#f0f0f0", fontSize: "2.2em" }} />
+                {notifyStatus === "done" ? (
+                  <span style={{ color: "#fff", fontWeight: 700, fontSize: "0.95em", lineHeight: 1.5 }}>
+                    You&apos;re on the list! We&apos;ll email you when this area is covered.
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleNotifyMe}
+                    disabled={notifyStatus === "sending"}
+                    style={{
+                      background: "none", border: "none", boxShadow: "none",
+                      color: "#fff", fontWeight: 600, fontSize: "0.95em", lineHeight: 1.6,
+                      cursor: notifyStatus === "sending" ? "default" : "pointer",
+                      padding: 0, opacity: notifyStatus === "sending" ? 0.7 : 1,
+                    }}
+                  >
+                    bright has no data coverage here yet.{" "}
+                    <span style={{ textDecoration: "underline", fontWeight: 800 }}>Click here</span> to get notified when this region becomes available!
+                  </button>
+                )}
               </div>
             </div>
           )}
