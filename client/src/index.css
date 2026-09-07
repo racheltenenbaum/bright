@@ -818,6 +818,10 @@ body.night-mode .auth-card {
   overflow-x: hidden;
   transition: width 0.2s;
   border-left: 1.5px solid var(--color-border);
+  /* Bleed into .plan-layout's own right padding (still inside its
+     border-box, so overflow:hidden there doesn't clip it) so the strip
+     reaches the true screen edge instead of leaving a margin after it. */
+  margin-right: -16px;
 }
 
 .saved-routes-bar.expanded {
@@ -828,10 +832,17 @@ body.night-mode .auth-card {
   overflow-y: visible;
 }
 
+@media (min-width: 768px) {
+  .saved-routes-bar {
+    margin-right: -24px;
+  }
+}
+
 @media (min-width: 1024px) {
   .saved-routes-bar {
     border-left: none;
     border-right: 1.5px solid var(--color-border);
+    margin-right: 0;
   }
 
   .saved-routes-bar.expanded {
