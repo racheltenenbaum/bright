@@ -1957,6 +1957,8 @@ export default function RouteMap({ regions }) {
                       color: "#fff", fontWeight: 600, fontSize: "0.95em", lineHeight: 1.6,
                       cursor: notifyStatus === "sending" ? "default" : "pointer",
                       padding: 0, opacity: notifyStatus === "sending" ? 0.7 : 1,
+                      width: "100%", whiteSpace: "normal", wordBreak: "break-word",
+                      boxSizing: "border-box",
                     }}
                   >
                     bright has no data coverage here yet.{" "}
