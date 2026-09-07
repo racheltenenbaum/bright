@@ -37,12 +37,14 @@ SHADE_DETOUR_MULTIPLIER = 2.5
 EXCLUDED_HIGHWAY_TYPES = {"motorway", "trunk", "motorway_link", "trunk_link"}
 # highway=service covers real minor streets (needed for pedestrian routing
 # where no separate sidewalk data exists) but also driveways, parking-lot
-# access lanes, and drive-throughs — car maneuvering areas through private
-# lots, not real through-routes. Including them let the router find
-# unrealistic loopy "shortcuts" criss-crossing parking lots, especially in
-# commercial corridors (confirmed: 73% of service ways near a real reported
-# bad route in East Hollywood, LA were exactly these sub-types).
-EXCLUDED_SERVICE_SUBTYPES = {"driveway", "parking_aisle", "drive-through"}
+# access lanes, drive-throughs, and alleys — car/back-lot maneuvering paths,
+# not real through-routes. Including them let the router find unrealistic
+# loopy "shortcuts" criss-crossing parking lots (confirmed: 73% of service
+# ways near a real reported bad route in East Hollywood, LA were exactly
+# these sub-types) or zigzagging staircase paths ducking through back alleys
+# between blocks instead of following the direct street (also East
+# Hollywood — LA's grid has alleys running through the middle of blocks).
+EXCLUDED_SERVICE_SUBTYPES = {"driveway", "parking_aisle", "drive-through", "alley"}
 
 EARTH_RADIUS_M = 6_371_000.0
 

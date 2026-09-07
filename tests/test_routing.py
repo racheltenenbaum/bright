@@ -160,6 +160,22 @@ def test_build_graph_service_drivethrough_excluded():
     assert g.number_of_edges() == 0
 
 
+def test_build_graph_service_alley_excluded():
+    """highway=service with service=alley produced the zigzag "staircase"
+    routes reported in East Hollywood, LA — the optimizer ducked through
+    back alleys between blocks instead of following the direct street,
+    since alleys weren't in EXCLUDED_SERVICE_SUBTYPES."""
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.0, "lon": -74.0},
+            {"type": "node", "id": 2, "lat": 40.001, "lon": -74.0},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "service", "service": "alley"}},
+        ]
+    }
+    g = build_graph(data)
+    assert g.number_of_edges() == 0
+
+
 def test_build_graph_plain_service_included():
     data = {
         "elements": [

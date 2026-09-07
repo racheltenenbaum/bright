@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.database import SessionLocal
 from src.models import OsmRoad
+from src.routing import EXCLUDED_SERVICE_SUBTYPES
 
 # Must match build_graph's filtering in src/routing.py.
 ALLOWED_HIGHWAY_TYPES = {
@@ -41,11 +42,12 @@ ALLOWED_HIGHWAY_TYPES = {
     "service", "unclassified", "tertiary", "secondary", "primary",
     "cycleway", "steps", "track",
 }
-# service=driveway/parking_aisle/drive-through are car-only paths through
-# private lots, not real pedestrian through-routes — including them let the
-# router find unrealistic loopy "shortcuts" across parking lots. See
-# src/routing.py's EXCLUDED_SERVICE_SUBTYPES for the full rationale.
-EXCLUDED_SERVICE_SUBTYPES = {"driveway", "parking_aisle", "drive-through"}
+# Imported directly from src/routing.py (rather than duplicated here) so the
+# two filters can't drift apart — they previously did: this script's copy was
+# missing "alley", which let already-imported LA road data keep zigzag
+# "staircase" shortcuts through back alleys that build_graph's live-Overpass
+# path would have excluded. See src/routing.py's EXCLUDED_SERVICE_SUBTYPES
+# for the full rationale.
 
 EARTH_RADIUS_M = 6_371_000.0
 BATCH_SIZE = 20_000
