@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, Integer, String, Float, Double, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.database import Base
@@ -98,16 +98,24 @@ class OsmRoad(Base):
     """
     __tablename__ = "osm_roads"
 
+    # Double, not Float: single-precision Float only holds ~7 significant
+    # digits, which quantizes a latitude like 34.0922544 down to about
+    # 34.0923 — an ~11m grid. Since build_graph_from_edges uses these exact
+    # coordinates as graph node identity, that quantization let genuinely
+    # distinct points collapse onto the same node, producing snakey/staircase
+    # street shapes and occasional physically-impossible "shortcuts"
+    # (a computed path shorter than the straight-line distance between its
+    # own endpoints).
     id = Column(Integer, primary_key=True, index=True)
     region = Column(String(20), nullable=False, index=True)  # e.g. "la"
-    min_lat = Column(Float, nullable=False, index=True)
-    max_lat = Column(Float, nullable=False, index=True)
-    min_lng = Column(Float, nullable=False, index=True)
-    max_lng = Column(Float, nullable=False, index=True)
-    from_lat = Column(Float, nullable=False)
-    from_lng = Column(Float, nullable=False)
-    to_lat = Column(Float, nullable=False)
-    to_lng = Column(Float, nullable=False)
+    min_lat = Column(Double, nullable=False, index=True)
+    max_lat = Column(Double, nullable=False, index=True)
+    min_lng = Column(Double, nullable=False, index=True)
+    max_lng = Column(Double, nullable=False, index=True)
+    from_lat = Column(Double, nullable=False)
+    from_lng = Column(Double, nullable=False)
+    to_lat = Column(Double, nullable=False)
+    to_lng = Column(Double, nullable=False)
     distance_m = Column(Float, nullable=False)
     oneway = Column(Boolean, nullable=False, default=False)
 
