@@ -2480,7 +2480,7 @@ export default function RouteMap({ regions }) {
               color: colors.subtext, cursor: "pointer",
             } : {
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: "10px", width: "100%", height: "100%", padding: "16px 4px",
+              gap: "10px", width: "100%", height: "100%", padding: "16px 0 16px 4px",
               background: "none", border: "none", boxShadow: "none",
               fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
               color: colors.subtext, cursor: "pointer",
