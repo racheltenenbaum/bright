@@ -2497,7 +2497,7 @@ export default function RouteMap({ regions }) {
             className="saved-routes-list"
             style={{
               display: savedRoutesExpanded ? "flex" : "none",
-              flexDirection: "column", gap: "6px", padding: "0 16px 14px",
+              flexDirection: "column", gap: "4px", padding: "0 10px 10px",
               overflowY: "auto",
             }}
           >
@@ -2521,16 +2521,16 @@ export default function RouteMap({ regions }) {
                   onClick={() => { loadSavedRoute(route); setSavedRoutesExpanded(false); }}
                   style={{
                     display: "flex", flexDirection: "column", alignItems: "flex-start",
-                    padding: "10px 14px", borderRadius: "12px", width: "100%",
-                    background: colors.surface, border: `1.5px solid ${colors.accentFaint}`,
+                    padding: "6px 10px", borderRadius: "10px", width: "100%",
+                    background: colors.surface, border: `1px solid ${colors.accentFaint}`,
                     color: colors.text, textAlign: "left", boxShadow: "none",
-                    fontSize: "0.85em", fontWeight: 700, gap: "2px", cursor: "pointer",
+                    fontSize: "0.78em", fontWeight: 700, gap: "1px", cursor: "pointer",
                   }}
                 >
                   <span style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {route.name}
                   </span>
-                  {distText && <span style={{ fontSize: "0.8em", color: colors.subtext }}>{distText}</span>}
+                  {distText && <span style={{ fontSize: "0.75em", color: colors.subtext }}>{distText}</span>}
                 </button>
               );
             })}
