@@ -2510,17 +2510,17 @@ export default function RouteMap({ regions }) {
                   key={route.id}
                   onClick={() => { loadSavedRoute(route); setSavedRoutesExpanded(false); }}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    display: "flex", flexDirection: "column", alignItems: "flex-start",
                     padding: "10px 14px", borderRadius: "12px", width: "100%",
                     background: colors.surface, border: `1.5px solid ${colors.accentFaint}`,
                     color: colors.text, textAlign: "left", boxShadow: "none",
-                    fontSize: "0.85em", fontWeight: 700, gap: "8px", cursor: "pointer",
+                    fontSize: "0.85em", fontWeight: 700, gap: "2px", cursor: "pointer",
                   }}
                 >
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {route.name}
                   </span>
-                  {distText && <span style={{ fontSize: "0.8em", color: colors.subtext, flexShrink: 0 }}>{distText}</span>}
+                  {distText && <span style={{ fontSize: "0.8em", color: colors.subtext }}>{distText}</span>}
                 </button>
               );
             })}

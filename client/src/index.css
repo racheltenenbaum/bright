@@ -661,18 +661,27 @@ body.night-mode .auth-card {
 
 /* ── Route sidebar ────────────────────────────────────── */
 
+/* Mobile-first grid: the route form always spans the full width on its own
+   row; the map and saved-routes bar share the row below it side by side, so
+   saved routes never adds page-scroll height or covers the map. Desktop
+   (see the 1024px breakpoint) rearranges this into a single row instead. */
 .route-container {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "panel panel"
+    "map   saved";
   height: 100%;
 }
 
 .route-panel {
-  flex-shrink: 0;
+  grid-area: panel;
 }
 
 .route-map {
-  flex: 1;
+  grid-area: map;
+  min-width: 0;
   min-height: 0;
   position: relative;
 }
@@ -755,23 +764,22 @@ body.night-mode .auth-card {
 }
 
 @media (min-width: 1024px) {
-  /* Plan route: sidebar left, map right */
+  /* Plan route: form, saved routes, and map all share one row */
   .plan-layout {
     padding: 0;
   }
   .route-container {
-    flex-direction: row;
+    grid-template-columns: 540px auto 1fr;
+    grid-template-rows: 1fr;
+    grid-template-areas: "panel saved map";
   }
   .route-panel {
     width: 540px;
-    flex-shrink: 0;
     overflow-y: auto;
     padding: 14px 16px;
     border-right: none;
   }
   .route-map {
-    order: 2;
-    flex: 1;
     height: 100%;
     padding: 12px;
   }
@@ -795,43 +803,44 @@ body.night-mode .auth-card {
 }
 
 /* ── Saved routes bar ──────────────────────────────────── */
+/* A side column next to the map at every width — narrower on mobile, wider
+   on desktop — rather than a block below the map, so it never adds page
+   scroll height or covers the map. Always shown expanded, since as a side
+   column (rather than a bar competing for vertical space) there's no need
+   to collapse it. */
 
 .saved-routes-bar {
-  flex-shrink: 0;
+  grid-area: saved;
+  width: 110px;
+  height: 100%;
+  overflow-y: auto;
+  border-top: none !important;
+  border-left: 1.5px solid var(--color-border);
+}
+
+.saved-routes-toggle {
+  display: none !important;
 }
 
 .saved-routes-label {
-  display: none;
+  display: block;
+  font-size: 0.62em !important;
+}
+
+.saved-routes-list {
+  display: flex !important;
+  max-height: none !important;
+  overflow-y: visible !important;
 }
 
 @media (min-width: 1024px) {
-  /* Desktop: a real sidebar between the route form and the map, in normal
-     flex flow — not a viewport-fixed overlay, which used to misalign with
-     the actual panel edge (page padding shifts it) and paint over the map. */
   .saved-routes-bar {
-    position: static;
-    order: 1;
-    flex-shrink: 0;
     width: 260px;
-    height: 100%;
-    overflow-y: auto;
-    border-top: none !important;
     border-right: 1.5px solid var(--color-border);
   }
 
-  /* Desktop keeps the original always-visible list — only mobile collapses. */
-  .saved-routes-toggle {
-    display: none !important;
-  }
-
   .saved-routes-label {
-    display: block;
-  }
-
-  .saved-routes-list {
-    display: flex !important;
-    max-height: none !important;
-    overflow-y: visible !important;
+    font-size: 0.72em !important;
   }
 }
 
