@@ -1887,29 +1887,42 @@ export default function RouteMap({ regions }) {
           {coverageNotice && (
             <div
               style={{
-                position: "absolute", top: "12px", left: "50%", transform: "translateX(-50%)",
-                zIndex: 15, maxWidth: "88%",
-                display: "flex", alignItems: "flex-start", gap: "10px",
-                background: colors.surface,
-                border: `1.5px solid ${colors.accentFaint}`,
-                boxShadow: `0 4px 14px ${colors.accentGlow}`,
-                borderRadius: "16px",
-                padding: "12px 14px",
+                position: "absolute", inset: 0, zIndex: 15,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "24px",
+                pointerEvents: "none",
               }}
             >
-              <FontAwesomeIcon icon={faMapLocationDot} style={{ color: colors.accent, fontSize: "1.1em", marginTop: "2px" }} />
-              <span style={{ color: colors.subtext, fontWeight: 600, fontSize: "0.82em", lineHeight: 1.4 }}>
-                {coverageNotice}
-              </span>
-              <button
-                onClick={() => setCoverageNotice(null)}
+              <div
                 style={{
-                  background: "none", border: "none", boxShadow: "none", cursor: "pointer",
-                  color: colors.subtext, fontSize: "15px", padding: 0, lineHeight: 1, marginLeft: "2px",
+                  pointerEvents: "auto",
+                  position: "relative",
+                  width: "100%", maxWidth: "340px",
+                  display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center",
+                  gap: "12px",
+                  background: colors.surface.replace(/[\d.]+\)$/, "0.8)"),
+                  backdropFilter: "blur(4px)",
+                  border: `1.5px solid ${colors.accentFaint}`,
+                  boxShadow: `0 8px 24px ${colors.accentGlow}`,
+                  borderRadius: "24px",
+                  padding: "32px 26px",
                 }}
               >
-                ×
-              </button>
+                <button
+                  onClick={() => setCoverageNotice(null)}
+                  style={{
+                    position: "absolute", top: "10px", right: "12px",
+                    background: "none", border: "none", boxShadow: "none", cursor: "pointer",
+                    color: colors.subtext, fontSize: "17px", padding: "4px", lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+                <FontAwesomeIcon icon={faMapLocationDot} style={{ color: colors.accent, fontSize: "2em" }} />
+                <span style={{ color: colors.subtext, fontWeight: 600, fontSize: "0.9em", lineHeight: 1.5 }}>
+                  {coverageNotice}
+                </span>
+              </div>
             </div>
           )}
           {currentLocation && (
