@@ -16,6 +16,7 @@ import {
   faCompass,
   faChevronUp,
   faChevronDown,
+  faMapLocationDot,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -248,6 +249,7 @@ export default function RouteMap({ regions }) {
   const [sunData, setSunData] = useState(null);
   const [usedFallbackRouting, setUsedFallbackRouting] = useState(false);
   const [error, setError] = useState(null);
+  const [coverageNotice, setCoverageNotice] = useState(null);
   const [saveForm, setSaveForm] = useState(null); // null = hidden, {} = open
   const [saveError, setSaveError] = useState(null);
   const [routeSaved, setRouteSaved] = useState(false);
@@ -840,6 +842,22 @@ export default function RouteMap({ regions }) {
     setSunData(null);
   }
 
+  function checkCoverage(newStart, newEnd) {
+    if (!regions?.length) {
+      setCoverageNotice(null);
+      return true;
+    }
+    const points = [newStart, newEnd].filter(Boolean);
+    const uncovered = points.some((p) => !isCovered(p.lat, p.lng, regions));
+    if (uncovered) {
+      const cityNames = regions.map((r) => r.name).join(", ");
+      setCoverageNotice(`bright doesn't have sun/shade data here yet — it currently covers ${cityNames}.`);
+      return false;
+    }
+    setCoverageNotice(null);
+    return true;
+  }
+
   function handlePlaceSelected(type) {
     const autocomplete =
       type === "start"
@@ -854,12 +872,6 @@ export default function RouteMap({ regions }) {
     };
     const address = place.formatted_address || place.name || "";
 
-    if (regions?.length && !isCovered(coords.lat, coords.lng, regions)) {
-      const cityNames = regions.map((r) => r.name).join(", ");
-      setError(`bright doesn't have sun/shade data for this area yet. It currently covers ${cityNames}.`);
-      return;
-    }
-
     setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
     if (type === "start") {
       setStart(coords);
@@ -868,6 +880,7 @@ export default function RouteMap({ regions }) {
       setSunData(null);
       setSavedRouteName(null);
       setRouteSaved(false);
+      checkCoverage(coords, endRef.current);
     } else {
       setEnd(coords);
       setEndAddress(address);
@@ -875,6 +888,7 @@ export default function RouteMap({ regions }) {
       setSunData(null);
       setSavedRouteName(null);
       setRouteSaved(false);
+      checkCoverage(startRef.current, coords);
     }
     mapRef.current?.panTo(coords);
   }
@@ -904,11 +918,7 @@ export default function RouteMap({ regions }) {
     setSunData(null);
     setUsedFallbackRouting(false);
 
-    if (regions?.length && (!isCovered(start.lat, start.lng, regions) || !isCovered(end.lat, end.lng, regions))) {
-      const cityNames = regions.map((r) => r.name).join(", ");
-      setError(`bright doesn't have sun/shade data for this area yet. It currently covers ${cityNames}.`);
-      return;
-    }
+    if (!checkCoverage(start, end)) return;
 
     setPlanning(true);
     clearPolylines(polylinesRef);
@@ -1355,6 +1365,7 @@ export default function RouteMap({ regions }) {
     setEndAddress("");
     setSunData(null);
     setError(null);
+    setCoverageNotice(null);
     setSaveForm(null);
     setSaveError(null);
     setRouteSaved(false);
@@ -1491,6 +1502,7 @@ export default function RouteMap({ regions }) {
                 onClick={() => {
                   setStartAddress("");
                   setStart(null);
+                  setCoverageNotice(null);
                   clearPolylines(polylinesRef);
                   setSunData(null);
                   setSavedRouteName(null);
@@ -1562,6 +1574,7 @@ export default function RouteMap({ regions }) {
                 onClick={() => {
                   setEndAddress("");
                   setEnd(null);
+                  setCoverageNotice(null);
                   clearPolylines(polylinesRef);
                   setSunData(null);
                   setSavedRouteName(null);
@@ -1869,6 +1882,34 @@ export default function RouteMap({ regions }) {
                   <span>•</span><span>•</span><span>•</span>
                 </div>
               </div>
+            </div>
+          )}
+          {coverageNotice && (
+            <div
+              style={{
+                position: "absolute", top: "12px", left: "50%", transform: "translateX(-50%)",
+                zIndex: 15, maxWidth: "88%",
+                display: "flex", alignItems: "flex-start", gap: "10px",
+                background: colors.surface,
+                border: `1.5px solid ${colors.accentFaint}`,
+                boxShadow: `0 4px 14px ${colors.accentGlow}`,
+                borderRadius: "16px",
+                padding: "12px 14px",
+              }}
+            >
+              <FontAwesomeIcon icon={faMapLocationDot} style={{ color: colors.accent, fontSize: "1.1em", marginTop: "2px" }} />
+              <span style={{ color: colors.subtext, fontWeight: 600, fontSize: "0.82em", lineHeight: 1.4 }}>
+                {coverageNotice}
+              </span>
+              <button
+                onClick={() => setCoverageNotice(null)}
+                style={{
+                  background: "none", border: "none", boxShadow: "none", cursor: "pointer",
+                  color: colors.subtext, fontSize: "15px", padding: 0, lineHeight: 1, marginLeft: "2px",
+                }}
+              >
+                ×
+              </button>
             </div>
           )}
           {currentLocation && (
