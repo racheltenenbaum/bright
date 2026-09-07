@@ -794,14 +794,10 @@ body.night-mode .auth-card {
   }
 }
 
-/* ── Saved routes fixed bar ──────────────────────────── */
+/* ── Saved routes bar ──────────────────────────────────── */
 
 .saved-routes-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
+  flex-shrink: 0;
 }
 
 .saved-routes-label {
