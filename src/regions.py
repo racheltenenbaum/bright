@@ -16,6 +16,16 @@ REGION_BOUNDS: dict[str, tuple[float, float, float, float]] = {
     "telaviv": (32.02, 34.74, 32.15, 34.85),
 }
 
+# Display names for regions with data coverage, shown to end users (e.g. the
+# "not available in your area yet" gate) — separate from the dict keys above
+# since those are internal ids used by the routing/buildings pipelines.
+REGION_DISPLAY_NAMES: dict[str, str] = {
+    "vienna": "Vienna",
+    "nyc": "New York City",
+    "la": "Los Angeles",
+    "telaviv": "Tel Aviv",
+}
+
 
 def region_for_bbox(s: float, w: float, n: float, e: float) -> str | None:
     for region, (rs, rw, rn, re) in REGION_BOUNDS.items():

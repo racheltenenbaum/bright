@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import PropTypes from "prop-types";
 import { useAuth } from "../context/AuthContext";
 import { Geolocation } from "@capacitor/geolocation";
 import { useLocation } from "react-router-dom";
@@ -19,6 +20,7 @@ import {
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
 import { addressFromGeocodeResult } from "../utils/address";
+import { isCovered } from "../utils/coverage";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -202,7 +204,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
   });
 }
 
-export default function RouteMap() {
+export default function RouteMap({ regions }) {
   const { user } = useAuth();
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: API_KEY,
@@ -852,6 +854,12 @@ export default function RouteMap() {
     };
     const address = place.formatted_address || place.name || "";
 
+    if (regions?.length && !isCovered(coords.lat, coords.lng, regions)) {
+      const cityNames = regions.map((r) => r.name).join(", ");
+      setError(`bright doesn't have sun/shade data for this area yet. It currently covers ${cityNames}.`);
+      return;
+    }
+
     setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
     if (type === "start") {
       setStart(coords);
@@ -895,6 +903,13 @@ export default function RouteMap() {
     setError(null);
     setSunData(null);
     setUsedFallbackRouting(false);
+
+    if (regions?.length && (!isCovered(start.lat, start.lng, regions) || !isCovered(end.lat, end.lng, regions))) {
+      const cityNames = regions.map((r) => r.name).join(", ");
+      setError(`bright doesn't have sun/shade data for this area yet. It currently covers ${cityNames}.`);
+      return;
+    }
+
     setPlanning(true);
     clearPolylines(polylinesRef);
     try {
@@ -2418,3 +2433,18 @@ export default function RouteMap() {
     </div>
   );
 }
+
+RouteMap.propTypes = {
+  regions: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      name: PropTypes.string.isRequired,
+      bounds: PropTypes.shape({
+        south: PropTypes.number.isRequired,
+        west: PropTypes.number.isRequired,
+        north: PropTypes.number.isRequired,
+        east: PropTypes.number.isRequired,
+      }).isRequired,
+    }),
+  ),
+};
