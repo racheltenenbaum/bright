@@ -1411,14 +1411,14 @@ export default function RouteMap({ regions }) {
     <div className="route-container">
       <div className="route-panel">
       {/* Mode tabs: Plan Route | Find Places */}
-      <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+      <div style={{ display: "flex", gap: "6px", marginBottom: "6px" }}>
         {["route", "places"].map((m) => (
           <button
             key={m}
             onClick={() => switchMode(m)}
             style={{
               flex: 1, fontSize: "0.82em", fontWeight: 700,
-              padding: "0.45em 0",
+              padding: "0.32em 0",
               background: mode === m ? colors.accent : "transparent",
               color: mode === m ? colors.text : colors.subtext,
               border: `2px solid ${mode === m ? colors.accent : colors.accentFaint}`,
@@ -1438,7 +1438,7 @@ export default function RouteMap({ regions }) {
       )}
 
       {/* Sun / Shade toggle + Reset */}
-      <div style={{ marginBottom: "8px", display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ marginBottom: "6px", display: "flex", alignItems: "center", gap: "10px" }}>
         <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1 }}>
           <FontAwesomeIcon icon={faSun} /> Sun
         </span>
@@ -1473,17 +1473,17 @@ export default function RouteMap({ regions }) {
       {/* Address inputs + action buttons — route mode only */}
       <div
         style={{
-          marginBottom: "8px",
+          marginBottom: "6px",
           display: mode === "route" ? "flex" : "none",
           flexDirection: "column",
-          gap: "8px",
+          gap: "6px",
         }}
       >
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: "6px",
+            gap: "4px",
           }}
         >
           <div style={{ position: "relative" }}>
@@ -1493,6 +1493,7 @@ export default function RouteMap({ regions }) {
             >
               <input
                 type="text"
+                className="address-input"
                 value={startAddress}
                 onChange={(e) => {
                   setStartAddress(e.target.value);
@@ -1569,6 +1570,7 @@ export default function RouteMap({ regions }) {
             >
               <input
                 type="text"
+                className="address-input"
                 value={endAddress}
                 onChange={(e) => {
                   setEndAddress(e.target.value);
