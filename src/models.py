@@ -62,6 +62,8 @@ class RegionNotifyRequest(Base):
     email = Column(String(255), nullable=False)
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
+    fulfilled = Column(Boolean, nullable=False, default=False, server_default="0")
+    notified = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

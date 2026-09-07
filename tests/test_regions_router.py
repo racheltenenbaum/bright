@@ -49,6 +49,8 @@ def test_notify_me_creates_record(client, auth_headers, db, test_user):
     assert entry.email == test_user.email
     assert entry.lat == 48.85
     assert entry.lng == 2.35
+    assert entry.fulfilled is False
+    assert entry.notified is False
     mock_send.assert_called_once_with(test_user.email)
 
 
