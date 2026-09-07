@@ -1682,14 +1682,14 @@ export default function RouteMap({ regions }) {
                     mapRef.current?.panTo(coords);
                   }}
                   style={{
-                    display: "flex", alignItems: "center", gap: "5px",
-                    padding: "4px 10px", borderRadius: "999px", whiteSpace: "nowrap",
-                    fontSize: "0.75em", fontWeight: 700,
-                    background: colors.accentGlow, border: `1.5px solid ${colors.accentFaint}`,
+                    display: "flex", alignItems: "center", gap: "4px",
+                    padding: "2px 8px", borderRadius: "999px", whiteSpace: "nowrap",
+                    fontSize: "0.68em", fontWeight: 700,
+                    background: colors.accentGlow, border: `1px solid ${colors.accentFaint}`,
                     color: colors.text, flexShrink: 0, boxShadow: "none",
                   }}
                 >
-                  <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ fontSize: "11px" }} />
+                  <FontAwesomeIcon icon={spotIcon(spot.icon)} style={{ fontSize: "10px" }} />
                   {spot.name}
                 </button>
               ))}
@@ -2480,14 +2480,14 @@ export default function RouteMap({ regions }) {
               color: colors.subtext, cursor: "pointer",
             } : {
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              gap: "10px", width: "100%", height: "100%", padding: "16px 0 16px 4px",
+              gap: "10px", width: "100%", height: "100%", padding: "16px 0",
               background: "none", border: "none", boxShadow: "none",
               fontSize: "0.72em", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
               color: colors.subtext, cursor: "pointer",
             }}
           >
             <FontAwesomeIcon icon={savedRoutesExpanded ? faChevronRight : faChevronLeft} />
-            <span style={!savedRoutesExpanded ? { writingMode: "vertical-rl", textOrientation: "mixed" } : undefined}>
+            <span style={!savedRoutesExpanded ? { writingMode: "vertical-rl", textOrientation: "mixed", lineHeight: 1, margin: 0 } : undefined}>
               Saved routes
             </span>
           </button>
