@@ -766,10 +766,11 @@ body.night-mode .auth-card {
     width: 540px;
     flex-shrink: 0;
     overflow-y: auto;
-    padding: 14px 16px 280px;
+    padding: 14px 16px;
     border-right: none;
   }
   .route-map {
+    order: 2;
     flex: 1;
     height: 100%;
     padding: 12px;
@@ -808,9 +809,18 @@ body.night-mode .auth-card {
 }
 
 @media (min-width: 1024px) {
+  /* Desktop: a real sidebar between the route form and the map, in normal
+     flex flow — not a viewport-fixed overlay, which used to misalign with
+     the actual panel edge (page padding shifts it) and paint over the map. */
   .saved-routes-bar {
-    right: auto;
-    width: 540px;
+    position: static;
+    order: 1;
+    flex-shrink: 0;
+    width: 260px;
+    height: 100%;
+    overflow-y: auto;
+    border-top: none !important;
+    border-right: 1.5px solid var(--color-border);
   }
 
   /* Desktop keeps the original always-visible list — only mobile collapses. */
@@ -824,6 +834,8 @@ body.night-mode .auth-card {
 
   .saved-routes-list {
     display: flex !important;
+    max-height: none !important;
+    overflow-y: visible !important;
   }
 }
 
