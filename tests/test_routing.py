@@ -374,6 +374,33 @@ def test_nearest_node_between_two():
     assert nearest_node(g, 40.0009, -74.000) == 2
 
 
+def test_nearest_node_skips_tiny_disconnected_stub():
+    """A real reported bad route (NYC, "556 Fashion Avenue"): its literal
+    nearest OSM node was a 2-node dead-end stub with no connection to the
+    real street network a few meters away, so routing failed with "No path
+    found" from the wrong starting point. nearest_node should prefer a
+    node in a real (reasonably-sized) component over a geometrically closer
+    one stranded in a tiny island."""
+    data = {
+        "elements": [
+            # Tiny 2-node stub, closest to the query point.
+            {"type": "node", "id": 1, "lat": 40.00001, "lon": -74.00001},
+            {"type": "node", "id": 2, "lat": 40.00002, "lon": -74.00002},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+            # Real network nearby: 6 connected nodes, slightly further away.
+            {"type": "node", "id": 10, "lat": 40.0010, "lon": -74.0010},
+            {"type": "node", "id": 11, "lat": 40.0011, "lon": -74.0011},
+            {"type": "node", "id": 12, "lat": 40.0012, "lon": -74.0012},
+            {"type": "node", "id": 13, "lat": 40.0013, "lon": -74.0013},
+            {"type": "node", "id": 14, "lat": 40.0014, "lon": -74.0014},
+            {"type": "node", "id": 15, "lat": 40.0015, "lon": -74.0015},
+            {"type": "way", "id": 101, "nodes": [10, 11, 12, 13, 14, 15], "tags": {"highway": "residential"}},
+        ]
+    }
+    g = build_graph(data)
+    assert nearest_node(g, 40.0, -74.0) == 10
+
+
 # ── compute_edge_weights ──────────────────────────────────────────────────────
 
 def test_compute_edge_weights_sun_prefers_sunny():

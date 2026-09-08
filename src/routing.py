@@ -303,9 +303,27 @@ def build_graph(osm_data: dict) -> nx.DiGraph:
     return g
 
 
+# A real reported bad route ("556 Fashion Avenue", NYC) resolved to a 2-node
+# dead-end stub with no connection to the actual street network a few meters
+# away, so routing correctly-but-uselessly reported "No path found" from a
+# start point that was never really reachable. Below this many nodes, a
+# component is treated as a stray fragment rather than a real routable area.
+MIN_COMPONENT_SIZE_FOR_NEAREST_NODE = 5
+
+
 def nearest_node(graph: nx.DiGraph, lat: float, lng: float) -> int:
+    """Nearest node by straight-line distance — but restricted to nodes in a
+    reasonably-sized connected component when the graph has one, so a tiny
+    disconnected island right next to the real network is never preferred
+    over a real (if very slightly further) point on it. Falls back to an
+    unrestricted search when no component reaches the minimum size (e.g. a
+    graph that's entirely small, as in tests).
+    """
+    components = nx.connected_components(graph.to_undirected())
+    big_components = [c for c in components if len(c) >= MIN_COMPONENT_SIZE_FOR_NEAREST_NODE]
+    candidates = set().union(*big_components) if big_components else graph.nodes
     return min(
-        graph.nodes,
+        candidates,
         key=lambda n: _haversine_m(lat, lng, graph.nodes[n]["lat"], graph.nodes[n]["lng"]),
     )
 
