@@ -187,7 +187,13 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
 def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) -> list[dict]:
     db = SessionLocal()
     try:
-        rows = db.query(OsmRoad).filter(
+        # See the identical hint on OsmBuilding's bbox query
+        # (src/routers/shadow_analyze.py::_fetch_buildings_from_db) — same
+        # optimizer behavior, same fix, confirmed via EXPLAIN (~2.7M rows
+        # scanned for LA without this).
+        rows = db.query(OsmRoad).with_hint(
+            OsmRoad, "FORCE INDEX (ix_osm_roads_region_lat)", "mysql"
+        ).filter(
             OsmRoad.region == region,
             OsmRoad.min_lat <= n,
             OsmRoad.max_lat >= s,

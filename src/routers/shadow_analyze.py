@@ -35,7 +35,15 @@ MAX_SUN_ALT_FOR_TERRAIN_DEG: float = 25.0
 def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float) -> list:
     db = SessionLocal()
     try:
-        rows = db.query(OsmBuilding).filter(
+        # MySQL's optimizer picks only the single-column region index here
+        # and then scans every remaining row in the region to apply the
+        # lat/lng range filters (confirmed via EXPLAIN: ~2M rows scanned for
+        # LA, 17s+) — even after ANALYZE TABLE, it doesn't choose
+        # ix_osm_buildings_region_lat on its own, so it's forced explicitly.
+        # Measured: 17s+ full scan -> ~0.8s index range scan.
+        rows = db.query(OsmBuilding).with_hint(
+            OsmBuilding, "FORCE INDEX (ix_osm_buildings_region_lat)", "mysql"
+        ).filter(
             OsmBuilding.region == region,
             OsmBuilding.min_lat <= n,
             OsmBuilding.max_lat >= s,
