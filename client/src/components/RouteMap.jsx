@@ -1196,7 +1196,11 @@ export default function RouteMap({ regions }) {
       const dLng = Math.abs(ne.lng() - center.lng) * 111000 * Math.cos(center.lat * Math.PI / 180);
       radius = Math.round(Math.sqrt(dLat * dLat + dLng * dLng));
     }
-    radius = Math.min(radius, 50000);
+    // 2000m is the backend's hard cap (PlaceSearchRequest.validate_radius) —
+    // clamping to a looser value here let a zoomed-out map viewport send a
+    // radius the API would then reject outright with a 422.
+    const MAX_SEARCH_RADIUS_M = 2000;
+    radius = Math.min(radius, MAX_SEARCH_RADIUS_M);
 
     setError(null);
     setSelectedPlace(null);
@@ -1212,8 +1216,8 @@ export default function RouteMap({ regions }) {
 
       // Auto-expand once if no results and there's room to grow
       let expanded = false;
-      if (places.length === 0 && radius < 50000) {
-        const expandedRadius = Math.min(radius * 2, 50000);
+      if (places.length === 0 && radius < MAX_SEARCH_RADIUS_M) {
+        const expandedRadius = Math.min(radius * 2, MAX_SEARCH_RADIUS_M);
         res = await api.post("/places/search", { ...body, radius: expandedRadius }, { headers: { Authorization: `Bearer ${token}` } });
         places = res.data.places;
         expanded = true;
