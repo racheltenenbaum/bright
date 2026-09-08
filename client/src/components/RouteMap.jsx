@@ -1843,7 +1843,7 @@ export default function RouteMap({ regions }) {
         </div>
       )}
 
-      {usedFallbackRouting && (
+      {usedFallbackRouting && !isNighttime && (
         <div
           style={{
             marginBottom: "8px",
