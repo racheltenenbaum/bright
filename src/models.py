@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Double, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, Index, Integer, String, Float, Double, DateTime, ForeignKey, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.database import Base
@@ -86,6 +86,17 @@ class OsmBuilding(Base):
     footprint = Column(Text, nullable=False)  # JSON: [[lat, lng], ...]
     height = Column(Float, nullable=False)
 
+    # The bbox lookup filters all 4 columns as an AND of ranges — a bare
+    # single-column index per column can't be used together for that (MySQL
+    # picks one, typically region, then scans/filters every remaining row in
+    # that region: confirmed via EXPLAIN scanning ~2M rows for LA). A
+    # composite index per axis lets the optimizer use index-merge
+    # intersection to narrow both axes before touching table rows.
+    __table_args__ = (
+        Index("ix_osm_buildings_region_lat", "region", "min_lat", "max_lat"),
+        Index("ix_osm_buildings_region_lng", "region", "min_lng", "max_lng"),
+    )
+
 
 class OsmRoad(Base):
     """Bulk-imported road edge, used instead of a live Overpass query for
@@ -118,6 +129,13 @@ class OsmRoad(Base):
     to_lng = Column(Double, nullable=False)
     distance_m = Column(Float, nullable=False)
     oneway = Column(Boolean, nullable=False, default=False)
+
+    # Same index-merge reasoning as OsmBuilding above — confirmed via
+    # EXPLAIN scanning ~2.7M rows for an LA bbox lookup without these.
+    __table_args__ = (
+        Index("ix_osm_roads_region_lat", "region", "min_lat", "max_lat"),
+        Index("ix_osm_roads_region_lng", "region", "min_lng", "max_lng"),
+    )
 
 
 class Spot(Base):
