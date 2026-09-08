@@ -49,10 +49,12 @@ import — no separate download needed.
   cadastral data updates on the city's own schedule, not ours.
 
 **Roads** — source: OSM data via a BBBike pre-clipped extract (`Wien.osm.pbf`),
-downloaded from `download.bbbike.org` **2026-09-03 11:39 (local time)**.
+downloaded from `download.bbbike.org`.
 
-- Imported: 2026-09-04 (production), via
-  `scripts/import_osm_roads.py --region vienna --full` — 1,544,326 edges.
+- Imported: 2026-09-04 (production, 1,544,326 edges), via
+  `scripts/import_osm_roads.py --region vienna --full`.
+- Re-imported: 2026-09-08 (production, 1,444,925 edges) — see the
+  "osm_roads precision fix" note below.
 
 ## New York City
 
@@ -71,10 +73,15 @@ same logic used for live Overpass data.
   official NYC LiDAR dataset was previously imported into OSM there).
 
 **Roads** — same extract/source as buildings above, via
-`scripts/import_osm_roads.py --region nyc`. Imported per-borough, plus four
-supplementary "seam" imports (Harlem River, East River, Verrazzano, Throgs
-Neck/Whitestone bboxes) to close bridge/connector gaps the borough
-rectangles missed at their edges.
+`scripts/import_osm_roads.py --region nyc`.
+
+- Imported: 2026-09-03/04 (production), per-borough, plus four supplementary
+  "seam" imports (Harlem River, East River, Verrazzano, Throgs
+  Neck/Whitestone bboxes) to close bridge/connector gaps the borough
+  rectangles missed at their edges.
+- Re-imported: 2026-09-08 (production, 2,584,425 edges), via
+  `--full` on a freshly re-downloaded extract (no borough/seam splitting
+  needed this time — see the "osm_roads precision fix" note below).
 
 ## Los Angeles
 
@@ -89,6 +96,9 @@ pre-clipped extract (`LosAngeles.osm.pbf`), downloaded from
   `scripts/import_tree_rows.py --region la --full` (whole extract, no
   quadranting needed — tree-row count was small enough).
 - Totals: 1,468,294 buildings, 1,620,590 road edges, 357 tree canopy segments.
+- Roads re-imported: 2026-09-07 (1,488,678 edges, excluding
+  `service=alley` — see `ecab236`), then again 2026-09-08 (1,452,126
+  edges) as part of the "osm_roads precision fix" below.
 
 ## Tel Aviv
 
@@ -121,6 +131,28 @@ available in the source layer if ever needed but not currently stored.
 extract, downloaded 2026-09-04 (whole-country file, filtered to Tel Aviv's
 bbox at import time — no pre-clipped city extract was available).
 
-- Imported: 2026-09-04 (production), via
-  `scripts/import_osm_roads.py --region telaviv --bbox 32.02,34.74,32.15,34.85`
-  — 121,940 edges.
+- Imported: 2026-09-04 (production, 121,940 edges), via
+  `scripts/import_osm_roads.py --region telaviv --bbox 32.02,34.74,32.15,34.85`.
+- Re-imported: 2026-09-08 (production, 117,093 edges) — see the
+  "osm_roads precision fix" note below.
+
+## osm_roads precision fix (2026-09-08, all regions)
+
+`osm_roads`' coordinate columns (`from_lat`/`from_lng`/`to_lat`/`to_lng`,
+plus the bbox columns) were `FLOAT` — single-precision, only ~7 significant
+digits, which quantizes a latitude like `34.0922544` down to about `34.0923`
+(an ~11m grid). `build_graph_from_edges` (`src/routing.py`) uses these exact
+coordinates as routing-graph node identity, so that quantization let
+genuinely distinct points collapse onto the same node: routes showed
+snakey/staircase street shapes, and one reproduced case computed a path
+*shorter than the straight-line distance* between its own start and end —
+physically impossible.
+
+Fixed via Alembic migration `f8a1b2c3d4e5`: dropped and recreated
+`osm_roads` with `DOUBLE` columns (an in-place `ALTER ... MODIFY COLUMN`
+failed in production first — rebuilding a 5.7M-row table needs a full temp
+copy, which overflowed the volume's ~1GB headroom). Every region's road
+data was then re-imported from a freshly re-downloaded extract, since
+already-stored rows had already lost precision at write time. Buildings and
+tree-canopy data were unaffected (footprints are stored as full-precision
+JSON text, not these Float columns).
