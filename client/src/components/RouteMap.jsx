@@ -962,13 +962,29 @@ export default function RouteMap({ regions }) {
         .replace(" ", "T");
 
       // Try OSM-optimized routing; fall back to Google Directions if unavailable
+      const requestOptimizedRoute = () => api.post(
+        "/sun/optimized-route",
+        { start: [start.lat, start.lng], end: [end.lat, end.lng], datetime, preference },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 35000 },
+      );
+
       let waypoints;
       try {
-        const routeRes = await api.post(
-          "/sun/optimized-route",
-          { start: [start.lat, start.lng], end: [end.lat, end.lng], datetime, preference },
-          { headers: { Authorization: `Bearer ${token}` }, timeout: 35000 },
-        );
+        let routeRes;
+        try {
+          routeRes = await requestOptimizedRoute();
+        } catch (firstAttemptErr) {
+          // Most failures here are transient (a slow response, a brief
+          // rate-limit or cache-lock blip) rather than "no route actually
+          // exists" — one quick retry absorbs those silently instead of
+          // alarming the user over something that resolves a second later.
+          console.warn(
+            "optimized-route failed once, retrying:",
+            firstAttemptErr?.response?.status, firstAttemptErr?.message,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          routeRes = await requestOptimizedRoute();
+        }
         waypoints = routeRes.data.waypoints;
       } catch (optimizedRouteErr) {
         // Logged so an intermittent failure here (seen recurring with no
