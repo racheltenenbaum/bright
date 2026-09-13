@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">bright</string>
+    <string name="title_activity_main">bright</string>
+    <string name="package_name">com.racheltenenbaum.bright</string>
+    <string name="custom_url_scheme">com.racheltenenbaum.bright</string>
+</resources>
