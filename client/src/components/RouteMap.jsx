@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { useAuth } from "../context/AuthContext";
 import { Geolocation } from "@capacitor/geolocation";
-import { useLocation } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -248,6 +248,7 @@ export default function RouteMap({ regions }) {
   const [endAddress, setEndAddress] = useState("");
   const [sunData, setSunData] = useState(null);
   const [usedFallbackRouting, setUsedFallbackRouting] = useState(false);
+  const [noShadeAvailable, setNoShadeAvailable] = useState(false);
   const [error, setError] = useState(null);
   const [coverageNotice, setCoverageNotice] = useState(null); // { lat, lng } of an uncovered point, or null
   const [notifyStatus, setNotifyStatus] = useState("idle"); // idle | sending | done
@@ -745,6 +746,7 @@ export default function RouteMap({ regions }) {
       if (modeRef.current === "places") {
         setError(null);
         setUsedFallbackRouting(false);
+        setNoShadeAvailable(false);
         setRouteStats(null);
         setSelectedPlace(null);
         return;
@@ -757,6 +759,7 @@ export default function RouteMap({ regions }) {
 
       setError(null);
       setUsedFallbackRouting(false);
+      setNoShadeAvailable(false);
       setRouteStats(null);
       const coords = { lat: e.latLng.lat(), lng: e.latLng.lng() };
       const geocoder = new window.google.maps.Geocoder();
@@ -934,6 +937,7 @@ export default function RouteMap({ regions }) {
     setError(null);
     setSunData(null);
     setUsedFallbackRouting(false);
+    setNoShadeAvailable(false);
 
     if (!checkCoverage(start, end)) return;
 
@@ -1030,6 +1034,17 @@ export default function RouteMap({ regions }) {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const { sun_altitude, sun_azimuth, date, segments, shadow_available } = shadowRes.data;
+
+      // Tell the user when "shade" couldn't do anything — e.g. no shaded
+      // street reachable near this route at the sun's current position —
+      // rather than silently handing back what looks like an ordinary sun
+      // route with no explanation.
+      if (preference === "shade" && shadow_available && segments?.length) {
+        const sunnyFraction = segments.filter((s) => !s.shaded).length / segments.length;
+        setNoShadeAvailable(sunnyFraction >= 0.9);
+      } else {
+        setNoShadeAvailable(false);
+      }
 
       setRouteStats(formatRouteStats(waypoints));
       setSunData({ sun_altitude, sun_azimuth, date, shadow_available });
@@ -1524,6 +1539,7 @@ export default function RouteMap({ regions }) {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setNoShadeAvailable(false);
                   setRouteStats(null);
                 }}
                 placeholder="Start address (or click map)"
@@ -1570,6 +1586,7 @@ export default function RouteMap({ regions }) {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setNoShadeAvailable(false);
                   setRouteStats(null);
                 }}
                 style={{
@@ -1598,6 +1615,7 @@ export default function RouteMap({ regions }) {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setNoShadeAvailable(false);
                   setRouteStats(null);
                 }}
                 placeholder="End address (or click map)"
@@ -1644,6 +1662,7 @@ export default function RouteMap({ regions }) {
                   setRouteSaved(false);
                   setError(null);
                   setUsedFallbackRouting(false);
+                  setNoShadeAvailable(false);
                   setRouteStats(null);
                 }}
                 style={{
@@ -1899,6 +1918,36 @@ export default function RouteMap({ regions }) {
           <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#F0B429", fontSize: "1em" }} />
           <span style={{ color: "#7D5A00", fontWeight: 700, fontSize: "0.82em" }}>
             Shadow data unavailable right now - route shown without sun/shade info
+          </span>
+        </div>
+      )}
+
+      {noShadeAvailable && (
+        <div
+          style={{
+            marginBottom: "8px",
+            padding: "8px 14px",
+            borderRadius: "12px",
+            background: isNighttime ? colors.surface : "#FFFBEA",
+            border: "2px solid #F0B429",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            flexWrap: "wrap",
+          }}
+        >
+          <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#F0B429", fontSize: "1em" }} />
+          <span style={{ color: "#7D5A00", fontWeight: 700, fontSize: "0.82em" }}>
+            With the sun's current position, there's no shaded route nearby
+            {user?.pref_max_detour <= 50 && (
+              <>
+                {" — "}
+                <Link to="/my-account" style={{ color: "#7D5A00", textDecoration: "underline" }}>
+                  raise your max detour
+                </Link>
+                {" for a better chance of one"}
+              </>
+            )}
           </span>
         </div>
       )}
