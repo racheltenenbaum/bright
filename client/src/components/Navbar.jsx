@@ -43,10 +43,16 @@ export default function Navbar() {
       <img src="/logo.gif"      className="logo-light" alt="bright" onClick={() => navigate("/plan")} style={{ height: "40px", cursor: "pointer" }} />
       <img src="/logo-dark.gif" className="logo-dark"  alt="bright" onClick={() => navigate("/plan")} style={{ height: "40px", cursor: "pointer" }} />
 
-      <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "0px" }}>
-        <span style={{ color: "var(--color-subtext)", fontSize: "0.88em", fontWeight: 700 }}>
-          Hi, {user.first_name}! <FontAwesomeIcon icon={faHand} />
-        </span>
+      <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "10px" }}>
+        {user ? (
+          <span style={{ color: "var(--color-subtext)", fontSize: "0.88em", fontWeight: 700 }}>
+            Hi, {user.first_name}! <FontAwesomeIcon icon={faHand} />
+          </span>
+        ) : (
+          <button onClick={() => navigate("/login")} style={{ fontSize: "0.85em", padding: "0.45em 1.2em" }}>
+            Log in
+          </button>
+        )}
         <button
           onClick={() => setOpen(o => !o)}
           style={{
@@ -89,18 +95,21 @@ export default function Navbar() {
                 {label}
               </button>
             ))}
-            <button
-              onClick={() => { setOpen(false); setFeedbackOpen(true); setFeedbackText(""); setFeedbackDone(false); setFeedbackError(false); }}
-              style={{
-                display: "block", width: "100%", textAlign: "left",
-                background: "none", border: "none", boxShadow: "none",
-                borderRadius: 0, padding: "12px 18px",
-                fontSize: "0.9em", fontWeight: 700, color: "var(--color-text)",
-                borderBottom: "1px solid var(--color-divider)",
-              }}
-            >
-              Send feedback
-            </button>
+            {user && (
+              <button
+                onClick={() => { setOpen(false); setFeedbackOpen(true); setFeedbackText(""); setFeedbackDone(false); setFeedbackError(false); }}
+                style={{
+                  display: "block", width: "100%", textAlign: "left",
+                  background: "none", border: "none", boxShadow: "none",
+                  borderRadius: 0, padding: "12px 18px",
+                  fontSize: "0.9em", fontWeight: 700, color: "var(--color-text)",
+                  borderBottom: "1px solid var(--color-divider)",
+                }}
+              >
+                Send feedback
+              </button>
+            )}
+            {user && (
             <button
               onClick={() => { setOpen(false); logout(); navigate("/"); }}
               style={{
@@ -112,6 +121,7 @@ export default function Navbar() {
             >
               Log out
             </button>
+            )}
           </div>
         )}
       </div>

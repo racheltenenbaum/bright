@@ -1,5 +1,4 @@
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faStar, faLocationDot, faSun, faPersonWalking } from "@fortawesome/free-solid-svg-icons";
 
@@ -11,7 +10,6 @@ const STEPS = [
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
 
   return (
     <div className="page-container" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -25,30 +23,14 @@ export default function HomePage() {
           <p className="home-tagline">
             your sun companion - for sunny trails or shaded strolls.
           </p>
-          {isAuthenticated ? (
-            <div className="home-cta">
-              <button onClick={() => navigate("/plan")} style={{ fontSize: "1.05em", padding: "0.65em 2.4em" }}>
-                to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
-              </button>
-              <Link to="/about" style={{ fontSize: "0.85em", color: "var(--color-subtext)", fontWeight: 600 }}>
-                discover bright →
-              </Link>
-            </div>
-          ) : (
-            <div className="home-cta">
-              <div style={{ display: "flex", gap: "14px" }}>
-                <Link to="/login">
-                  <button style={{ fontSize: "1em", padding: "0.65em 2em" }}>Log in</button>
-                </Link>
-                <Link to="/register">
-                  <button className="btn-outline" style={{ fontSize: "1em", padding: "0.65em 2em" }}>Register</button>
-                </Link>
-              </div>
-              <Link to="/about" style={{ fontSize: "0.85em", color: "var(--color-subtext)", fontWeight: 600 }}>
-                discover bright →
-              </Link>
-            </div>
-          )}
+          <div className="home-cta">
+            <button onClick={() => navigate("/plan")} style={{ fontSize: "1.05em", padding: "0.65em 2.4em" }}>
+              to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
+            </button>
+            <Link to="/about" style={{ fontSize: "0.85em", color: "var(--color-subtext)", fontWeight: 600 }}>
+              discover bright →
+            </Link>
+          </div>
         </div>
 
         {/* How it works — desktop only */}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { useAuth } from "../context/AuthContext";
 import { Geolocation } from "@capacitor/geolocation";
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -207,6 +207,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
 
 export default function RouteMap({ regions }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: API_KEY,
     libraries: LIBRARIES,
@@ -353,6 +354,7 @@ export default function RouteMap({ regions }) {
   // Fetch saved routes for quick-access in panel
   useEffect(() => {
     const token = localStorage.getItem("token");
+    if (!token) return;
     api.get("/routes", { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => setSavedRoutes(r.data))
       .catch(() => {});
@@ -864,6 +866,7 @@ export default function RouteMap({ regions }) {
 
   async function handleNotifyMe() {
     if (!coverageNotice || notifyStatus !== "idle") return;
+    if (!user) { navigate("/login"); return; }
     setNotifyStatus("sending");
     const token = localStorage.getItem("token");
     try {
@@ -1283,6 +1286,9 @@ export default function RouteMap({ regions }) {
   }
 
   function openSaveSpotModal(place) {
+    // Finding places works anonymously — only saving a spot needs an
+    // account, so that's the one place logged-out users get sent to log in.
+    if (!user) { navigate("/login"); return; }
     setSaveSpotModal({
       name: place.name,
       note: "",
@@ -1854,7 +1860,13 @@ export default function RouteMap({ regions }) {
             </span>
           ) : sunData && !saveForm && !routeSaved ? (
             <button
-              onClick={() => setSaveForm({ name: "", description: "" })}
+              onClick={() => {
+                // Planning/going works anonymously — only saving needs an
+                // account, so that's the one place logged-out users get
+                // sent to log in.
+                if (!user) { navigate("/login"); return; }
+                setSaveForm({ name: "", description: "" });
+              }}
               style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}
             >
               Save Route

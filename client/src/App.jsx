@@ -43,8 +43,6 @@ function sunAltitude(lat, lng) {
 }
 
 function Layout() {
-  const { isAuthenticated } = useAuth();
-
   useEffect(() => {
     function applyTheme(lat, lng) {
       document.body.classList.toggle("night-mode", sunAltitude(lat, lng) <= 0);
@@ -65,7 +63,7 @@ function Layout() {
 
   return (
     <>
-      {isAuthenticated && <Navbar />}
+      <Navbar />
       <div style={{ width: "100%", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <Suspense fallback={<div style={{ flex: 1, background: "var(--color-bg)" }} />}>
           <Routes>
@@ -76,14 +74,9 @@ function Layout() {
             <Route path="/share/:token" element={<SharedRoutePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route
-              path="/plan"
-              element={
-                <ProtectedRoute>
-                  <PlanRoutePage />
-                </ProtectedRoute>
-              }
-            />
+            {/* Plan Route works anonymously — an account is only needed to
+                save a route/spot, not to use the app itself. */}
+            <Route path="/plan" element={<PlanRoutePage />} />
             <Route
               path="/my-routes"
               element={
