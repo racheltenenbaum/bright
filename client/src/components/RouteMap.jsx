@@ -1945,10 +1945,9 @@ export default function RouteMap({ regions }) {
             display: "flex",
             alignItems: "center",
             gap: "8px",
-            flexWrap: "wrap",
           }}
         >
-          <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#F0B429", fontSize: "1em" }} />
+          <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#F0B429", fontSize: "1em", flexShrink: 0 }} />
           <span style={{ color: "#7D5A00", fontWeight: 700, fontSize: "0.82em" }}>
             With the sun's current position, there's no shaded route nearby
             {user?.pref_max_detour <= 50 && (
