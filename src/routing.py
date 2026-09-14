@@ -27,7 +27,20 @@ OVERPASS_URLS = [
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.openstreetmap.ru/api/interpreter",
 ]
-SUN_PENALTY = 1.5
+# How much extra weight an "unwanted" edge (shaded, for sun preference;
+# unshaded, for shade) gets in Dijkstra's cost function. 1.5 was too weak in
+# practice: reproduced on a real ~830m LA route where a meaningfully more-
+# shaded path existed (43% longer) but the optimizer never even tried it —
+# at 1.5 it picked the exact same path as plain distance (0% detour
+# attempted); raising the penalty step by step showed 2.0 barely moved the
+# needle (+1%) and it took 3.0 to actually reach that shaded path, with no
+# further change all the way up to 20.0 (the graph's best available shaded
+# route is a fixed target, not something an ever-higher penalty keeps
+# improving). 4.0 leaves comfortable margin above that observed threshold —
+# the separate max-detour accept/reject check below is what actually bounds
+# how long a resulting detour is allowed to be, so a higher penalty here
+# doesn't risk absurd routes, only whether the optimizer bothers looking.
+SUN_PENALTY = 4.0
 # Shade routes structurally need a bigger detour than sun routes: at any given
 # moment most street edges are unshaded, so avoiding them (shade) requires
 # deviating much further than avoiding the shaded minority (sun). Without this,

@@ -459,7 +459,7 @@ def test_compute_edge_weights_penalty_factor():
     # All edges shaded, sun preference → all penalized × SUN_PENALTY
     with patch("src.routing.is_point_shaded_by_index", return_value=True):
         compute_edge_weights(g, [], 45.0, 180.0, "sun")
-    assert g.edges[1, 2]["weight"] == pytest.approx(dist_12 * 1.5)
+    assert g.edges[1, 2]["weight"] == pytest.approx(dist_12 * routing_module.SUN_PENALTY)
 
 
 # ── compute_edge_shading (dedup) ───────────────────────────────────────────────
@@ -1112,6 +1112,61 @@ def test_optimized_route_sun_and_shade_produce_different_routes(client, auth_hea
     # silently fall back to the identical route sun took.
     assert shade_mid_lng == pytest.approx(-74.001147, abs=1e-4)
     assert sun_mid_lng != pytest.approx(shade_mid_lng, abs=1e-4)
+
+
+_MODERATE_SHADE_DETOUR_OSM = {
+    "elements": [
+        {"type": "node", "id": 1, "lat": 40.000, "lon": -74.000},
+        {"type": "node", "id": 2, "lat": 40.009, "lon": -74.000},
+        {"type": "node", "id": 3, "lat": 40.0045, "lon": -73.992674},  # shaded detour, ~60% longer
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+        {"type": "way", "id": 101, "nodes": [1, 3], "tags": {"highway": "residential"}},
+        {"type": "way", "id": 102, "nodes": [3, 2], "tags": {"highway": "residential"}},
+    ]
+}
+
+
+def test_optimized_route_shade_takes_moderate_detour_for_real_shade(client, auth_headers):
+    """Regression test for SUN_PENALTY being too weak in practice: on a real
+    ~830m LA route with a genuinely more-shaded alternative (43% longer),
+    the optimizer never even tried it at the old penalty (1.5) — it picked
+    the exact same path as plain distance. This graph reproduces that shape
+    at a smaller scale: a fully-shaded detour ~60% longer than the direct
+    unshaded route. At the old penalty (1.5x on the unwanted/unshaded edge)
+    the detour's real cost (1.60x direct) exceeds that penalized weight, so
+    Dijkstra picks the direct route regardless of preference; the current
+    penalty must be strong enough to actually choose the detour instead,
+    while still comfortably inside the default user's accept/reject cap
+    (30% max_detour * SHADE_DETOUR_MULTIPLIER 2.5x = 75% allowance) so the
+    endpoint doesn't reject it afterward. Runs the real endpoint end-to-end
+    (real graph, real Dijkstra) rather than mocking path selection, which
+    is exactly what let the original weak-penalty behavior hide."""
+
+    def fake_shaded(lat, lng, polygons, index, sun_alt):
+        # Direct edge midpoint sits at lng=-74.000 (unshaded); both detour
+        # edges' midpoints sit around lng=-73.9963 (shaded).
+        return lng > -73.998
+
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", return_value=_MODERATE_SHADE_DETOUR_OSM),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routing.is_point_shaded_by_index", side_effect=fake_shaded),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": [40.000, -74.000], "end": [40.009, -74.000],
+                "datetime": "2026-05-24T14:00:00", "preference": "shade",
+            },
+            headers=auth_headers,
+        )
+
+    assert resp.status_code == 200
+    lngs = [pt[1] for pt in resp.json()["waypoints"]]
+    # Took the detour through node 3 (lng ≈ -73.992674), not the direct
+    # unshaded edge straight up lng = -74.000.
+    assert max(lngs) == pytest.approx(-73.992674, abs=1e-4)
 
 
 _DISCONNECTED_OSM = {
