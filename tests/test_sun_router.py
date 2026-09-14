@@ -23,11 +23,13 @@ def test_sun_analyze_too_few_coords(client, auth_headers):
     assert response.status_code == 400
 
 
-def test_sun_analyze_unauthenticated(client):
+def test_sun_analyze_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account."""
     response = client.post("/sun/analyze", json={
         "coordinates": COORDS, "datetime": DATETIME
     })
-    assert response.status_code == 401
+    assert response.status_code == 200
 
 
 def test_optimized_route_malformed_datetime(client, auth_headers):

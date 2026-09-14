@@ -11,7 +11,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from src.auth import get_current_user
+from src.auth import get_current_user_optional
 from src.database import SessionLocal
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import OsmBuilding, User
@@ -286,7 +286,7 @@ def _nearest_sunny_side(side_map: dict[int, str], i: int) -> str | None:
 def shadow_analyze(
     request: Request,
     body: ShadowAnalyzeRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     if len(body.coordinates) < 2:
         raise HTTPException(status_code=400, detail="At least 2 coordinates required")
@@ -436,7 +436,7 @@ def _analyze_route(route: list[list[float]], buildings: list, sun_altitude: floa
 def shadow_analyze_batch(
     request: Request,
     body: ShadowBatchRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     if not body.routes:
         raise HTTPException(status_code=400, detail="At least one route required")

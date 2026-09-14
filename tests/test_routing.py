@@ -940,17 +940,26 @@ def test_optimized_route_endpoint_nighttime(client, auth_headers):
     assert body["sun_altitude"] == pytest.approx(-5.0)
 
 
-def test_optimized_route_endpoint_requires_auth(client):
-    resp = client.post(
-        "/sun/optimized-route",
-        json={
-            "start": [40.0, -74.0],
-            "end": [40.002, -74.0],
-            "datetime": "2026-05-24T14:00:00",
-            "preference": "sun",
-        },
-    )
-    assert resp.status_code == 401
+def test_optimized_route_endpoint_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account. An anonymous request gets
+    the same default detour tolerance a new account starts with."""
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routing.is_point_shaded", return_value=False),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": [40.0, -74.0],
+                "end": [40.002, -74.0],
+                "datetime": "2026-05-24T14:00:00",
+                "preference": "sun",
+            },
+        )
+    assert resp.status_code == 200
 
 
 def test_optimized_route_detour_cap_exceeded(client, auth_headers):
@@ -1025,6 +1034,35 @@ def test_optimized_route_uses_user_pref_max_detour(client, auth_headers):
         )
     assert resp.status_code == 200
     assert len(resp.json()["waypoints"]) == 2
+
+
+def test_optimized_route_anonymous_uses_default_max_detour(client):
+    """An anonymous request (no Authorization header) must not error, and
+    must use the same default detour tolerance a brand-new account starts
+    with (DEFAULT_MAX_DETOUR), not 0% or some other unintended fallback."""
+    from src.routers.routing import DEFAULT_MAX_DETOUR
+
+    captured_max_detour = {}
+
+    def fake_padding(straight_line_m, max_detour_fraction=0.0):
+        captured_max_detour["value"] = max_detour_fraction
+        return 100.0
+
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routing.is_point_shaded", return_value=False),
+        patch("src.routers.routing.route_bbox_padding_m", side_effect=fake_padding),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={"start": [40.0, -74.0], "end": [40.002, -74.0],
+                  "datetime": "2026-05-24T14:00:00", "preference": "sun"},
+        )
+
+    assert resp.status_code == 200
+    assert captured_max_detour["value"] == pytest.approx(DEFAULT_MAX_DETOUR / 100)
 
 
 def test_optimized_route_shade_gets_larger_detour_allowance(client, auth_headers):

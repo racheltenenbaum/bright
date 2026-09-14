@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 
-from src.auth import get_current_user
+from src.auth import get_current_user_optional
 from src.models import User
 from src.utils.astronomy import get_sun_position
 
@@ -23,7 +23,7 @@ class SunAnalyzeResponse(BaseModel):
 @router.post("/analyze", response_model=SunAnalyzeResponse)
 def analyze_sun(
     body: SunAnalyzeRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     if len(body.coordinates) < 2:
         raise HTTPException(status_code=400, detail="At least 2 coordinates required")

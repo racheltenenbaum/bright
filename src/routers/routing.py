@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
-from src.auth import get_current_user
+from src.auth import get_current_user_optional
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routing import (
@@ -24,6 +24,9 @@ from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
 from src.utils.astronomy import get_sun_position
 
 router = APIRouter(prefix="/sun", tags=["sun"])
+
+# Matches User.pref_max_detour's own column default.
+DEFAULT_MAX_DETOUR = 30
 
 
 class OptimizedRouteRequest(BaseModel):
@@ -61,7 +64,7 @@ class OptimizedRouteResponse(BaseModel):
 def optimized_route(
     request: Request,
     body: OptimizedRouteRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     dt = datetime.fromisoformat(body.datetime)  # already validated by Pydantic
     date_str = dt.strftime("%Y-%m-%d")
@@ -70,7 +73,11 @@ def optimized_route(
     mid_lng = (body.start[1] + body.end[1]) / 2
     sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng)
 
-    max_detour = current_user.pref_max_detour / 100
+    # Routing works without an account — a logged-out user just gets the
+    # same default detour tolerance a new account would start with
+    # (User.pref_max_detour's own default), rather than being blocked.
+    pref_max_detour = current_user.pref_max_detour if current_user else DEFAULT_MAX_DETOUR
+    max_detour = pref_max_detour / 100
     if body.preference == "shade":
         max_detour *= SHADE_DETOUR_MULTIPLIER
 

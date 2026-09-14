@@ -661,11 +661,16 @@ def test_shadow_analyze_success(client, auth_headers):
     assert len(data["segments"]) == len(ROUTE)
 
 
-def test_shadow_analyze_unauthenticated(client):
-    response = client.post("/sun/shadow-analyze", json={
-        "coordinates": ROUTE, "datetime": DATETIME
-    })
-    assert response.status_code == 401
+def test_shadow_analyze_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account."""
+    with patch("src.routers.shadow_analyze.get_sun_position", return_value=SUN_POS):
+        with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=BUILDINGS):
+            with patch("src.routers.shadow_analyze._fetch_elevations", return_value=[0.0] * len(ROUTE)):
+                response = client.post("/sun/shadow-analyze", json={
+                    "coordinates": ROUTE, "datetime": DATETIME
+                })
+    assert response.status_code == 200
 
 
 # ── /sun/shadow-analyze-batch endpoint ────────────────────────────────────────
@@ -702,8 +707,13 @@ def test_shadow_analyze_batch_success(client, auth_headers):
     assert "sunny_side" in data["routes"][0]["segments"][0]
 
 
-def test_shadow_analyze_batch_unauthenticated(client):
-    response = client.post("/sun/shadow-analyze-batch", json={
-        "routes": [ROUTE], "datetime": DATETIME
-    })
-    assert response.status_code == 401
+def test_shadow_analyze_batch_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account."""
+    with patch("src.routers.shadow_analyze.get_sun_position", return_value=SUN_POS):
+        with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=BUILDINGS):
+            with patch("src.routers.shadow_analyze._fetch_elevations", return_value=[0.0] * len(ROUTE)):
+                response = client.post("/sun/shadow-analyze-batch", json={
+                    "routes": [ROUTE], "datetime": DATETIME
+                })
+    assert response.status_code == 200

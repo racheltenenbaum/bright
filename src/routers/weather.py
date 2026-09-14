@@ -3,7 +3,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
-from src.auth import get_current_user
+from src.auth import get_current_user_optional
 from src.limiter import limiter, RATE_LIMIT_WEATHER
 from src.models import User
 from src.utils.astronomy import get_sun_position
@@ -46,7 +46,7 @@ class WeatherResponse(BaseModel):
 def get_current_weather(
     request: Request,
     body: WeatherRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     resp = requests.get(
         "https://weather.googleapis.com/v1/currentConditions:lookup",

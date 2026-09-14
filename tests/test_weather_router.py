@@ -63,6 +63,10 @@ def test_weather_api_error(client, auth_headers):
     assert response.status_code == 502
 
 
-def test_weather_unauthenticated(client):
-    response = client.post("/weather/current", json={"lat": 51.5, "lng": -0.1})
-    assert response.status_code == 401
+def test_weather_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account."""
+    with patch("src.routers.weather.requests.get", return_value=_mock_ok(WEATHER_BODY)), \
+         patch("src.routers.weather.get_sun_position", return_value=SUN_UP):
+        response = client.post("/weather/current", json={"lat": 51.5, "lng": -0.1})
+    assert response.status_code == 200

@@ -341,11 +341,15 @@ def test_fetch_places_excludes_convenience_stores():
 
 # ── /places/search endpoint ────────────────────────────────────────────────────
 
-def test_search_places_unauthenticated(client):
-    response = client.post("/places/search", json={
-        "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
-    })
-    assert response.status_code == 401
+def test_search_places_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account."""
+    with patch("src.routers.places.get_sun_position", return_value=SUN_DOWN), \
+         patch("src.routers.places._fetch_places_from_google", return_value=[GOOGLE_PLACE]):
+        response = client.post("/places/search", json={
+            "lat": LAT, "lng": LNG, "radius": 500, "preference": "sun", "types": ["cafe"]
+        })
+    assert response.status_code == 200
 
 
 def test_search_places_invalid_preference(client, auth_headers):
@@ -770,9 +774,15 @@ def test_place_details_success(client, auth_headers):
     assert data["reviews"][0]["relative_time"] == "2 weeks ago"
 
 
-def test_place_details_unauthenticated(client):
-    response = client.get("/places/abc123/details")
-    assert response.status_code == 401
+def test_place_details_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = PLACE_DETAILS_RESPONSE
+    with patch("src.routers.places.requests.get", return_value=mock_resp):
+        response = client.get("/places/abc123/details")
+    assert response.status_code == 200
 
 
 def test_place_details_no_api_key(client, auth_headers):
@@ -880,9 +890,14 @@ def test_sun_check_nighttime_skips_buildings(client, auth_headers):
     mock_buildings.assert_not_called()
 
 
-def test_sun_check_unauthenticated(client):
-    response = client.post("/places/sun-check", json={"lat": 51.5, "lng": -0.1})
-    assert response.status_code == 401
+def test_sun_check_works_without_auth(client):
+    """Core computation endpoints work anonymously — only saving (routes,
+    spots, account settings) requires an account."""
+    with patch("src.routers.places.get_sun_position", return_value=(45.0, 180.0)), \
+         patch("src.routers.places._fetch_buildings_for_bbox", return_value=[]), \
+         patch("src.routers.places.place_is_sunny", return_value=True):
+        response = client.post("/places/sun-check", json={"lat": 51.5, "lng": -0.1})
+    assert response.status_code == 200
 
 
 def test_sun_check_lat_out_of_range(client, auth_headers):

@@ -8,7 +8,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
-from src.auth import get_current_user
+from src.auth import get_current_user_optional
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _bbox_key, _route_bbox
@@ -269,7 +269,7 @@ class PlaceSunCheckResponse(BaseModel):
 def check_place_sun(
     request: Request,
     body: PlaceSunCheckRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng)
 
@@ -290,7 +290,7 @@ def check_place_sun(
 def search_places(
     request: Request,
     body: PlaceSearchRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     sun_altitude, sun_azimuth = get_sun_position(body.lat, body.lng)
 
@@ -370,7 +370,7 @@ def search_places(
 def get_place_details(
     request: Request,
     place_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     if not GOOGLE_MAPS_API_KEY:
         raise HTTPException(status_code=503, detail="Maps API not configured")
