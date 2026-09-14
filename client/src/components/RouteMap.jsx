@@ -1038,10 +1038,22 @@ export default function RouteMap({ regions }) {
       // Tell the user when "shade" couldn't do anything — e.g. no shaded
       // street reachable near this route at the sun's current position —
       // rather than silently handing back what looks like an ordinary sun
-      // route with no explanation.
-      if (preference === "shade" && shadow_available && segments?.length) {
-        const sunnyFraction = segments.filter((s) => !s.shaded).length / segments.length;
-        setNoShadeAvailable(sunnyFraction >= 0.9);
+      // route with no explanation. Weighted by the distance each segment
+      // actually covers, not a plain count of segments: shadow-analyze's
+      // segments array is only as long as the (often just a handful of
+      // points, post-simplification) waypoint list, so consecutive
+      // waypoints can be meters or hundreds of meters apart — a single
+      // shaded segment on a short hop would otherwise skew a count-based
+      // fraction far more than that segment's real share of the route.
+      if (preference === "shade" && shadow_available && segments?.length && waypoints.length === segments.length) {
+        let sunnyKm = 0;
+        let totalKm = 0;
+        for (let i = 1; i < waypoints.length; i++) {
+          const segKm = haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], waypoints[i][0], waypoints[i][1]);
+          totalKm += segKm;
+          if (!segments[i].shaded) sunnyKm += segKm;
+        }
+        setNoShadeAvailable(totalKm > 0 && sunnyKm / totalKm >= 0.9);
       } else {
         setNoShadeAvailable(false);
       }
