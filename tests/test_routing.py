@@ -347,6 +347,13 @@ def test_fetch_road_graph_unimported_region_uses_overpass():
 # than that, and a too-narrow bbox then has no road connecting start to end
 # at all — reproduced in production for a ~3.4km Vienna route that needed to
 # reach a specific canal crossing outside the fixed 100m-wide box.
+#
+# max_detour_fraction (added later) fixes a second, separate bug: raising a
+# user's max-detour setting to 100% changed nothing for a real reported
+# case, because the setting only decided whether to *accept* an
+# already-found path — the search box itself stayed the same fixed size
+# regardless, so if no shaded street existed inside it, none could ever be
+# found no matter how much extra walking the user said they'd accept.
 
 def test_route_bbox_padding_m_short_route_uses_minimum():
     assert route_bbox_padding_m(50.0) == 100.0
@@ -357,7 +364,22 @@ def test_route_bbox_padding_m_scales_with_distance():
 
 
 def test_route_bbox_padding_m_caps_at_maximum():
-    assert route_bbox_padding_m(50_000.0) == 800.0
+    assert route_bbox_padding_m(50_000.0) == 2000.0
+
+
+def test_route_bbox_padding_m_default_detour_fraction_is_zero():
+    assert route_bbox_padding_m(2000.0) == route_bbox_padding_m(2000.0, 0.0)
+
+
+def test_route_bbox_padding_m_detour_fraction_adds_padding():
+    base = route_bbox_padding_m(2000.0, 0.0)
+    with_detour = route_bbox_padding_m(2000.0, 0.75)
+    assert with_detour > base
+    assert with_detour == pytest.approx(base + 2000.0 * 0.75 * 0.5)
+
+
+def test_route_bbox_padding_m_detour_fraction_still_caps_at_maximum():
+    assert route_bbox_padding_m(50_000.0, 2.5) == 2000.0
 
 
 # ── nearest_node ─────────────────────────────────────────────────────────────
@@ -1176,6 +1198,79 @@ def test_optimized_route_endpoint_needs_wide_bbox_for_sideways_detour(client, au
         )
     assert resp.status_code == 200
     assert len(resp.json()["waypoints"]) >= 2
+
+
+_DETOUR_SHADE_OSM = {
+    "elements": [
+        {"type": "node", "id": 1, "lat": 40.000, "lon": -74.000},
+        {"type": "node", "id": 2, "lat": 40.010, "lon": -74.000},
+        {"type": "node", "id": 3, "lat": 40.005, "lon": -73.9965},  # shaded detour node
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+        {"type": "way", "id": 101, "nodes": [1, 3], "tags": {"highway": "residential"}},
+        {"type": "way", "id": 102, "nodes": [3, 2], "tags": {"highway": "residential"}},
+    ]
+}
+
+
+def test_optimized_route_higher_max_detour_widens_search_for_shade(client, auth_headers):
+    """Regression test: a user reported that raising their max-detour
+    setting to 100% for a shade route changed nothing. Root cause:
+    pref_max_detour only ever decided whether to *accept* a path already
+    found over the plain-distance one — route_bbox_padding_m (the search
+    box itself) didn't factor it in at all, so a shaded street just outside
+    that fixed-size box could never be found no matter how much extra
+    walking the user said they'd accept. Must run the real endpoint
+    end-to-end (real graph build via a bbox-filtering fetch, real Dijkstra)
+    — a mocked fetch_osm_road_network that ignores its bbox args, like most
+    other endpoint tests here use, would never catch this."""
+
+    def fake_fetch(s, w, n, e):
+        elements = [
+            el for el in _DETOUR_SHADE_OSM["elements"]
+            if el["type"] != "node" or (s <= el["lat"] <= n and w <= el["lon"] <= e)
+        ]
+        kept_ids = {el["id"] for el in elements if el["type"] == "node"}
+        for el in _DETOUR_SHADE_OSM["elements"]:
+            if el["type"] == "way" and all(nid in kept_ids for nid in el["nodes"]):
+                elements.append(el)
+        return {"elements": elements}
+
+    def fake_shaded(lat, lng, polygons, index, sun_alt):
+        # Direct-path edge midpoint sits at lng=-74.000 (unshaded); detour
+        # edges' midpoints sit at lng=-73.99825 (shaded).
+        return lng > -73.999
+
+    body = {
+        "start": [40.000, -74.000],
+        "end": [40.010, -74.000],
+        "datetime": "2026-05-24T14:00:00",
+        "preference": "shade",
+    }
+
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", side_effect=fake_fetch),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routing.is_point_shaded_by_index", side_effect=fake_shaded),
+    ):
+        assert client.patch("/users/me", json={"pref_max_detour": 10}, headers=auth_headers).status_code == 200
+        low_resp = client.post("/sun/optimized-route", json=body, headers=auth_headers)
+
+        assert client.patch("/users/me", json={"pref_max_detour": 100}, headers=auth_headers).status_code == 200
+        high_resp = client.post("/sun/optimized-route", json=body, headers=auth_headers)
+
+    assert low_resp.status_code == 200
+    assert high_resp.status_code == 200
+
+    low_lngs = [pt[1] for pt in low_resp.json()["waypoints"]]
+    high_lngs = [pt[1] for pt in high_resp.json()["waypoints"]]
+
+    # At 10% detour, the shaded detour node sits entirely outside the
+    # search bbox, so the only path ever found is the direct (unshaded) one.
+    assert max(low_lngs) == pytest.approx(-74.000, abs=1e-4)
+    # At 100% detour, the wider search bbox includes the shaded detour
+    # node, and shade preference actually routes through it.
+    assert max(high_lngs) == pytest.approx(-73.9965, abs=1e-4)
 
 
 def test_optimized_route_endpoint_no_road_network(client, auth_headers):

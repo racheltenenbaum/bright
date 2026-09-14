@@ -109,11 +109,21 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 ROUTE_BBOX_MIN_PADDING_M = 100.0
-ROUTE_BBOX_MAX_PADDING_M = 800.0
+ROUTE_BBOX_MAX_PADDING_M = 2000.0
 ROUTE_BBOX_PADDING_FRACTION = 0.2
+# A user's max-detour setting (further multiplied by SHADE_DETOUR_MULTIPLIER
+# for shade) only ever decides whether to *accept* a path that's already
+# been found over the plain-distance one — it does nothing on its own to
+# widen the area that gets searched for a shaded street to route through.
+# Raising max detour to 100% changed nothing for a real reported case: the
+# bbox stayed the same small size regardless, so if no shaded edge existed
+# inside it, none could ever be found no matter how much extra walking the
+# user said they'd accept. This weight converts a fraction of the extra
+# distance the detour setting allows into extra search-box padding.
+ROUTE_BBOX_DETOUR_WEIGHT = 0.5
 
 
-def route_bbox_padding_m(straight_line_m: float) -> float:
+def route_bbox_padding_m(straight_line_m: float, max_detour_fraction: float = 0.0) -> float:
     """How far to pad a route's start/end bounding box when fetching roads
     and buildings. A fixed 100m pad works for short routes, but a real
     walking path often has to jog sideways to reach a bridge or avoid a
@@ -123,10 +133,20 @@ def route_bbox_padding_m(straight_line_m: float) -> float:
     Padding scales with the route's straight-line distance instead of
     staying fixed, clamped so short routes still get a sane minimum and
     very long routes don't balloon the fetched area unboundedly.
+
+    max_detour_fraction (e.g. 0.3 for 30%, already including
+    SHADE_DETOUR_MULTIPLIER when relevant) adds further padding
+    proportional to the extra distance that detour allowance represents,
+    so a higher detour tolerance actually searches a wider area instead of
+    only changing whether an already-found path gets accepted.
     """
+    detour_allowance_m = straight_line_m * max_detour_fraction
     return min(
         ROUTE_BBOX_MAX_PADDING_M,
-        max(ROUTE_BBOX_MIN_PADDING_M, straight_line_m * ROUTE_BBOX_PADDING_FRACTION),
+        max(
+            ROUTE_BBOX_MIN_PADDING_M,
+            straight_line_m * ROUTE_BBOX_PADDING_FRACTION + detour_allowance_m * ROUTE_BBOX_DETOUR_WEIGHT,
+        ),
     )
 
 

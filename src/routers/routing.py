@@ -70,9 +70,13 @@ def optimized_route(
     mid_lng = (body.start[1] + body.end[1]) / 2
     sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng)
 
+    max_detour = current_user.pref_max_detour / 100
+    if body.preference == "shade":
+        max_detour *= SHADE_DETOUR_MULTIPLIER
+
     all_coords = [body.start, body.end]
     straight_line_m = _haversine_m(body.start[0], body.start[1], body.end[0], body.end[1])
-    s, w, n, e = _route_bbox(all_coords, padding_m=route_bbox_padding_m(straight_line_m))
+    s, w, n, e = _route_bbox(all_coords, padding_m=route_bbox_padding_m(straight_line_m, max_detour))
 
     # Fetch road network and buildings in parallel
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -94,9 +98,6 @@ def optimized_route(
     if not path_nodes:
         raise HTTPException(status_code=400, detail="No path found between these locations")
 
-    max_detour = current_user.pref_max_detour / 100
-    if body.preference == "shade":
-        max_detour *= SHADE_DETOUR_MULTIPLIER
     dist_path_nodes = find_distance_path(graph, start_node, end_node)
     if dist_path_nodes:
         sun_len = _path_length_m(graph, path_nodes)
