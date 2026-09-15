@@ -16,6 +16,7 @@ from src.database import SessionLocal
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import OsmBuilding, User
 from src.regions import REGION_BOUNDS, region_for_bbox as _region_for_bbox
+from src.routing import _haversine_m
 from src.shadow import (
     build_shadow_polygon_index,
     extract_buildings_from_overpass,
@@ -267,17 +268,19 @@ def _sample_coords(coords: list[list[float]], target: int = 25) -> list[tuple[in
     return [(round(i * step), coords[round(i * step)][0], coords[round(i * step)][1]) for i in range(target)]
 
 
-def _nearest_shaded(shaded_map: dict[int, bool], i: int) -> bool:
+def _nearest_shaded(shaded_map: dict[int, bool], i: int, coords: list[list[float]]) -> bool:
     if not shaded_map:
         return False
-    nearest = min(shaded_map.keys(), key=lambda k: abs(k - i))
+    lat, lng = coords[i]
+    nearest = min(shaded_map.keys(), key=lambda k: _haversine_m(lat, lng, coords[k][0], coords[k][1]))
     return shaded_map[nearest]
 
 
-def _nearest_sunny_side(side_map: dict[int, str], i: int) -> str | None:
+def _nearest_sunny_side(side_map: dict[int, str], i: int, coords: list[list[float]]) -> str | None:
     if not side_map:
         return None
-    nearest = min(side_map.keys(), key=lambda k: abs(k - i))
+    lat, lng = coords[i]
+    nearest = min(side_map.keys(), key=lambda k: _haversine_m(lat, lng, coords[k][0], coords[k][1]))
     return side_map[nearest]
 
 
@@ -331,7 +334,7 @@ def shadow_analyze(
     segments = [
         SegmentResult(
             index=i,
-            shaded=shaded_map[i] if i in shaded_map else _nearest_shaded(shaded_map, i),
+            shaded=shaded_map[i] if i in shaded_map else _nearest_shaded(shaded_map, i, body.coordinates),
         )
         for i in range(n)
     ]
@@ -423,8 +426,8 @@ def _analyze_route(route: list[list[float]], buildings: list, sun_altitude: floa
     segments = [
         SegmentResult(
             index=i,
-            shaded=shaded_map[i] if i in shaded_map else _nearest_shaded(shaded_map, i),
-            sunny_side=side_map[i] if i in side_map else _nearest_sunny_side(side_map, i),
+            shaded=shaded_map[i] if i in shaded_map else _nearest_shaded(shaded_map, i, route),
+            sunny_side=side_map[i] if i in side_map else _nearest_sunny_side(side_map, i, route),
         )
         for i in range(len(route))
     ]

@@ -77,23 +77,45 @@ def test_sample_coords_over_target():
 # ── _nearest_shaded ────────────────────────────────────────────────────────────
 
 def test_nearest_shaded_empty():
-    assert _nearest_shaded({}, 5) is False
+    assert _nearest_shaded({}, 5, []) is False
 
 
 def test_nearest_shaded_picks_closest():
-    assert _nearest_shaded({0: True, 10: False}, 2) is True
-    assert _nearest_shaded({0: True, 10: False}, 8) is False
+    coords = [[51.5, -0.1], [51.51, -0.1], [51.52, -0.1], [51.53, -0.1],
+              [51.54, -0.1], [51.55, -0.1], [51.56, -0.1], [51.57, -0.1],
+              [51.58, -0.1], [51.59, -0.1], [51.60, -0.1]]
+    assert _nearest_shaded({0: True, 10: False}, 2, coords) is True
+    assert _nearest_shaded({0: True, 10: False}, 8, coords) is False
+
+
+def test_nearest_shaded_uses_geographic_distance_not_index_distance():
+    """An out-and-back route (e.g. a dead-end spur to a destination) revisits
+    the same physical location at a distant array index. Index 2 here sits at
+    the exact same lat/lng as index 0 — geographically it must inherit index
+    0's shading, even though index 1 is index-closer."""
+    coords = [[48.20, 16.36], [48.21, 16.37], [48.20, 16.36]]
+    shaded_map = {0: True, 1: False}
+    assert _nearest_shaded(shaded_map, 2, coords) is True
 
 
 # ── _nearest_sunny_side ────────────────────────────────────────────────────────
 
 def test_nearest_sunny_side_empty():
-    assert _nearest_sunny_side({}, 5) is None
+    assert _nearest_sunny_side({}, 5, []) is None
 
 
 def test_nearest_sunny_side_picks_closest():
-    assert _nearest_sunny_side({0: "left", 10: "right"}, 2) == "left"
-    assert _nearest_sunny_side({0: "left", 10: "right"}, 9) == "right"
+    coords = [[51.5, -0.1], [51.51, -0.1], [51.52, -0.1], [51.53, -0.1],
+              [51.54, -0.1], [51.55, -0.1], [51.56, -0.1], [51.57, -0.1],
+              [51.58, -0.1], [51.59, -0.1], [51.60, -0.1]]
+    assert _nearest_sunny_side({0: "left", 10: "right"}, 2, coords) == "left"
+    assert _nearest_sunny_side({0: "left", 10: "right"}, 9, coords) == "right"
+
+
+def test_nearest_sunny_side_uses_geographic_distance_not_index_distance():
+    coords = [[48.20, 16.36], [48.21, 16.37], [48.20, 16.36]]
+    side_map = {0: "left", 1: "right"}
+    assert _nearest_sunny_side(side_map, 2, coords) == "left"
 
 
 # ── _sqlite_get / _sqlite_set ──────────────────────────────────────────────────
@@ -659,6 +681,46 @@ def test_shadow_analyze_success(client, auth_headers):
     data = response.json()
     assert data["sun_altitude"] == 45.0
     assert len(data["segments"]) == len(ROUTE)
+
+
+def test_shadow_analyze_backtrack_spur_gets_consistent_shading(client, auth_headers):
+    """A route with an out-and-back dead-end spur (e.g. the last-mile walk
+    into a building entrance off the main road) revisits the same physical
+    points at far-apart array indices. Real-world routes like this commonly
+    exceed the 25-point sampling target, so some of those points are filled
+    in via nearest-neighbor rather than computed directly — and must resolve
+    to the same shaded value on the way out as on the way back, since it's
+    the same street at the same moment."""
+    outbound = [[48.20 + i * 0.0002, 16.36] for i in range(15)]
+    route = outbound + outbound[::-1]  # 30 points: out, then back over the same ground
+    assert len(route) > 25
+
+    # Only the ground right around outbound[3] sits in shadow — mimics a
+    # building casting shade partway along the spur, not at its very tip
+    # (where index-adjacency and geography-adjacency would coincidentally
+    # agree and mask the bug).
+    shaded_lat = outbound[3][0]
+
+    def fake_shaded(lat, lng, shadow_polygons, shadow_index, sun_altitude):
+        return abs(lat - shaded_lat) < 0.00005
+
+    with patch("src.routers.shadow_analyze.get_sun_position", return_value=SUN_POS):
+        with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=[{"footprint": [[0, 0]], "height": 1}]):
+            with patch("src.routers.shadow_analyze.precompute_shadow_polygons", return_value=["fake"]):
+                with patch("src.routers.shadow_analyze.build_shadow_polygon_index", return_value=None):
+                    with patch("src.routers.shadow_analyze.is_point_shaded_by_index", side_effect=fake_shaded):
+                        response = client.post("/sun/shadow-analyze", json={
+                            "coordinates": route, "datetime": DATETIME
+                        }, headers=auth_headers)
+
+    assert response.status_code == 200
+    segments = response.json()["segments"]
+    for i in range(15):
+        mirror = 29 - i
+        assert segments[i]["shaded"] == segments[mirror]["shaded"], (
+            f"index {i} and its physically-identical mirror {mirror} "
+            f"disagree: {segments[i]['shaded']} vs {segments[mirror]['shaded']}"
+        )
 
 
 def test_shadow_analyze_works_without_auth(client):
