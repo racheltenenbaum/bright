@@ -99,6 +99,36 @@ function computeSunAltitude(lat, lng) {
   return Math.asin(Math.sin(latRad) * Math.sin(dec) + Math.cos(latRad) * Math.cos(dec) * Math.cos(ha)) * 180 / Math.PI;
 }
 
+// Persists the in-progress plan (not the computed route itself, which is
+// cheap to recompute and would go stale as the sun moves) across
+// navigating away and back within the same tab session — including a
+// logged-out user being sent to /login to save and coming straight back.
+// sessionStorage rather than localStorage: this is meant to survive a
+// detour through another page or a login, not linger indefinitely once the
+// tab/app is closed.
+const PLANNED_ROUTE_KEY = "bright_planned_route";
+
+function saveRouteSession(data) {
+  try {
+    sessionStorage.setItem(PLANNED_ROUTE_KEY, JSON.stringify(data));
+  } catch (_) { /* storage unavailable — session persistence is a nicety, not critical */ }
+}
+
+function loadRouteSession() {
+  try {
+    const raw = sessionStorage.getItem(PLANNED_ROUTE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearRouteSession() {
+  try {
+    sessionStorage.removeItem(PLANNED_ROUTE_KEY);
+  } catch (_) { /* ignore */ }
+}
+
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -262,6 +292,8 @@ export default function RouteMap({ regions }) {
   const [sharePlaceCopied, setSharePlaceCopied] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [routeCoords, setRouteCoords] = useState(null);
+  const [routeSegments, setRouteSegments] = useState(null);
+  const pendingRestoreDrawRef = useRef(false);
   const [goMode, setGoMode] = useState(false);
   const goModeRef = useRef(false);
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
@@ -392,6 +424,68 @@ export default function RouteMap({ regions }) {
       autoCalculateRef.current = true;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore an in-progress plan left over from before navigating away —
+  // including a logged-out user sent to /login to save and coming straight
+  // back. Loses to the two explicit-navigation cases above (My Routes,
+  // "Plan route here"), which represent a fresh intent rather than a
+  // returning one. If a computed route was cached too, show that directly
+  // (once the map's ready — see the redraw effect below) instead of
+  // recomputing: recomputing is cheap, but the user explicitly wants back
+  // the route they already saw, not a fresh one that may have shifted with
+  // the sun's position in the meantime.
+  useEffect(() => {
+    if (location.state?.route || location.state?.fromSpot) return;
+    const saved = loadRouteSession();
+    if (!saved) return;
+    setStart(saved.start);
+    setEnd(saved.end);
+    setStartAddress(saved.startAddress || "");
+    setEndAddress(saved.endAddress || "");
+    if (saved.preference) setPreference(saved.preference);
+    if (saved.routeCoords && saved.routeSegments && saved.sunData) {
+      setRouteStats(saved.routeStats);
+      setSunData(saved.sunData);
+      setRouteCoords(saved.routeCoords);
+      setRouteSegments(saved.routeSegments);
+      pendingRestoreDrawRef.current = true;
+    } else {
+      autoCalculateRef.current = true;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once the map exists and the state set above has actually landed (both
+  // can lag a render behind the effect that set them), draw the restored
+  // route the same way a freshly computed one would be drawn.
+  useEffect(() => {
+    if (!pendingRestoreDrawRef.current || !mapRef.current || !routeCoords || !routeSegments || !sunData) return;
+    pendingRestoreDrawRef.current = false;
+    drawRoute(mapRef.current, polylinesRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
+    const bounds = new window.google.maps.LatLngBounds();
+    routeCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!mapRef.current) return;
+        window.google.maps.event.trigger(mapRef.current, "resize");
+        mapRef.current.fitBounds(bounds, { top: 100, right: 20, bottom: 80, left: 20 });
+      });
+    });
+  }, [isLoaded, routeCoords, routeSegments, sunData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep that session cache current as the plan changes, so it's there to
+  // restore from on the way back — including the computed route itself
+  // (not just the inputs), so returning shows exactly what was there
+  // before rather than a freshly recomputed route.
+  useEffect(() => {
+    if (!start && !end && !startAddress && !endAddress) {
+      clearRouteSession();
+      return;
+    }
+    saveRouteSession({
+      start, end, startAddress, endAddress, preference,
+      routeCoords, routeSegments, sunData, routeStats,
+    });
+  }, [start, end, startAddress, endAddress, preference, routeCoords, routeSegments, sunData, routeStats]);
 
   // Sync body theme class with preference / nighttime
   useEffect(() => {
@@ -936,6 +1030,63 @@ export default function RouteMap({ regions }) {
     } catch (_) { /* weather is non-critical */ }
   }
 
+  // Shared by a freshly computed route (planRoute) and a route restored
+  // from the session cache (see the restore effect below) — both end up
+  // drawing the same waypoints/segments onto the map the same way, so this
+  // is the single place that logic lives.
+  function applyRouteResult(waypoints, segments, sunAltitude, sunAzimuth, date, shadowAvailable, pref) {
+    // Tell the user when "shade" couldn't do anything — e.g. no shaded
+    // street reachable near this route at the sun's current position —
+    // rather than silently handing back what looks like an ordinary sun
+    // route with no explanation. Weighted by the distance each segment
+    // actually covers, not a plain count of segments: shadow-analyze's
+    // segments array is only as long as the (often just a handful of
+    // points, post-simplification) waypoint list, so consecutive
+    // waypoints can be meters or hundreds of meters apart — a single
+    // shaded segment on a short hop would otherwise skew a count-based
+    // fraction far more than that segment's real share of the route.
+    if (pref === "shade" && shadowAvailable && segments?.length && waypoints.length === segments.length) {
+      let sunnyKm = 0;
+      let totalKm = 0;
+      for (let i = 1; i < waypoints.length; i++) {
+        const segKm = haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], waypoints[i][0], waypoints[i][1]);
+        totalKm += segKm;
+        if (!segments[i].shaded) sunnyKm += segKm;
+      }
+      setNoShadeAvailable(totalKm > 0 && sunnyKm / totalKm >= 0.9);
+    } else {
+      setNoShadeAvailable(false);
+    }
+
+    setRouteStats(formatRouteStats(waypoints));
+    setSunData({ sun_altitude: sunAltitude, sun_azimuth: sunAzimuth, date, shadow_available: shadowAvailable });
+    setPlacesSunAltitude(sunAltitude);
+    setRouteCoords(waypoints);
+    setRouteSegments(segments);
+    drawRoute(mapRef.current, polylinesRef, waypoints, segments, sunAltitude, pref);
+
+    const bounds = new window.google.maps.LatLngBounds();
+    waypoints.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+    // setRouteStats/setSunData above make a stats panel appear as a flex
+    // sibling above the map, shrinking the map's actual rendered height —
+    // fitBounds computed synchronously here would zoom to fit the
+    // pre-shrink (taller) area, then look over-zoomed once the layout
+    // settles into its smaller final size. Deferring two frames lets that
+    // reflow finish, and triggering "resize" makes the map re-measure its
+    // container before we fit to it.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!mapRef.current) return;
+        window.google.maps.event.trigger(mapRef.current, "resize");
+        // Extra top/bottom clearance beyond the pre-calc fitBounds — once
+        // a route exists, the weather/compass badges and the sunny/shaded
+        // legend both overlay the map and would otherwise sit on top of
+        // the endpoint pins.
+        mapRef.current.fitBounds(bounds, { top: 100, right: 20, bottom: 80, left: 20 });
+      });
+    });
+  }
+
   async function planRoute() {
     setError(null);
     setSunData(null);
@@ -1038,55 +1189,7 @@ export default function RouteMap({ regions }) {
       );
       const { sun_altitude, sun_azimuth, date, segments, shadow_available } = shadowRes.data;
 
-      // Tell the user when "shade" couldn't do anything — e.g. no shaded
-      // street reachable near this route at the sun's current position —
-      // rather than silently handing back what looks like an ordinary sun
-      // route with no explanation. Weighted by the distance each segment
-      // actually covers, not a plain count of segments: shadow-analyze's
-      // segments array is only as long as the (often just a handful of
-      // points, post-simplification) waypoint list, so consecutive
-      // waypoints can be meters or hundreds of meters apart — a single
-      // shaded segment on a short hop would otherwise skew a count-based
-      // fraction far more than that segment's real share of the route.
-      if (preference === "shade" && shadow_available && segments?.length && waypoints.length === segments.length) {
-        let sunnyKm = 0;
-        let totalKm = 0;
-        for (let i = 1; i < waypoints.length; i++) {
-          const segKm = haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], waypoints[i][0], waypoints[i][1]);
-          totalKm += segKm;
-          if (!segments[i].shaded) sunnyKm += segKm;
-        }
-        setNoShadeAvailable(totalKm > 0 && sunnyKm / totalKm >= 0.9);
-      } else {
-        setNoShadeAvailable(false);
-      }
-
-      setRouteStats(formatRouteStats(waypoints));
-      setSunData({ sun_altitude, sun_azimuth, date, shadow_available });
-      setPlacesSunAltitude(sun_altitude);
-      setRouteCoords(waypoints);
-      drawRoute(mapRef.current, polylinesRef, waypoints, segments, sun_altitude, preference);
-
-      const bounds = new window.google.maps.LatLngBounds();
-      waypoints.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
-      // setRouteStats/setSunData above make a stats panel appear as a flex
-      // sibling above the map, shrinking the map's actual rendered height —
-      // fitBounds computed synchronously here would zoom to fit the
-      // pre-shrink (taller) area, then look over-zoomed once the layout
-      // settles into its smaller final size. Deferring two frames lets that
-      // reflow finish, and triggering "resize" makes the map re-measure its
-      // container before we fit to it.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!mapRef.current) return;
-          window.google.maps.event.trigger(mapRef.current, "resize");
-          // Extra top/bottom clearance beyond the pre-calc fitBounds — once
-          // a route exists, the weather/compass badges and the sunny/shaded
-          // legend both overlay the map and would otherwise sit on top of
-          // the endpoint pins.
-          mapRef.current.fitBounds(bounds, { top: 100, right: 20, bottom: 80, left: 20 });
-        });
-      });
+      applyRouteResult(waypoints, segments, sun_altitude, sun_azimuth, date, shadow_available, preference);
 
       if (
         !weatherLocationRef.current ||
@@ -1443,6 +1546,7 @@ export default function RouteMap({ regions }) {
     setSavedRouteName(null);
     setRouteStats(null);
     setRouteCoords(null);
+    setRouteSegments(null);
     exitGoMode();
     clearPolylines(polylinesRef);
     clearPlaceMarkers();
