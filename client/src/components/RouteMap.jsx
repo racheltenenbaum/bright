@@ -294,6 +294,7 @@ export default function RouteMap({ regions }) {
   const [routeCoords, setRouteCoords] = useState(null);
   const [routeSegments, setRouteSegments] = useState(null);
   const pendingRestoreDrawRef = useRef(false);
+  const skipNextPersistRef = useRef(false);
   const [goMode, setGoMode] = useState(false);
   const goModeRef = useRef(false);
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
@@ -438,6 +439,14 @@ export default function RouteMap({ regions }) {
     if (location.state?.route || location.state?.fromSpot) return;
     const saved = loadRouteSession();
     if (!saved) return;
+    // The persist effect below also runs on this same mount, in the same
+    // commit, before these setState calls have actually landed — without
+    // this, its first pass would still see start/end/etc as their initial
+    // null/empty values and wipe the very session data being restored here
+    // (self-healing on the next render once state catches up, but not
+    // worth relying on when skipping one redundant write avoids the race
+    // outright).
+    skipNextPersistRef.current = true;
     setStart(saved.start);
     setEnd(saved.end);
     setStartAddress(saved.startAddress || "");
@@ -454,29 +463,15 @@ export default function RouteMap({ regions }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Once the map exists and the state set above has actually landed (both
-  // can lag a render behind the effect that set them), draw the restored
-  // route the same way a freshly computed one would be drawn.
-  useEffect(() => {
-    if (!pendingRestoreDrawRef.current || !mapRef.current || !routeCoords || !routeSegments || !sunData) return;
-    pendingRestoreDrawRef.current = false;
-    drawRoute(mapRef.current, polylinesRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
-    const bounds = new window.google.maps.LatLngBounds();
-    routeCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!mapRef.current) return;
-        window.google.maps.event.trigger(mapRef.current, "resize");
-        mapRef.current.fitBounds(bounds, { top: 100, right: 20, bottom: 80, left: 20 });
-      });
-    });
-  }, [isLoaded, routeCoords, routeSegments, sunData]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Keep that session cache current as the plan changes, so it's there to
   // restore from on the way back — including the computed route itself
   // (not just the inputs), so returning shows exactly what was there
   // before rather than a freshly recomputed route.
   useEffect(() => {
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
     if (!start && !end && !startAddress && !endAddress) {
       clearRouteSession();
       return;
@@ -611,6 +606,31 @@ export default function RouteMap({ regions }) {
         .catch(() => {});
     }
   }, [isLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once the map exists and the state the restore effect set above has
+  // actually landed (both can lag a render behind the mount effect that
+  // kicked them off), draw the restored route the same way a freshly
+  // computed one would be drawn. Declared after the map-creation effect
+  // above deliberately: in the commit where isLoaded first flips true, that
+  // effect runs first and sets mapRef.current (a ref write, visible
+  // immediately, no extra render needed) — this effect running any earlier
+  // in file order would see mapRef.current still null and never get a
+  // second chance to fire, since a ref changing doesn't itself trigger a
+  // re-render the way a dependency change does.
+  useEffect(() => {
+    if (!pendingRestoreDrawRef.current || !mapRef.current || !routeCoords || !routeSegments || !sunData) return;
+    pendingRestoreDrawRef.current = false;
+    drawRoute(mapRef.current, polylinesRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
+    const bounds = new window.google.maps.LatLngBounds();
+    routeCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!mapRef.current) return;
+        window.google.maps.event.trigger(mapRef.current, "resize");
+        mapRef.current.fitBounds(bounds, { top: 100, right: 20, bottom: 80, left: 20 });
+      });
+    });
+  }, [isLoaded, routeCoords, routeSegments, sunData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pan to show both endpoints as soon as start, end and map are all ready
   useEffect(() => {
