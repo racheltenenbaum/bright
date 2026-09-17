@@ -282,6 +282,7 @@ export default function RouteMap({ regions }) {
   const [noShadeAvailable, setNoShadeAvailable] = useState(false);
   const [error, setError] = useState(null);
   const [coverageNotice, setCoverageNotice] = useState(null); // { lat, lng } of an uncovered point, or null
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const [notifyStatus, setNotifyStatus] = useState("idle"); // idle | sending | done
   const [saveForm, setSaveForm] = useState(null); // null = hidden, {} = open
   const [saveError, setSaveError] = useState(null);
@@ -980,7 +981,7 @@ export default function RouteMap({ regions }) {
 
   async function handleNotifyMe() {
     if (!coverageNotice || notifyStatus !== "idle") return;
-    if (!user) { navigate("/login"); return; }
+    if (!user) { setAuthPromptOpen(true); return; }
     setNotifyStatus("sending");
     const token = localStorage.getItem("token");
     try {
@@ -1410,8 +1411,8 @@ export default function RouteMap({ regions }) {
 
   function openSaveSpotModal(place) {
     // Finding places works anonymously — only saving a spot needs an
-    // account, so that's the one place logged-out users get sent to log in.
-    if (!user) { navigate("/login"); return; }
+    // account, so that's the one place logged-out users get prompted to.
+    if (!user) { setAuthPromptOpen(true); return; }
     setSaveSpotModal({
       name: place.name,
       note: "",
@@ -1987,8 +1988,8 @@ export default function RouteMap({ regions }) {
               onClick={() => {
                 // Planning/going works anonymously — only saving needs an
                 // account, so that's the one place logged-out users get
-                // sent to log in.
-                if (!user) { navigate("/login"); return; }
+                // prompted to log in or register.
+                if (!user) { setAuthPromptOpen(true); return; }
                 setSaveForm({ name: "", description: "" });
               }}
               style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}
@@ -2581,6 +2582,59 @@ export default function RouteMap({ regions }) {
           </div>
         </div>
       </div>
+
+      {/* Prompt to log in / register — shown instead of silently redirecting
+          when a logged-out user tries to save a route/spot or set up a
+          region notification, so they aren't yanked off the page they were
+          just looking at without warning. The in-progress plan itself
+          survives either way (see the session-cache effects above), so
+          "Log in" / "Register" can freely navigate away. */}
+      {authPromptOpen && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setAuthPromptOpen(false); }}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)",
+            backdropFilter: "blur(2px)", display: "flex", alignItems: "center",
+            justifyContent: "center", zIndex: 2000, padding: "20px",
+          }}
+        >
+          <div style={{
+            background: "var(--color-surface)", border: "2.5px solid #fff",
+            borderRadius: "24px", padding: "24px", width: "100%", maxWidth: "340px",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+            display: "flex", flexDirection: "column", gap: "16px", textAlign: "center",
+          }}>
+            <h3 style={{ margin: 0, fontSize: "1.05em", color: colors.text }}>
+              Save this for later?
+            </h3>
+            <p style={{ margin: 0, fontSize: "0.88em", color: colors.subtext, fontWeight: 600 }}>
+              Log in or create a free account to save routes and spots.
+            </p>
+            <button
+              onClick={() => navigate("/login")}
+              style={{ fontSize: "0.9em", padding: "0.55em 1.2em", fontWeight: 800 }}
+            >
+              Log in
+            </button>
+            <button
+              onClick={() => navigate("/register")}
+              className="btn-outline"
+              style={{ fontSize: "0.9em", padding: "0.55em 1.2em", fontWeight: 800 }}
+            >
+              Register
+            </button>
+            <button
+              onClick={() => setAuthPromptOpen(false)}
+              style={{
+                background: "none", border: "none", boxShadow: "none",
+                fontSize: "0.8em", color: colors.subtext, fontWeight: 700,
+              }}
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Save as Spot modal */}
       {saveSpotModal && (
