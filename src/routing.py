@@ -4,6 +4,7 @@ import math
 import os
 import sqlite3
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import networkx as nx
@@ -257,9 +258,18 @@ def fetch_road_graph(s: float, w: float, n: float, e: float) -> nx.DiGraph:
     """
     region = region_for_bbox(s, w, n, e)
     if region:
+        db_start = time.perf_counter()
         edges = _fetch_roads_from_db(region, s, w, n, e)
+        db_s = time.perf_counter() - db_start
         if edges:
-            return build_graph_from_edges(edges)
+            build_start = time.perf_counter()
+            graph = build_graph_from_edges(edges)
+            build_s = time.perf_counter() - build_start
+            logger.info(
+                "fetch_road_graph timing region=%s db_query=%.3fs (%d rows) graph_build=%.3fs (%d nodes, %d edges)",
+                region, db_s, len(edges), build_s, graph.number_of_nodes(), graph.number_of_edges(),
+            )
+            return graph
 
     return build_graph(fetch_osm_road_network(s, w, n, e))
 
@@ -392,16 +402,29 @@ def compute_edge_shading(
             data["shaded"] = True
         return
 
+    precompute_start = time.perf_counter()
     shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
     shadow_index = build_shadow_polygon_index(shadow_polygons)
+    precompute_s = time.perf_counter() - precompute_start
+
+    lookup_start = time.perf_counter()
     shaded_cache: dict[tuple[float, float], bool] = {}
+    edge_count = 0
     for _, _, data in graph.edges(data=True):
+        edge_count += 1
         key = (data["mid_lat"], data["mid_lng"])
         if key not in shaded_cache:
             shaded_cache[key] = is_point_shaded_by_index(
                 key[0], key[1], shadow_polygons, shadow_index, sun_altitude
             )
         data["shaded"] = shaded_cache[key]
+    lookup_s = time.perf_counter() - lookup_start
+
+    logger.info(
+        "compute_edge_shading timing buildings=%d shadow_polygon_precompute=%.3fs "
+        "edge_lookup=%.3fs (%d edges, %d unique midpoints)",
+        len(buildings), precompute_s, lookup_s, edge_count, len(shaded_cache),
+    )
 
 
 def apply_preference_weights(graph: nx.DiGraph, preference: str, penalty: float) -> None:

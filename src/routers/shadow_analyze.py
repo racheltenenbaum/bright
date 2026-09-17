@@ -4,6 +4,7 @@ import math
 import os
 import sqlite3
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -42,6 +43,7 @@ def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float
         # LA, 17s+) — even after ANALYZE TABLE, it doesn't choose
         # ix_osm_buildings_region_lat on its own, so it's forced explicitly.
         # Measured: 17s+ full scan -> ~0.8s index range scan.
+        query_start = time.perf_counter()
         rows = db.query(OsmBuilding).with_hint(
             OsmBuilding, "FORCE INDEX (ix_osm_buildings_region_lat)", "mysql"
         ).filter(
@@ -51,7 +53,17 @@ def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float
             OsmBuilding.min_lng <= e,
             OsmBuilding.max_lng >= w,
         ).all()
-        return [{"footprint": json.loads(row.footprint), "height": row.height} for row in rows]
+        query_s = time.perf_counter() - query_start
+
+        parse_start = time.perf_counter()
+        result = [{"footprint": json.loads(row.footprint), "height": row.height} for row in rows]
+        parse_s = time.perf_counter() - parse_start
+
+        logger.info(
+            "_fetch_buildings_from_db timing region=%s db_query=%.3fs (%d rows) json_parse=%.3fs",
+            region, query_s, len(rows), parse_s,
+        )
+        return result
     finally:
         db.close()
 
