@@ -344,17 +344,33 @@ def build_graph(osm_data: dict) -> nx.DiGraph:
 MIN_COMPONENT_SIZE_FOR_NEAREST_NODE = 5
 
 
-def nearest_node(graph: nx.DiGraph, lat: float, lng: float) -> int:
-    """Nearest node by straight-line distance — but restricted to nodes in a
+def nearest_node_candidates(graph: nx.DiGraph) -> set:
+    """The node set nearest_node should search: restricted to nodes in a
     reasonably-sized connected component when the graph has one, so a tiny
     disconnected island right next to the real network is never preferred
-    over a real (if very slightly further) point on it. Falls back to an
-    unrestricted search when no component reaches the minimum size (e.g. a
-    graph that's entirely small, as in tests).
+    over a real (if very slightly further) point on it. Falls back to every
+    node when none reaches the minimum size (e.g. a graph that's entirely
+    small, as in tests).
+
+    Split out from nearest_node so a caller that needs it for both a start
+    and an end point (every real request does) computes this once — on a
+    large graph, nx.connected_components(graph.to_undirected()) is a full
+    O(V+E) traversal plus a full graph copy, and doing that twice per
+    request measurably adds up (confirmed in production: ~3.4s combined for
+    two nearest_node calls on a ~100k-node Vienna graph).
     """
     components = nx.connected_components(graph.to_undirected())
     big_components = [c for c in components if len(c) >= MIN_COMPONENT_SIZE_FOR_NEAREST_NODE]
-    candidates = set().union(*big_components) if big_components else graph.nodes
+    return set().union(*big_components) if big_components else set(graph.nodes)
+
+
+def nearest_node(graph: nx.DiGraph, lat: float, lng: float, candidates: set | None = None) -> int:
+    """Nearest node by straight-line distance among `candidates` (computed via
+    nearest_node_candidates if not passed in — pass it explicitly when
+    calling this more than once for the same graph, to avoid recomputing
+    connected components each time)."""
+    if candidates is None:
+        candidates = nearest_node_candidates(graph)
     return min(
         candidates,
         key=lambda n: _haversine_m(lat, lng, graph.nodes[n]["lat"], graph.nodes[n]["lng"]),

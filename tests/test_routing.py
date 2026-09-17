@@ -13,6 +13,7 @@ from src.routing import (
     build_graph_from_edges,
     fetch_road_graph,
     nearest_node,
+    nearest_node_candidates,
     compute_edge_shading,
     compute_edge_weights,
     apply_preference_weights,
@@ -421,6 +422,48 @@ def test_nearest_node_skips_tiny_disconnected_stub():
     }
     g = build_graph(data)
     assert nearest_node(g, 40.0, -74.0) == 10
+
+
+def test_nearest_node_accepts_precomputed_candidates():
+    """A request needs nearest_node for both start and end, and recomputing
+    connected-components from scratch inside nearest_node each time is
+    expensive on a large graph (confirmed in production: ~3.4s combined for
+    two calls on a ~100k-node graph). Passing the same precomputed candidate
+    set into both calls must give the identical result as the no-arg form."""
+    g = build_graph(_simple_osm())
+    candidates = nearest_node_candidates(g)
+    assert nearest_node(g, 40.0009, -74.000, candidates=candidates) == nearest_node(g, 40.0009, -74.000)
+
+
+def test_nearest_node_candidates_skips_tiny_disconnected_stub():
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.00001, "lon": -74.00001},
+            {"type": "node", "id": 2, "lat": 40.00002, "lon": -74.00002},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+            {"type": "node", "id": 10, "lat": 40.0010, "lon": -74.0010},
+            {"type": "node", "id": 11, "lat": 40.0011, "lon": -74.0011},
+            {"type": "node", "id": 12, "lat": 40.0012, "lon": -74.0012},
+            {"type": "node", "id": 13, "lat": 40.0013, "lon": -74.0013},
+            {"type": "node", "id": 14, "lat": 40.0014, "lon": -74.0014},
+            {"type": "node", "id": 15, "lat": 40.0015, "lon": -74.0015},
+            {"type": "way", "id": 101, "nodes": [10, 11, 12, 13, 14, 15], "tags": {"highway": "residential"}},
+        ]
+    }
+    g = build_graph(data)
+    candidates = nearest_node_candidates(g)
+    assert nearest_node(g, 40.0, -74.0, candidates=candidates) == 10
+
+
+def test_nearest_node_reuses_candidates_without_recomputing_components():
+    """The whole point of passing candidates in is to skip the expensive
+    per-call connected-components recomputation — verify it's actually
+    skipped, not just that the result happens to match."""
+    g = build_graph(_simple_osm())
+    candidates = nearest_node_candidates(g)
+    with patch("src.routing.nx.connected_components") as mock_cc:
+        nearest_node(g, 40.0009, -74.000, candidates=candidates)
+    mock_cc.assert_not_called()
 
 
 # ── compute_edge_weights ──────────────────────────────────────────────────────

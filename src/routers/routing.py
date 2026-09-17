@@ -18,6 +18,7 @@ from src.routing import (
     find_distance_path,
     find_optimized_path,
     nearest_node,
+    nearest_node_candidates,
     nodes_to_coords,
     route_bbox_padding_m,
     simplify_path,
@@ -125,8 +126,9 @@ def optimized_route(
     edge_weights_s = time.perf_counter() - edge_weights_start
 
     nearest_node_start = time.perf_counter()
-    start_node = nearest_node(graph, body.start[0], body.start[1])
-    end_node = nearest_node(graph, body.end[0], body.end[1])
+    candidates = nearest_node_candidates(graph)
+    start_node = nearest_node(graph, body.start[0], body.start[1], candidates=candidates)
+    end_node = nearest_node(graph, body.end[0], body.end[1], candidates=candidates)
     nearest_node_s = time.perf_counter() - nearest_node_start
 
     optimized_path_start = time.perf_counter()
