@@ -1,3 +1,5 @@
+import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -23,7 +25,19 @@ from src.routing import (
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
 from src.utils.astronomy import get_sun_position
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/sun", tags=["sun"])
+
+
+def _timed(fn, *args):
+    """Runs fn(*args) and returns (result, elapsed_seconds) — used so the two
+    functions raced in the road/buildings ThreadPoolExecutor each report their
+    own wall time, rather than only the pool's combined (max of the two)
+    duration."""
+    start = time.perf_counter()
+    result = fn(*args)
+    return result, time.perf_counter() - start
 
 # Matches User.pref_max_detour's own column default.
 DEFAULT_MAX_DETOUR = 30
@@ -66,6 +80,8 @@ def optimized_route(
     body: OptimizedRouteRequest,
     current_user: User | None = Depends(get_current_user_optional),
 ):
+    request_start = time.perf_counter()
+
     dt = datetime.fromisoformat(body.datetime)  # already validated by Pydantic
     date_str = dt.strftime("%Y-%m-%d")
 
@@ -81,36 +97,53 @@ def optimized_route(
     if body.preference == "shade":
         max_detour *= SHADE_DETOUR_MULTIPLIER
 
+    bbox_start = time.perf_counter()
     all_coords = [body.start, body.end]
     straight_line_m = _haversine_m(body.start[0], body.start[1], body.end[0], body.end[1])
     s, w, n, e = _route_bbox(all_coords, padding_m=route_bbox_padding_m(straight_line_m, max_detour))
+    bbox_s = time.perf_counter() - bbox_start
 
-    # Fetch road network and buildings in parallel
+    # Fetch road network and buildings in parallel. Each is timed inside its
+    # own thread (_timed) rather than around the pool as a whole, since the
+    # pool's wall time alone would only tell us the max of the two, not each
+    # one's real cost.
     with ThreadPoolExecutor(max_workers=2) as pool:
-        road_future = pool.submit(fetch_road_graph, s, w, n, e)
-        bldg_future = pool.submit(_fetch_buildings_for_bbox, s, w, n, e)
-        graph = road_future.result()
-        bldg_result = bldg_future.result() if sun_altitude > 0 else []
+        road_future = pool.submit(_timed, fetch_road_graph, s, w, n, e)
+        bldg_future = pool.submit(_timed, _fetch_buildings_for_bbox, s, w, n, e)
+        graph, road_graph_s = road_future.result()
+        if sun_altitude > 0:
+            bldg_result, buildings_s = bldg_future.result()
+        else:
+            bldg_result, buildings_s = [], None
         buildings = bldg_result if bldg_result is not None else []
 
     if graph.number_of_nodes() == 0:
         raise HTTPException(status_code=400, detail="No road network found for this area")
 
+    edge_weights_start = time.perf_counter()
     compute_edge_weights(graph, buildings, sun_altitude, sun_azimuth, body.preference)
+    edge_weights_s = time.perf_counter() - edge_weights_start
 
+    nearest_node_start = time.perf_counter()
     start_node = nearest_node(graph, body.start[0], body.start[1])
     end_node = nearest_node(graph, body.end[0], body.end[1])
+    nearest_node_s = time.perf_counter() - nearest_node_start
+
+    optimized_path_start = time.perf_counter()
     path_nodes = find_optimized_path(graph, start_node, end_node)
+    optimized_path_s = time.perf_counter() - optimized_path_start
 
     if not path_nodes:
         raise HTTPException(status_code=400, detail="No path found between these locations")
 
+    distance_path_start = time.perf_counter()
     dist_path_nodes = find_distance_path(graph, start_node, end_node)
     if dist_path_nodes:
         sun_len = _path_length_m(graph, path_nodes)
         dist_len = _path_length_m(graph, dist_path_nodes)
         if dist_len > 0 and sun_len > dist_len * (1 + max_detour):
             path_nodes = dist_path_nodes
+    distance_path_s = time.perf_counter() - distance_path_start
 
     # Geometry-preserving simplification, not the fixed-count downsampling
     # this used to do — thinning to evenly-spaced indices could skip a real
@@ -122,7 +155,28 @@ def optimized_route(
     # handles whatever length list comes out of this correctly (its own
     # internal sampling for the shading computation, then nearest-neighbor
     # fill for every index).
+    simplify_start = time.perf_counter()
     waypoints = simplify_path(nodes_to_coords(graph, path_nodes))
+    simplify_s = time.perf_counter() - simplify_start
+
+    logger.info(
+        "optimized_route timing preference=%s distance_m=%.0f nodes=%d edges=%d "
+        "bbox=%.3fs road_graph=%.3fs buildings=%s edge_weights=%.3fs nearest_node=%.3fs "
+        "optimized_path=%.3fs distance_path=%.3fs simplify=%.3fs total=%.3fs",
+        body.preference,
+        straight_line_m,
+        graph.number_of_nodes(),
+        graph.number_of_edges(),
+        bbox_s,
+        road_graph_s,
+        f"{buildings_s:.3f}s" if buildings_s is not None else "skipped(sun-below-horizon)",
+        edge_weights_s,
+        nearest_node_s,
+        optimized_path_s,
+        distance_path_s,
+        simplify_s,
+        time.perf_counter() - request_start,
+    )
 
     return OptimizedRouteResponse(
         waypoints=[list(c) for c in waypoints],
