@@ -1,3 +1,4 @@
+import logging
 import os
 
 from fastapi import FastAPI
@@ -9,6 +10,18 @@ from src.limiter import limiter
 from src.routers import users, sun, shadow_analyze, routes, weather, spots, places, routing, feedback, regions
 from src.routers.routes import share_router
 from src.routers.spots import spot_share_router
+
+# No logging config previously existed anywhere in the app, so every
+# `logger.info(...)` call (e.g. the /sun/optimized-route timing breakdown)
+# was silently dropped — Python's root logger has no handler by default and
+# only emits WARNING+ via its "handler of last resort". force=True ensures
+# this wins even if something else (a library, a prior import) already
+# called basicConfig first.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    force=True,
+)
 
 app = FastAPI(title="bright")
 app.state.limiter = limiter
