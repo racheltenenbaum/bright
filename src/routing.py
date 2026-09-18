@@ -225,7 +225,14 @@ def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) ->
         # (src/routers/shadow_analyze.py::_fetch_buildings_from_db) — same
         # optimizer behavior, same fix, confirmed via EXPLAIN (~2.7M rows
         # scanned for LA without this).
-        rows = db.query(OsmRoad).with_hint(
+        # Selecting only the columns actually used, not the full mapped
+        # entity — see the identical reasoning + measured win on
+        # OsmBuilding's bbox query (src/routers/shadow_analyze.py
+        # _fetch_buildings_from_db).
+        rows = db.query(
+            OsmRoad.from_lat, OsmRoad.from_lng, OsmRoad.to_lat, OsmRoad.to_lng,
+            OsmRoad.distance_m, OsmRoad.oneway,
+        ).with_hint(
             OsmRoad, "FORCE INDEX (ix_osm_roads_region_lat)", "mysql"
         ).filter(
             OsmRoad.region == region,
@@ -236,11 +243,11 @@ def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) ->
         ).all()
         return [
             {
-                "from_lat": row.from_lat, "from_lng": row.from_lng,
-                "to_lat": row.to_lat, "to_lng": row.to_lng,
-                "distance_m": row.distance_m, "oneway": row.oneway,
+                "from_lat": from_lat, "from_lng": from_lng,
+                "to_lat": to_lat, "to_lng": to_lng,
+                "distance_m": distance_m, "oneway": oneway,
             }
-            for row in rows
+            for from_lat, from_lng, to_lat, to_lng, distance_m, oneway in rows
         ]
     finally:
         db.close()
@@ -387,6 +394,53 @@ def nearest_node(graph: nx.DiGraph, lat: float, lng: float, candidates: set | No
     )
 
 
+def _relevant_buildings_for_edges(graph: nx.DiGraph, buildings: list, sun_altitude: float) -> list:
+    """Cheap bounding-box prefilter, run before the expensive shadow-polygon
+    geometry: a building can only possibly shade one of this graph's edges
+    if, even in the best case, its shadow could reach that edge's midpoint.
+    A building whose own footprint plus its maximum possible shadow length
+    (height / tan(sun_altitude) — an upper bound regardless of which
+    direction the shadow actually falls) doesn't come near the bounding box
+    of all edge midpoints can never affect the result, so building its full
+    shadow polygon is wasted work. The buildings list a route's bbox fetch
+    returns is sized for the road-search detour margin, not for what the
+    graph's edges actually need — most of it is typically irrelevant.
+
+    Degree buffers are computed generously (using cos of the building's own
+    latitude for the longitude buffer, which is always >= a flat 111km/degree
+    approximation) so this only ever risks keeping an irrelevant building,
+    never dropping a relevant one.
+    """
+    mid_lats = [data["mid_lat"] for _, _, data in graph.edges(data=True)]
+    mid_lngs = [data["mid_lng"] for _, _, data in graph.edges(data=True)]
+    if not mid_lats:
+        return []
+    env_min_lat, env_max_lat = min(mid_lats), max(mid_lats)
+    env_min_lng, env_max_lng = min(mid_lngs), max(mid_lngs)
+
+    tan_alt = math.tan(math.radians(sun_altitude))
+    if tan_alt <= 0:
+        return buildings
+
+    relevant = []
+    for building in buildings:
+        max_reach_m = building["height"] / tan_alt
+        if max_reach_m <= 0:
+            continue
+        footprint = building["footprint"]
+        b_lats = [c[0] for c in footprint]
+        b_lngs = [c[1] for c in footprint]
+        avg_lat = sum(b_lats) / len(b_lats)
+        lat_buffer_deg = max_reach_m / 111_000
+        lng_buffer_deg = max_reach_m / (111_000 * max(math.cos(math.radians(avg_lat)), 0.01))
+        if max(b_lats) + lat_buffer_deg < env_min_lat or min(b_lats) - lat_buffer_deg > env_max_lat:
+            continue
+        if max(b_lngs) + lng_buffer_deg < env_min_lng or min(b_lngs) - lng_buffer_deg > env_max_lng:
+            continue
+        relevant.append(building)
+    return relevant
+
+
 def compute_edge_shading(
     graph: nx.DiGraph,
     buildings: list,
@@ -403,7 +457,8 @@ def compute_edge_shading(
         return
 
     precompute_start = time.perf_counter()
-    shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
+    relevant_buildings = _relevant_buildings_for_edges(graph, buildings, sun_altitude)
+    shadow_polygons = precompute_shadow_polygons(relevant_buildings, sun_altitude, sun_azimuth)
     shadow_index = build_shadow_polygon_index(shadow_polygons)
     precompute_s = time.perf_counter() - precompute_start
 
@@ -421,9 +476,9 @@ def compute_edge_shading(
     lookup_s = time.perf_counter() - lookup_start
 
     logger.info(
-        "compute_edge_shading timing buildings=%d shadow_polygon_precompute=%.3fs "
-        "edge_lookup=%.3fs (%d edges, %d unique midpoints)",
-        len(buildings), precompute_s, lookup_s, edge_count, len(shaded_cache),
+        "compute_edge_shading timing buildings=%d relevant_buildings=%d "
+        "shadow_polygon_precompute=%.3fs edge_lookup=%.3fs (%d edges, %d unique midpoints)",
+        len(buildings), len(relevant_buildings), precompute_s, lookup_s, edge_count, len(shaded_cache),
     )
 
 

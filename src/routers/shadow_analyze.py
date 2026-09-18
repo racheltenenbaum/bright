@@ -44,7 +44,12 @@ def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float
         # ix_osm_buildings_region_lat on its own, so it's forced explicitly.
         # Measured: 17s+ full scan -> ~0.8s index range scan.
         query_start = time.perf_counter()
-        rows = db.query(OsmBuilding).with_hint(
+        # Selecting only the two columns actually used (footprint, height)
+        # instead of the full mapped entity skips SQLAlchemy ORM-hydrating
+        # every other column into an object per row — at 100k+ rows for a
+        # long route, that per-row object construction is real overhead for
+        # data that's immediately discarded anyway.
+        rows = db.query(OsmBuilding.footprint, OsmBuilding.height).with_hint(
             OsmBuilding, "FORCE INDEX (ix_osm_buildings_region_lat)", "mysql"
         ).filter(
             OsmBuilding.region == region,
@@ -56,7 +61,7 @@ def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float
         query_s = time.perf_counter() - query_start
 
         parse_start = time.perf_counter()
-        result = [{"footprint": json.loads(row.footprint), "height": row.height} for row in rows]
+        result = [{"footprint": json.loads(footprint), "height": height} for footprint, height in rows]
         parse_s = time.perf_counter() - parse_start
 
         logger.info(

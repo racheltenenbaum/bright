@@ -523,6 +523,99 @@ def test_compute_edge_shading_nighttime_all_shaded():
     assert g.edges[2, 3]["shaded"] is True
 
 
+def test_compute_edge_shading_skips_buildings_too_far_to_ever_shade_any_edge():
+    """Buildings far outside a route's detour-search bbox get fetched anyway
+    (the buildings bbox is currently the same wide rectangle as the road
+    bbox — see the routing timing investigation), but most of them are
+    nowhere near any actual edge and can never possibly cast a shadow onto
+    one. Skipping full shadow-polygon construction for those must not change
+    the shading result — only which buildings get the (expensive) geometry
+    work done for them."""
+    g = build_graph(_simple_osm())  # edge midpoints near (40.0005/0015, -74.000)
+    nearby_building = {
+        "footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]],
+        "height": 20.0,
+    }
+    # ~111km away (1 degree latitude) — no realistic building height casts a
+    # shadow that far, regardless of direction.
+    far_away_building = {
+        "footprint": [[41.0, -74.0001], [41.0, -74.0000], [41.0006, -74.0000]],
+        "height": 20.0,
+    }
+
+    with patch(
+        "src.routing.precompute_shadow_polygons", wraps=routing_module.precompute_shadow_polygons
+    ) as mock_precompute:
+        compute_edge_shading(g, [nearby_building, far_away_building], 45.0, 180.0)
+
+    passed_buildings = mock_precompute.call_args[0][0]
+    assert nearby_building in passed_buildings
+    assert far_away_building not in passed_buildings
+
+
+def test_compute_edge_shading_no_edges_returns_empty_relevant_list():
+    g = nx.DiGraph()
+    g.add_node(1, lat=40.0, lng=-74.0)
+    compute_edge_shading(g, [{"footprint": [[40.0, -74.0]], "height": 20.0}], 45.0, 180.0)  # must not raise
+
+
+def test_relevant_buildings_non_positive_tan_returns_everything_unfiltered():
+    """_relevant_buildings_for_edges is only ever called after
+    compute_edge_shading's own sun_altitude <= 0 guard, so a non-positive
+    tan(sun_altitude) shouldn't come up in practice — but if it ever did
+    (this function is also unit-tested directly, bypassing that guard), a
+    degenerate reach calculation must fail open (keep everything) rather
+    than silently dropping buildings it can't reason about."""
+    g = build_graph(_simple_osm())
+    building = {
+        "footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]],
+        "height": 20.0,
+    }
+    assert routing_module._relevant_buildings_for_edges(g, [building], 0.0) == [building]
+
+
+def test_relevant_buildings_skips_zero_height():
+    g = build_graph(_simple_osm())
+    zero_height_building = {
+        "footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]],
+        "height": 0.0,
+    }
+    assert routing_module._relevant_buildings_for_edges(g, [zero_height_building], 45.0) == []
+
+
+def test_relevant_buildings_excludes_building_far_only_in_longitude():
+    """A building at the same latitude as the graph's edges but far away in
+    longitude must be excluded too — not just the north/south case."""
+    g = build_graph(_simple_osm())  # edge midpoints near lat 40.0005/40.0015, lng -74.000
+    far_in_longitude = {
+        "footprint": [[40.001, -75.0001], [40.001, -75.0000], [40.0011, -75.0000]],
+        "height": 20.0,
+    }
+    assert routing_module._relevant_buildings_for_edges(g, [far_in_longitude], 45.0) == []
+
+
+def test_compute_edge_shading_far_building_never_affects_result():
+    """Same setup as above, but asserting on the actual output: a shading
+    result that includes a too-far-to-matter building must be identical to
+    one computed without it at all."""
+    g1 = build_graph(_simple_osm())
+    g2 = build_graph(_simple_osm())
+    nearby_building = {
+        "footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]],
+        "height": 20.0,
+    }
+    far_away_building = {
+        "footprint": [[41.0, -74.0001], [41.0, -74.0000], [41.0006, -74.0000]],
+        "height": 20.0,
+    }
+
+    compute_edge_shading(g1, [nearby_building], 45.0, 180.0)
+    compute_edge_shading(g2, [nearby_building, far_away_building], 45.0, 180.0)
+
+    assert g1.edges[1, 2]["shaded"] == g2.edges[1, 2]["shaded"]
+    assert g1.edges[2, 3]["shaded"] == g2.edges[2, 3]["shaded"]
+
+
 # ── apply_preference_weights ───────────────────────────────────────────────────
 
 def test_apply_preference_weights_sun_penalizes_shaded():
