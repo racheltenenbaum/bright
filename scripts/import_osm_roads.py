@@ -61,29 +61,39 @@ def _haversine_m(lat1, lng1, lat2, lng2):
     return EARTH_RADIUS_M * 2 * math.asin(math.sqrt(a))
 
 
+def _allowed_highway(tags) -> bool:
+    highway = tags.get("highway")
+    if highway not in ALLOWED_HIGHWAY_TYPES:
+        return False
+    if highway == "service" and tags.get("service") in EXCLUDED_SERVICE_SUBTYPES:
+        return False
+    return True
+
+
 class RoadHandler(osmium.SimpleHandler):
+    """Handles both plain ways (way()) and multipolygon-relation areas
+    (area()) — pyosmium's apply_file() auto-detects the area() callback and
+    runs the necessary two-pass relation assembly internally, no extra
+    wiring needed here.
+
+    Large plazas (e.g. Vienna's Heldenplatz/Josefsplatz/"In der Burg") are
+    commonly mapped in OSM as a type=multipolygon *relation* instead of a
+    plain way — highway=pedestrian/footway lives on the relation, not on
+    its member way(s). A way()-only handler silently drops these, so a
+    plaza's internal paths can come back disconnected from the surrounding
+    street grid on import — a real reported case, confirmed live: several
+    Hofburg-area plazas near Heldenplatz are exactly this pattern.
+    """
     def __init__(self, bbox: tuple[float, float, float, float] | None):
         super().__init__()
         self.bbox = bbox  # (s, w, n, e) — skip edges entirely outside this, if given
         self.edges: list[dict] = []
         self.skipped_invalid_location = 0
 
-    def way(self, w):
-        highway = w.tags.get("highway")
-        if highway not in ALLOWED_HIGHWAY_TYPES:
-            return
-        if highway == "service" and w.tags.get("service") in EXCLUDED_SERVICE_SUBTYPES:
-            return
-        oneway = w.tags.get("oneway") == "yes"
-
-        for i in range(len(w.nodes) - 1):
-            try:
-                n1, n2 = w.nodes[i], w.nodes[i + 1]
-                lat1, lng1 = n1.lat, n1.lon
-                lat2, lng2 = n2.lat, n2.lon
-            except osmium.InvalidLocationError:
-                self.skipped_invalid_location += 1
-                continue
+    def _add_edges(self, node_coords: list[tuple[float, float]], oneway: bool) -> None:
+        for i in range(len(node_coords) - 1):
+            lat1, lng1 = node_coords[i]
+            lat2, lng2 = node_coords[i + 1]
 
             if self.bbox:
                 s, west, n, e = self.bbox
@@ -98,6 +108,46 @@ class RoadHandler(osmium.SimpleHandler):
                 "distance_m": _haversine_m(lat1, lng1, lat2, lng2),
                 "oneway": oneway,
             })
+
+    def way(self, w):
+        if not _allowed_highway(w.tags):
+            return
+        oneway = w.tags.get("oneway") == "yes"
+
+        coords = []
+        for n in w.nodes:
+            try:
+                coords.append((n.lat, n.lon))
+            except osmium.InvalidLocationError:
+                self.skipped_invalid_location += 1
+                coords = None
+                break
+        if coords:
+            self._add_edges(coords, oneway)
+
+    def area(self, a):
+        """Plazas mapped as type=multipolygon relations, not plain ways —
+        the highway tag lives on the relation (osmium exposes it on the
+        assembled Area, via a.tags), not on any member way. Each outer ring
+        becomes a routable loop around the plaza's perimeter: not full
+        interior connectivity, but enough to link paths that touch the
+        boundary — normally sufficient, since incoming footways/steps
+        typically share a node with the boundary way at the point they
+        enter the plaza.
+        """
+        if not _allowed_highway(a.tags):
+            return
+        for ring in a.outer_rings():
+            coords = []
+            for n in ring:
+                try:
+                    coords.append((n.lat, n.lon))
+                except osmium.InvalidLocationError:
+                    self.skipped_invalid_location += 1
+                    coords = None
+                    break
+            if coords:
+                self._add_edges(coords, oneway=False)
 
 
 def _flush(db, region: str, edges: list[dict]) -> None:
