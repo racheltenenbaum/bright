@@ -59,6 +59,7 @@ def clean_tables():
     import src.routing as _routing_module
     import src.routers.shadow_analyze as _shadow_analyze_module
     _routing_module._db_roads_cache.clear()
+    _routing_module._shadow_polygon_cache.clear()
     _shadow_analyze_module._db_buildings_bbox_cache.clear()
 
     yield

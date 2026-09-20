@@ -605,77 +605,6 @@ def test_compute_edge_shading_nighttime_all_shaded():
     assert g.edges[2, 3]["shaded"] is True
 
 
-def test_compute_edge_shading_skips_buildings_too_far_to_ever_shade_any_edge():
-    """Buildings far outside a route's detour-search bbox get fetched anyway
-    (the buildings bbox is currently the same wide rectangle as the road
-    bbox — see the routing timing investigation), but most of them are
-    nowhere near any actual edge and can never possibly cast a shadow onto
-    one. Skipping full shadow-polygon construction for those must not change
-    the shading result — only which buildings get the (expensive) geometry
-    work done for them."""
-    g = build_graph(_simple_osm())  # edge midpoints near (40.0005/0015, -74.000)
-    nearby_building = {
-        "footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]],
-        "height": 20.0,
-    }
-    # ~111km away (1 degree latitude) — no realistic building height casts a
-    # shadow that far, regardless of direction.
-    far_away_building = {
-        "footprint": [[41.0, -74.0001], [41.0, -74.0000], [41.0006, -74.0000]],
-        "height": 20.0,
-    }
-
-    with patch(
-        "src.routing.precompute_shadow_polygons", wraps=routing_module.precompute_shadow_polygons
-    ) as mock_precompute:
-        compute_edge_shading(g, [nearby_building, far_away_building], 45.0, 180.0)
-
-    passed_buildings = mock_precompute.call_args[0][0]
-    assert nearby_building in passed_buildings
-    assert far_away_building not in passed_buildings
-
-
-def test_compute_edge_shading_no_edges_returns_empty_relevant_list():
-    g = nx.DiGraph()
-    g.add_node(1, lat=40.0, lng=-74.0)
-    compute_edge_shading(g, [{"footprint": [[40.0, -74.0]], "height": 20.0}], 45.0, 180.0)  # must not raise
-
-
-def test_relevant_buildings_non_positive_tan_returns_everything_unfiltered():
-    """_relevant_buildings_for_edges is only ever called after
-    compute_edge_shading's own sun_altitude <= 0 guard, so a non-positive
-    tan(sun_altitude) shouldn't come up in practice — but if it ever did
-    (this function is also unit-tested directly, bypassing that guard), a
-    degenerate reach calculation must fail open (keep everything) rather
-    than silently dropping buildings it can't reason about."""
-    g = build_graph(_simple_osm())
-    building = {
-        "footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]],
-        "height": 20.0,
-    }
-    assert routing_module._relevant_buildings_for_edges(g, [building], 0.0) == [building]
-
-
-def test_relevant_buildings_skips_zero_height():
-    g = build_graph(_simple_osm())
-    zero_height_building = {
-        "footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]],
-        "height": 0.0,
-    }
-    assert routing_module._relevant_buildings_for_edges(g, [zero_height_building], 45.0) == []
-
-
-def test_relevant_buildings_excludes_building_far_only_in_longitude():
-    """A building at the same latitude as the graph's edges but far away in
-    longitude must be excluded too — not just the north/south case."""
-    g = build_graph(_simple_osm())  # edge midpoints near lat 40.0005/40.0015, lng -74.000
-    far_in_longitude = {
-        "footprint": [[40.001, -75.0001], [40.001, -75.0000], [40.0011, -75.0000]],
-        "height": 20.0,
-    }
-    assert routing_module._relevant_buildings_for_edges(g, [far_in_longitude], 45.0) == []
-
-
 def test_compute_edge_shading_far_building_never_affects_result():
     """Same setup as above, but asserting on the actual output: a shading
     result that includes a too-far-to-matter building must be identical to
@@ -696,6 +625,89 @@ def test_compute_edge_shading_far_building_never_affects_result():
 
     assert g1.edges[1, 2]["shaded"] == g2.edges[1, 2]["shaded"]
     assert g1.edges[2, 3]["shaded"] == g2.edges[2, 3]["shaded"]
+
+
+# ── shadow polygon cache ────────────────────────────────────────────────────────
+
+def test_shadow_polygons_and_index_caches_by_buildings_identity_and_sun_bucket():
+    """A second call with the same buildings list object and a near-identical
+    sun position must reuse the cached polygons/index rather than rebuilding —
+    verified by mocking precompute_shadow_polygons and confirming it's only
+    invoked once across two calls."""
+    routing_module._shadow_polygon_cache.clear()
+    buildings = [{"footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]], "height": 20.0}]
+
+    with patch(
+        "src.routing.precompute_shadow_polygons", wraps=routing_module.precompute_shadow_polygons
+    ) as mock_precompute:
+        polygons1, index1 = routing_module._shadow_polygons_and_index(buildings, 45.0, 180.0)
+        # Sun angle drifted slightly (same minute, a few seconds later) — must
+        # still hit the cache since both round to the same 1° bucket.
+        polygons2, index2 = routing_module._shadow_polygons_and_index(buildings, 45.3, 180.2)
+
+    mock_precompute.assert_called_once()
+    assert polygons1 is polygons2
+    assert index1 is index2
+    routing_module._shadow_polygon_cache.clear()
+
+
+def test_shadow_polygons_and_index_different_buildings_object_misses_cache():
+    """Two distinct buildings list objects — even with identical content —
+    must not share a cache entry, since they aren't guaranteed to stay in
+    sync (e.g. one could be evicted and rebuilt from the DB independently)."""
+    routing_module._shadow_polygon_cache.clear()
+    buildings_a = [{"footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]], "height": 20.0}]
+    buildings_b = [{"footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]], "height": 20.0}]
+
+    with patch(
+        "src.routing.precompute_shadow_polygons", wraps=routing_module.precompute_shadow_polygons
+    ) as mock_precompute:
+        routing_module._shadow_polygons_and_index(buildings_a, 45.0, 180.0)
+        routing_module._shadow_polygons_and_index(buildings_b, 45.0, 180.0)
+
+    assert mock_precompute.call_count == 2
+    routing_module._shadow_polygon_cache.clear()
+
+
+def test_shadow_polygons_and_index_different_sun_bucket_misses_cache():
+    routing_module._shadow_polygon_cache.clear()
+    buildings = [{"footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]], "height": 20.0}]
+
+    with patch(
+        "src.routing.precompute_shadow_polygons", wraps=routing_module.precompute_shadow_polygons
+    ) as mock_precompute:
+        routing_module._shadow_polygons_and_index(buildings, 45.0, 180.0)
+        routing_module._shadow_polygons_and_index(buildings, 60.0, 180.0)
+
+    assert mock_precompute.call_count == 2
+    routing_module._shadow_polygon_cache.clear()
+
+
+def test_shadow_polygon_cache_evicts_oldest_beyond_cap():
+    routing_module._shadow_polygon_cache.clear()
+    for i in range(routing_module._SHADOW_POLYGON_CACHE_MAX_ENTRIES + 1):
+        routing_module._shadow_polygons_and_index([], float(i % 89) + 1, 180.0)
+    assert len(routing_module._shadow_polygon_cache) == routing_module._SHADOW_POLYGON_CACHE_MAX_ENTRIES
+    routing_module._shadow_polygon_cache.clear()
+
+
+def test_compute_edge_shading_reuses_cached_shadow_polygons():
+    """End-to-end: calling compute_edge_shading twice with the same buildings
+    list object must only build shadow polygons once."""
+    routing_module._shadow_polygon_cache.clear()
+    g1 = build_graph(_simple_osm())
+    g2 = build_graph(_simple_osm())
+    buildings = [{"footprint": [[40.0005, -74.0001], [40.0005, -74.0000], [40.0006, -74.0000]], "height": 20.0}]
+
+    with patch(
+        "src.routing.precompute_shadow_polygons", wraps=routing_module.precompute_shadow_polygons
+    ) as mock_precompute:
+        compute_edge_shading(g1, buildings, 45.0, 180.0)
+        compute_edge_shading(g2, buildings, 45.0, 180.0)
+
+    mock_precompute.assert_called_once()
+    assert g1.edges[1, 2]["shaded"] == g2.edges[1, 2]["shaded"]
+    routing_module._shadow_polygon_cache.clear()
 
 
 # ── apply_preference_weights ───────────────────────────────────────────────────

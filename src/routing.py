@@ -417,51 +417,44 @@ def nearest_node(graph: nx.DiGraph, lat: float, lng: float, candidates: set | No
     )
 
 
-def _relevant_buildings_for_edges(graph: nx.DiGraph, buildings: list, sun_altitude: float) -> list:
-    """Cheap bounding-box prefilter, run before the expensive shadow-polygon
-    geometry: a building can only possibly shade one of this graph's edges
-    if, even in the best case, its shadow could reach that edge's midpoint.
-    A building whose own footprint plus its maximum possible shadow length
-    (height / tan(sun_altitude) — an upper bound regardless of which
-    direction the shadow actually falls) doesn't come near the bounding box
-    of all edge midpoints can never affect the result, so building its full
-    shadow polygon is wasted work. The buildings list a route's bbox fetch
-    returns is sized for the road-search detour margin, not for what the
-    graph's edges actually need — most of it is typically irrelevant.
+# Shadow polygons (+ the spatial index built from them) depend only on a
+# building set and the sun's position — never on which specific graph is
+# asking — so they're cached across requests, not just within one. Keyed by
+# id(buildings) rather than the buildings themselves: the DB-backed buildings
+# cache (src/routers/shadow_analyze.py _fetch_buildings_from_db) already
+# returns the exact same list object for a repeated/contained bbox, so this
+# stays in sync automatically — if that cache entry is ever evicted, a fresh
+# buildings list (and thus a fresh id()) naturally misses here too, rather
+# than needing separate invalidation logic.
+#
+# Sun angle is bucketed to the nearest degree rather than matched exactly,
+# since it changes continuously and would almost never repeat otherwise.
+# This is a deliberate, small accuracy trade-off (confirmed acceptable with
+# Rachel, 2026-09-20): at typical daytime altitudes a 1° rounding shifts a
+# building's shadow length by roughly 2-4%, a few meters of positional
+# inaccuracy — smaller than other approximations already in the system
+# (flat-terrain assumption, simplified footprints).
+_SUN_ANGLE_BUCKET_DEG = 1.0
+_SHADOW_POLYGON_CACHE_MAX_ENTRIES = 20
+_shadow_polygon_cache: dict[tuple[int, float, float], tuple[list, object]] = {}
 
-    Degree buffers are computed generously (using cos of the building's own
-    latitude for the longitude buffer, which is always >= a flat 111km/degree
-    approximation) so this only ever risks keeping an irrelevant building,
-    never dropping a relevant one.
-    """
-    mid_lats = [data["mid_lat"] for _, _, data in graph.edges(data=True)]
-    mid_lngs = [data["mid_lng"] for _, _, data in graph.edges(data=True)]
-    if not mid_lats:
-        return []
-    env_min_lat, env_max_lat = min(mid_lats), max(mid_lats)
-    env_min_lng, env_max_lng = min(mid_lngs), max(mid_lngs)
 
-    tan_alt = math.tan(math.radians(sun_altitude))
-    if tan_alt <= 0:
-        return buildings
+def _bucket_sun_angle(degrees: float) -> float:
+    return round(degrees / _SUN_ANGLE_BUCKET_DEG) * _SUN_ANGLE_BUCKET_DEG
 
-    relevant = []
-    for building in buildings:
-        max_reach_m = building["height"] / tan_alt
-        if max_reach_m <= 0:
-            continue
-        footprint = building["footprint"]
-        b_lats = [c[0] for c in footprint]
-        b_lngs = [c[1] for c in footprint]
-        avg_lat = sum(b_lats) / len(b_lats)
-        lat_buffer_deg = max_reach_m / 111_000
-        lng_buffer_deg = max_reach_m / (111_000 * max(math.cos(math.radians(avg_lat)), 0.01))
-        if max(b_lats) + lat_buffer_deg < env_min_lat or min(b_lats) - lat_buffer_deg > env_max_lat:
-            continue
-        if max(b_lngs) + lng_buffer_deg < env_min_lng or min(b_lngs) - lng_buffer_deg > env_max_lng:
-            continue
-        relevant.append(building)
-    return relevant
+
+def _shadow_polygons_and_index(buildings: list, sun_altitude: float, sun_azimuth: float) -> tuple[list, object]:
+    key = (id(buildings), _bucket_sun_angle(sun_altitude), _bucket_sun_angle(sun_azimuth))
+    cached = _shadow_polygon_cache.get(key)
+    if cached is not None:
+        return cached
+
+    polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
+    index = build_shadow_polygon_index(polygons)
+    _shadow_polygon_cache[key] = (polygons, index)
+    if len(_shadow_polygon_cache) > _SHADOW_POLYGON_CACHE_MAX_ENTRIES:
+        del _shadow_polygon_cache[next(iter(_shadow_polygon_cache))]
+    return polygons, index
 
 
 def compute_edge_shading(
@@ -480,9 +473,9 @@ def compute_edge_shading(
         return
 
     precompute_start = time.perf_counter()
-    relevant_buildings = _relevant_buildings_for_edges(graph, buildings, sun_altitude)
-    shadow_polygons = precompute_shadow_polygons(relevant_buildings, sun_altitude, sun_azimuth)
-    shadow_index = build_shadow_polygon_index(shadow_polygons)
+    cache_key = (id(buildings), _bucket_sun_angle(sun_altitude), _bucket_sun_angle(sun_azimuth))
+    cache_hit = cache_key in _shadow_polygon_cache
+    shadow_polygons, shadow_index = _shadow_polygons_and_index(buildings, sun_altitude, sun_azimuth)
     precompute_s = time.perf_counter() - precompute_start
 
     lookup_start = time.perf_counter()
@@ -499,9 +492,9 @@ def compute_edge_shading(
     lookup_s = time.perf_counter() - lookup_start
 
     logger.info(
-        "compute_edge_shading timing buildings=%d relevant_buildings=%d "
+        "compute_edge_shading timing buildings=%d shadow_polygon_cache_hit=%s "
         "shadow_polygon_precompute=%.3fs edge_lookup=%.3fs (%d edges, %d unique midpoints)",
-        len(buildings), len(relevant_buildings), precompute_s, lookup_s, edge_count, len(shaded_cache),
+        len(buildings), cache_hit, precompute_s, lookup_s, edge_count, len(shaded_cache),
     )
 
 
