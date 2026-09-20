@@ -295,6 +295,88 @@ def test_fetch_roads_from_db_includes_matching_rows(db):
     }]
 
 
+def test_fetch_roads_from_db_caches_exact_bbox(db):
+    """A second call with the identical bbox must not re-hit MySQL — verified
+    by deleting the underlying row between calls and confirming the second
+    call still returns it (proof it came from cache, not a fresh query)."""
+    from src.models import OsmRoad
+    routing_module._db_roads_cache.clear()
+    road = OsmRoad(
+        region="la", min_lat=34.000, max_lat=34.001, min_lng=-118.300, max_lng=-118.299,
+        from_lat=34.000, from_lng=-118.300, to_lat=34.001, to_lng=-118.299,
+        distance_m=120.0, oneway=True,
+    )
+    db.add(road)
+    db.commit()
+
+    first = routing_module._fetch_roads_from_db("la", 33.999, -118.301, 34.002, -118.298)
+    assert len(first) == 1
+
+    db.query(OsmRoad).delete()
+    db.commit()
+
+    second = routing_module._fetch_roads_from_db("la", 33.999, -118.301, 34.002, -118.298)
+    assert second == first
+    routing_module._db_roads_cache.clear()
+
+
+def test_fetch_roads_from_db_does_not_reuse_containing_bbox(db):
+    """Unlike the buildings cache, this is deliberately exact-match only —
+    a smaller bbox fully inside an already-cached larger one must still hit
+    the DB fresh, not silently inherit the larger bbox's (potentially much
+    bigger, unrelated) road set."""
+    from src.models import OsmRoad
+    routing_module._db_roads_cache.clear()
+    road = OsmRoad(
+        region="la", min_lat=34.000, max_lat=34.001, min_lng=-118.300, max_lng=-118.299,
+        from_lat=34.000, from_lng=-118.300, to_lat=34.001, to_lng=-118.299,
+        distance_m=120.0, oneway=True,
+    )
+    db.add(road)
+    db.commit()
+
+    outer = routing_module._fetch_roads_from_db("la", 33.90, -118.40, 34.10, -118.20)
+    assert len(outer) == 1
+
+    db.query(OsmRoad).delete()
+    db.commit()
+
+    inner = routing_module._fetch_roads_from_db("la", 33.999, -118.301, 34.002, -118.298)
+    assert inner == []
+    routing_module._db_roads_cache.clear()
+
+
+def test_fetch_roads_from_db_cache_is_region_scoped(db):
+    from src.models import OsmRoad
+    routing_module._db_roads_cache.clear()
+    routing_module._db_roads_cache[("la", routing_module._road_bbox_key(33.90, -118.40, 34.10, -118.20))] = [
+        {"from_lat": 0.0, "from_lng": 0.0, "to_lat": 0.0, "to_lng": 0.0, "distance_m": 1.0, "oneway": False}
+    ]
+    road = OsmRoad(
+        region="nyc", min_lat=34.000, max_lat=34.001, min_lng=-118.300, max_lng=-118.299,
+        from_lat=34.000, from_lng=-118.300, to_lat=34.001, to_lng=-118.299,
+        distance_m=120.0, oneway=True,
+    )
+    db.add(road)
+    db.commit()
+
+    result = routing_module._fetch_roads_from_db("nyc", 33.90, -118.40, 34.10, -118.20)
+    assert len(result) == 1
+    assert result[0]["distance_m"] == 120.0
+    routing_module._db_roads_cache.clear()
+
+
+def test_fetch_roads_from_db_cache_evicts_oldest_beyond_cap(db):
+    routing_module._db_roads_cache.clear()
+    for i in range(routing_module._DB_ROADS_CACHE_MAX_ENTRIES + 1):
+        routing_module._fetch_roads_from_db("la", float(i), 0.0, float(i) + 1, 1.0)
+    assert len(routing_module._db_roads_cache) == routing_module._DB_ROADS_CACHE_MAX_ENTRIES
+    # The very first entry (s=0.0) must have been evicted.
+    first_key = ("la", routing_module._road_bbox_key(0.0, 0.0, 1.0, 1.0))
+    assert first_key not in routing_module._db_roads_cache
+    routing_module._db_roads_cache.clear()
+
+
 def test_fetch_road_graph_imported_region_uses_local_db(db):
     from src.models import OsmRoad
     db.add(OsmRoad(

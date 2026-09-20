@@ -218,7 +218,25 @@ def fetch_osm_road_network(s: float, w: float, n: float, e: float) -> dict:
         executor.shutdown(wait=False)
 
 
+# In-memory cache for the bulk-imported DB-backed road path — exact-bbox
+# match only, deliberately not a "containing bbox" reuse like the buildings
+# cache (src/routers/shadow_analyze.py _find_containing_db_buildings_bbox).
+# Extra buildings from a wider cached bbox are harmless (more real geometry
+# only improves shading accuracy), but extra ROADS change the routing graph
+# itself: nearest_node and the Dijkstra searches would then run against a
+# larger, unintended graph, which for a cache hit against a much bigger
+# unrelated cached bbox could make pathfinding slower, not faster — the
+# opposite of the point. Region-scoped for the same reason as the buildings
+# cache. Capped in count, not bytes, for the same reason too.
+_DB_ROADS_CACHE_MAX_ENTRIES = 20
+_db_roads_cache: dict[tuple[str, str], list[dict]] = {}
+
+
 def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) -> list[dict]:
+    key = (region, _road_bbox_key(s, w, n, e))
+    if key in _db_roads_cache:
+        return _db_roads_cache[key]
+
     db = SessionLocal()
     try:
         # See the identical hint on OsmBuilding's bbox query
@@ -241,7 +259,7 @@ def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) ->
             OsmRoad.min_lng <= e,
             OsmRoad.max_lng >= w,
         ).all()
-        return [
+        result = [
             {
                 "from_lat": from_lat, "from_lng": from_lng,
                 "to_lat": to_lat, "to_lng": to_lng,
@@ -251,6 +269,11 @@ def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) ->
         ]
     finally:
         db.close()
+
+    _db_roads_cache[key] = result
+    if len(_db_roads_cache) > _DB_ROADS_CACHE_MAX_ENTRIES:
+        del _db_roads_cache[next(iter(_db_roads_cache))]
+    return result
 
 
 def fetch_road_graph(s: float, w: float, n: float, e: float) -> nx.DiGraph:

@@ -34,7 +34,46 @@ RAY_DISTANCES_M: list[float] = [150.0, 400.0, 900.0, 2000.0, 4000.0]
 FLAT_TERRAIN_THRESHOLD_M: float = 20.0
 MAX_SUN_ALT_FOR_TERRAIN_DEG: float = 25.0
 
+# In-memory cache for the bulk-imported DB-backed path (Vienna etc.) — had
+# no caching at all before: every request re-queried MySQL from scratch,
+# even for an identical or fully-overlapping bbox a moment earlier. This
+# doesn't need the L2 SQLite persistence the live-Overpass cache below has
+# (this data is already durably persisted in MySQL itself; re-querying after
+# a process restart is cheap compared to Overpass's network round-trip).
+# Region-scoped since two regions can have numerically overlapping bboxes.
+# Capped in count, not bytes, since a single long-route entry can hold
+# 100k+ buildings — keep this modest.
+_DB_BUILDINGS_CACHE_MAX_ENTRIES = 20
+_db_buildings_bbox_cache: list[tuple[str, float, float, float, float, list]] = []
+
+
+def _remember_db_buildings_bbox(region: str, s: float, w: float, n: float, e: float, buildings: list) -> None:
+    _db_buildings_bbox_cache.append((region, s, w, n, e, buildings))
+    if len(_db_buildings_bbox_cache) > _DB_BUILDINGS_CACHE_MAX_ENTRIES:
+        del _db_buildings_bbox_cache[0]
+
+
+def _find_containing_db_buildings_bbox(region: str, s: float, w: float, n: float, e: float) -> list | None:
+    """A cached bbox that fully contains the query is a safe superset to
+    reuse as-is, not just an exact match: extra real buildings outside the
+    strictly-needed area can only make shading more accurate (a genuine
+    building's shadow polygon reflects real geometry regardless of which
+    bbox happened to fetch it), never less — and compute_edge_shading's own
+    relevant-buildings filter already trims the result back down to
+    whatever's actually near the graph's edges before the expensive
+    geometry work, so handing back extra buildings costs little downstream.
+    """
+    for cregion, cs, cw, cn, ce, buildings in reversed(_db_buildings_bbox_cache):
+        if cregion == region and cs <= s and cw <= w and cn >= n and ce >= e:
+            return buildings
+    return None
+
+
 def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float) -> list:
+    cached = _find_containing_db_buildings_bbox(region, s, w, n, e)
+    if cached is not None:
+        return cached
+
     db = SessionLocal()
     try:
         # MySQL's optimizer picks only the single-column region index here
@@ -68,6 +107,7 @@ def _fetch_buildings_from_db(region: str, s: float, w: float, n: float, e: float
             "_fetch_buildings_from_db timing region=%s db_query=%.3fs (%d rows) json_parse=%.3fs",
             region, query_s, len(rows), parse_s,
         )
+        _remember_db_buildings_bbox(region, s, w, n, e, result)
         return result
     finally:
         db.close()

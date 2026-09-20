@@ -301,6 +301,98 @@ def test_fetch_buildings_imported_region_empty_db_falls_back_to_overpass(db):
     _clear_cache(key)
 
 
+# ── DB-backed buildings cache (distinct from the L1/L1b/L2 Overpass caches) ────
+
+def test_fetch_buildings_from_db_caches_exact_bbox():
+    """A second call with the identical bbox must not re-hit MySQL — verified
+    by deleting the underlying row between calls and confirming the second
+    call still returns it (proof it came from cache, not a fresh query)."""
+    sa_module._db_buildings_bbox_cache.clear()
+    db = sa_module.SessionLocal()
+    building = OsmBuilding(
+        region="vienna", source="vienna_wfs",
+        min_lat=48.200, max_lat=48.201, min_lng=16.350, max_lng=16.351,
+        footprint=json.dumps([[48.200, 16.350], [48.200, 16.351], [48.201, 16.351]]),
+        height=15.0,
+    )
+    db.add(building)
+    db.commit()
+    db.close()
+
+    first = sa_module._fetch_buildings_from_db("vienna", 48.199, 16.349, 48.202, 16.352)
+    assert first == [{"footprint": [[48.200, 16.350], [48.200, 16.351], [48.201, 16.351]], "height": 15.0}]
+
+    db = sa_module.SessionLocal()
+    db.query(OsmBuilding).delete()
+    db.commit()
+    db.close()
+
+    second = sa_module._fetch_buildings_from_db("vienna", 48.199, 16.349, 48.202, 16.352)
+    assert second == first
+    sa_module._db_buildings_bbox_cache.clear()
+
+
+def test_fetch_buildings_from_db_reuses_containing_bbox():
+    """A smaller bbox fully inside an already-cached larger one reuses that
+    cached (superset) result instead of re-querying — extra real buildings
+    outside the strictly-needed area only improve accuracy, never harm it."""
+    sa_module._db_buildings_bbox_cache.clear()
+    db = sa_module.SessionLocal()
+    building = OsmBuilding(
+        region="vienna", source="vienna_wfs",
+        min_lat=48.200, max_lat=48.201, min_lng=16.350, max_lng=16.351,
+        footprint=json.dumps([[48.200, 16.350], [48.200, 16.351], [48.201, 16.351]]),
+        height=15.0,
+    )
+    db.add(building)
+    db.commit()
+    db.close()
+
+    outer = sa_module._fetch_buildings_from_db("vienna", 48.10, 16.20, 48.30, 16.50)
+    assert outer == [{"footprint": [[48.200, 16.350], [48.200, 16.351], [48.201, 16.351]], "height": 15.0}]
+
+    db = sa_module.SessionLocal()
+    db.query(OsmBuilding).delete()
+    db.commit()
+    db.close()
+
+    # Smaller bbox, strictly contained within the outer one just cached.
+    inner = sa_module._fetch_buildings_from_db("vienna", 48.199, 16.349, 48.202, 16.352)
+    assert inner == outer
+    sa_module._db_buildings_bbox_cache.clear()
+
+
+def test_fetch_buildings_from_db_cache_is_region_scoped():
+    """A numerically-identical bbox in a different region must not reuse
+    another region's cached buildings."""
+    sa_module._db_buildings_bbox_cache.clear()
+    sa_module._remember_db_buildings_bbox("vienna", 48.10, 16.20, 48.30, 16.50, [{"footprint": [], "height": 1.0}])
+
+    db = sa_module.SessionLocal()
+    building = OsmBuilding(
+        region="nyc", source="osm",
+        min_lat=48.15, max_lat=48.16, min_lng=16.25, max_lng=16.26,
+        footprint=json.dumps([[48.15, 16.25], [48.15, 16.26], [48.16, 16.26]]),
+        height=8.0,
+    )
+    db.add(building)
+    db.commit()
+    db.close()
+
+    result = sa_module._fetch_buildings_from_db("nyc", 48.10, 16.20, 48.30, 16.50)
+    assert result == [{"footprint": [[48.15, 16.25], [48.15, 16.26], [48.16, 16.26]], "height": 8.0}]
+    sa_module._db_buildings_bbox_cache.clear()
+
+
+def test_fetch_buildings_from_db_cache_evicts_oldest_beyond_cap():
+    sa_module._db_buildings_bbox_cache.clear()
+    for i in range(sa_module._DB_BUILDINGS_CACHE_MAX_ENTRIES + 1):
+        sa_module._remember_db_buildings_bbox("vienna", float(i), 0.0, float(i) + 1, 1.0, [])
+    assert len(sa_module._db_buildings_bbox_cache) == sa_module._DB_BUILDINGS_CACHE_MAX_ENTRIES
+    assert all(entry[1] != 0.0 for entry in sa_module._db_buildings_bbox_cache)
+    sa_module._db_buildings_bbox_cache.clear()
+
+
 def test_remember_bbox_evicts_oldest_beyond_cap():
     sa_module._overpass_bbox_cache.clear()
     for i in range(sa_module._BBOX_CACHE_MAX_ENTRIES + 1):

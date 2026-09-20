@@ -49,6 +49,18 @@ def clean_tables():
         if hasattr(storage, attr):
             getattr(storage, attr).clear()
             break
+
+    # The DB-backed road/building bbox caches (src.routing, src.routers.
+    # shadow_analyze) are new module-level state no existing test was
+    # written to account for — many reuse the same handful of bbox
+    # coordinates across tests, so without clearing this here, a later
+    # test could silently be served a cached result seeded by an earlier
+    # one instead of actually exercising the DB path.
+    import src.routing as _routing_module
+    import src.routers.shadow_analyze as _shadow_analyze_module
+    _routing_module._db_roads_cache.clear()
+    _shadow_analyze_module._db_buildings_bbox_cache.clear()
+
     yield
     db = TestingSessionLocal()
     for table in reversed(Base.metadata.sorted_tables):
