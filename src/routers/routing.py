@@ -10,6 +10,7 @@ from src.auth import get_current_user_optional
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routing import (
+    ROUTE_BBOX_MAX_PADDING_M,
     SHADE_DETOUR_MULTIPLIER,
     _haversine_m,
     _path_length_m,
@@ -75,6 +76,51 @@ class OptimizedRouteResponse(BaseModel):
     date: str
 
 
+def _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth):
+    """One fetch-graph-and-pathfind attempt for a given bbox. Split out from
+    optimized_route so it can be retried with a wider bbox when start/end
+    land in disconnected chunks of the first, narrower fetch (see the
+    retry-on-disconnect logic below) — a real reported case: Heldenplatz's
+    internal pedestrian paths came back as an isolated ~20-node island, not
+    reachable from the surrounding street grid within the default bbox,
+    even though it's obviously a real, well-connected central square.
+    Returns a dict of everything the caller needs either to finish building
+    a response or to log a rich diagnosis if even the retry fails.
+    """
+    timings = {}
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        road_future = pool.submit(_timed, fetch_road_graph, s, w, n, e)
+        bldg_future = pool.submit(_timed, _fetch_buildings_for_bbox, s, w, n, e)
+        graph, timings["road_graph_s"] = road_future.result()
+        if sun_altitude > 0:
+            bldg_result, timings["buildings_s"] = bldg_future.result()
+        else:
+            bldg_result, timings["buildings_s"] = [], None
+        buildings = bldg_result if bldg_result is not None else []
+
+    if graph.number_of_nodes() == 0:
+        return {"graph": graph, "buildings": buildings, "path_nodes": None,
+                "start_node": None, "end_node": None, "timings": timings, "empty_graph": True}
+
+    edge_weights_start = time.perf_counter()
+    compute_edge_weights(graph, buildings, sun_altitude, sun_azimuth, body.preference)
+    timings["edge_weights_s"] = time.perf_counter() - edge_weights_start
+
+    nearest_node_start = time.perf_counter()
+    candidates = nearest_node_candidates(graph)
+    start_node = nearest_node(graph, body.start[0], body.start[1], candidates=candidates)
+    end_node = nearest_node(graph, body.end[0], body.end[1], candidates=candidates)
+    timings["nearest_node_s"] = time.perf_counter() - nearest_node_start
+
+    optimized_path_start = time.perf_counter()
+    path_nodes = find_optimized_path(graph, start_node, end_node)
+    timings["optimized_path_s"] = time.perf_counter() - optimized_path_start
+
+    return {"graph": graph, "buildings": buildings, "path_nodes": path_nodes,
+            "start_node": start_node, "end_node": end_node, "timings": timings, "empty_graph": False}
+
+
 @router.post("/optimized-route", response_model=OptimizedRouteResponse)
 @limiter.limit(RATE_LIMIT_SHADOW)
 def optimized_route(
@@ -102,46 +148,51 @@ def optimized_route(
     bbox_start = time.perf_counter()
     all_coords = [body.start, body.end]
     straight_line_m = _haversine_m(body.start[0], body.start[1], body.end[0], body.end[1])
-    s, w, n, e = _route_bbox(all_coords, padding_m=route_bbox_padding_m(straight_line_m, max_detour))
+    padding_m = route_bbox_padding_m(straight_line_m, max_detour)
+    s, w, n, e = _route_bbox(all_coords, padding_m=padding_m)
     bbox_s = time.perf_counter() - bbox_start
 
-    # Fetch road network and buildings in parallel. Each is timed inside its
-    # own thread (_timed) rather than around the pool as a whole, since the
-    # pool's wall time alone would only tell us the max of the two, not each
-    # one's real cost.
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        road_future = pool.submit(_timed, fetch_road_graph, s, w, n, e)
-        bldg_future = pool.submit(_timed, _fetch_buildings_for_bbox, s, w, n, e)
-        graph, road_graph_s = road_future.result()
-        if sun_altitude > 0:
-            bldg_result, buildings_s = bldg_future.result()
-        else:
-            bldg_result, buildings_s = [], None
-        buildings = bldg_result if bldg_result is not None else []
+    attempt = _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth)
+    retried = False
 
-    if graph.number_of_nodes() == 0:
+    if attempt["empty_graph"]:
         raise HTTPException(status_code=400, detail="No road network found for this area")
 
-    edge_weights_start = time.perf_counter()
-    compute_edge_weights(graph, buildings, sun_altitude, sun_azimuth, body.preference)
-    edge_weights_s = time.perf_counter() - edge_weights_start
+    if not attempt["path_nodes"] and padding_m < ROUTE_BBOX_MAX_PADDING_M:
+        # Start/end came back in disconnected chunks of the graph — before
+        # giving up, retry once with the widest bbox this app ever uses, in
+        # case the missing connector (e.g. a plaza's internal paths linking
+        # to the surrounding street grid) just fell outside the narrower
+        # search area. Widening can only ever help here, never hurt.
+        logger.warning(
+            "optimized_route retrying with max bbox padding after disconnected first attempt: "
+            "preference=%s start=%s end=%s original_padding_m=%.0f",
+            body.preference, body.start, body.end, padding_m,
+        )
+        s, w, n, e = _route_bbox(all_coords, padding_m=ROUTE_BBOX_MAX_PADDING_M)
+        attempt = _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth)
+        retried = True
 
-    nearest_node_start = time.perf_counter()
-    candidates = nearest_node_candidates(graph)
-    start_node = nearest_node(graph, body.start[0], body.start[1], candidates=candidates)
-    end_node = nearest_node(graph, body.end[0], body.end[1], candidates=candidates)
-    nearest_node_s = time.perf_counter() - nearest_node_start
+        if attempt["empty_graph"]:
+            raise HTTPException(status_code=400, detail="No road network found for this area")
 
-    optimized_path_start = time.perf_counter()
-    path_nodes = find_optimized_path(graph, start_node, end_node)
-    optimized_path_s = time.perf_counter() - optimized_path_start
+    graph = attempt["graph"]
+    buildings = attempt["buildings"]
+    start_node = attempt["start_node"]
+    end_node = attempt["end_node"]
+    path_nodes = attempt["path_nodes"]
+    road_graph_s = attempt["timings"]["road_graph_s"]
+    buildings_s = attempt["timings"]["buildings_s"]
+    edge_weights_s = attempt["timings"]["edge_weights_s"]
+    nearest_node_s = attempt["timings"]["nearest_node_s"]
+    optimized_path_s = attempt["timings"]["optimized_path_s"]
 
     if not path_nodes:
         diagnosis = describe_no_path_found(graph, start_node, end_node)
         logger.warning(
-            "optimized_route no path found: preference=%s start=%s end=%s nodes=%d edges=%d "
+            "optimized_route no path found (retried=%s): preference=%s start=%s end=%s nodes=%d edges=%d "
             "num_components=%d component_sizes=%s start_component=%s end_component=%s same_component=%s",
-            body.preference, body.start, body.end, graph.number_of_nodes(), graph.number_of_edges(),
+            retried, body.preference, body.start, body.end, graph.number_of_nodes(), graph.number_of_edges(),
             diagnosis["num_components"], diagnosis["component_sizes"],
             diagnosis["start_component"], diagnosis["end_component"], diagnosis["same_component"],
         )
@@ -171,13 +222,14 @@ def optimized_route(
     simplify_s = time.perf_counter() - simplify_start
 
     logger.info(
-        "optimized_route timing preference=%s distance_m=%.0f nodes=%d edges=%d "
+        "optimized_route timing preference=%s distance_m=%.0f nodes=%d edges=%d retried=%s "
         "bbox=%.3fs road_graph=%.3fs buildings=%s edge_weights=%.3fs nearest_node=%.3fs "
         "optimized_path=%.3fs distance_path=%.3fs simplify=%.3fs total=%.3fs",
         body.preference,
         straight_line_m,
         graph.number_of_nodes(),
         graph.number_of_edges(),
+        retried,
         bbox_s,
         road_graph_s,
         f"{buildings_s:.3f}s" if buildings_s is not None else "skipped(sun-below-horizon)",

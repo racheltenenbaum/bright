@@ -1480,6 +1480,122 @@ _DISCONNECTED_OSM = {
 }
 
 
+_RETRY_DISCONNECTED_OSM = {
+    "elements": [
+        {"type": "node", "id": 1, "lat": 40.0000, "lon": -74.000},
+        {"type": "node", "id": 2, "lat": 40.0003, "lon": -74.000},
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+        {"type": "node", "id": 3, "lat": 40.0024, "lon": -74.000},
+        {"type": "node", "id": 4, "lat": 40.0027, "lon": -74.000},
+        {"type": "way", "id": 101, "nodes": [3, 4], "tags": {"highway": "residential"}},
+    ]
+}
+
+_CONNECTED_OSM = {
+    "elements": [
+        {"type": "node", "id": 1, "lat": 40.0000, "lon": -74.000},
+        {"type": "node", "id": 2, "lat": 40.0010, "lon": -74.000},
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+        {"type": "node", "id": 3, "lat": 40.0017, "lon": -74.000},
+        {"type": "node", "id": 4, "lat": 40.0027, "lon": -74.000},
+        {"type": "way", "id": 101, "nodes": [3, 4], "tags": {"highway": "residential"}},
+        # The connector — only present once a wide-enough bbox reaches it.
+        {"type": "node", "id": 5, "lat": 40.0013, "lon": -74.000},
+        {"type": "way", "id": 102, "nodes": [2, 5, 3], "tags": {"highway": "residential"}},
+    ]
+}
+
+
+# start/end kept close together (~300m) so the default padding is well
+# under ROUTE_BBOX_MAX_PADDING_M and a retry actually has room to trigger —
+# unlike the huge separation used above, which already forces max padding
+# on the very first attempt.
+_RETRY_START = [40.0000, -74.000]
+_RETRY_END = [40.0027, -74.000]
+
+
+def test_optimized_route_retries_with_wider_bbox_when_disconnected(client, auth_headers, caplog):
+    """A real reported case: Heldenplatz (a real, well-connected central
+    Vienna square) came back as an isolated ~20-node island, disconnected
+    from the main street network within the default search bbox — the app
+    must never give up with a hard error for something this clearly
+    reachable. If the narrow (default-padding) bbox comes back disconnected,
+    a second attempt with the widest bbox this app ever uses must be tried
+    before failing."""
+    def fetch_road_graph_side_effect(s, w, n, e):
+        # Only the wide retry bbox (padded to ROUTE_BBOX_MAX_PADDING_M,
+        # ~2000m) reaches far enough to include the connector node.
+        if (n - s) > 0.01:
+            return build_graph(_CONNECTED_OSM)
+        return build_graph(_RETRY_DISCONNECTED_OSM)
+
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_road_graph", side_effect=fetch_road_graph_side_effect),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        with caplog.at_level("WARNING"):
+            resp = client.post(
+                "/sun/optimized-route",
+                json={
+                    "start": _RETRY_START, "end": _RETRY_END,
+                    "datetime": "2026-05-24T14:00:00", "preference": "sun",
+                },
+                headers=auth_headers,
+            )
+    assert resp.status_code == 200
+    assert len(resp.json()["waypoints"]) > 0
+    assert any("retrying with max bbox padding" in r.message for r in caplog.records)
+
+
+def test_optimized_route_no_retry_when_wide_bbox_also_disconnected(client, auth_headers, caplog):
+    """If even the widened bbox can't connect them, this must still fail —
+    not retry forever — but the failure log must show retried=True so it's
+    clear the wider search was actually attempted."""
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_road_graph", return_value=build_graph(_RETRY_DISCONNECTED_OSM)),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        with caplog.at_level("WARNING"):
+            resp = client.post(
+                "/sun/optimized-route",
+                json={
+                    "start": _RETRY_START, "end": _RETRY_END,
+                    "datetime": "2026-05-24T14:00:00", "preference": "sun",
+                },
+                headers=auth_headers,
+            )
+    assert resp.status_code == 400
+    assert any("retried=True" in r.message for r in caplog.records)
+
+
+def test_optimized_route_retry_still_finds_no_road_network(client, auth_headers):
+    """The widened retry bbox can itself come back with zero roads (e.g. a
+    genuinely remote area) — must still surface the "no road network" error,
+    not crash or hang, even on the retry path specifically."""
+    def fetch_road_graph_side_effect(s, w, n, e):
+        if (n - s) > 0.01:
+            return build_graph({"elements": []})
+        return build_graph(_RETRY_DISCONNECTED_OSM)
+
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_road_graph", side_effect=fetch_road_graph_side_effect),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": _RETRY_START, "end": _RETRY_END,
+                "datetime": "2026-05-24T14:00:00", "preference": "sun",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 400
+    assert "No road network found" in resp.json()["detail"]
+
+
 def test_optimized_route_endpoint_no_path_found(client, auth_headers, caplog):
     """A production "No path found" (e.g. a route needing to cross a river/
     canal the search bbox didn't reach) used to be a bare 400 with no way to
