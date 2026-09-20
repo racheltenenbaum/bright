@@ -14,6 +14,7 @@ from src.routing import (
     fetch_road_graph,
     nearest_node,
     nearest_node_candidates,
+    describe_no_path_found,
     compute_edge_shading,
     compute_edge_weights,
     apply_preference_weights,
@@ -546,6 +547,35 @@ def test_nearest_node_reuses_candidates_without_recomputing_components():
     with patch("src.routing.nx.connected_components") as mock_cc:
         nearest_node(g, 40.0009, -74.000, candidates=candidates)
     mock_cc.assert_not_called()
+
+
+# ── describe_no_path_found ──────────────────────────────────────────────────────
+
+def test_describe_no_path_found_reports_separate_components():
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.000, "lon": -74.000},
+            {"type": "node", "id": 2, "lat": 40.0005, "lon": -74.000},
+            {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "residential"}},
+            {"type": "node", "id": 3, "lat": 41.000, "lon": -74.000},
+            {"type": "node", "id": 4, "lat": 41.0005, "lon": -74.000},
+            {"type": "way", "id": 101, "nodes": [3, 4], "tags": {"highway": "residential"}},
+        ]
+    }
+    g = build_graph(data)
+    result = describe_no_path_found(g, 1, 4)
+    assert result["num_components"] == 2
+    assert sorted(result["component_sizes"]) == [2, 2]
+    assert result["same_component"] is False
+    assert result["start_component"] != result["end_component"]
+
+
+def test_describe_no_path_found_same_component():
+    g = build_graph(_simple_osm())
+    result = describe_no_path_found(g, 1, 3)
+    assert result["num_components"] == 1
+    assert result["same_component"] is True
+    assert result["start_component"] == result["end_component"]
 
 
 # ── compute_edge_weights ──────────────────────────────────────────────────────
@@ -1450,24 +1480,31 @@ _DISCONNECTED_OSM = {
 }
 
 
-def test_optimized_route_endpoint_no_path_found(client, auth_headers):
+def test_optimized_route_endpoint_no_path_found(client, auth_headers, caplog):
+    """A production "No path found" (e.g. a route needing to cross a river/
+    canal the search bbox didn't reach) used to be a bare 400 with no way to
+    tell "genuinely disconnected" apart from any other cause — this must now
+    log enough to diagnose it without waiting to catch it live again."""
     with (
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
         patch("src.routing.fetch_osm_road_network", return_value=_DISCONNECTED_OSM),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
     ):
-        resp = client.post(
-            "/sun/optimized-route",
-            json={
-                "start": [40.000, -74.000],
-                "end": [41.0005, -74.000],
-                "datetime": "2026-05-24T14:00:00",
-                "preference": "sun",
-            },
-            headers=auth_headers,
-        )
+        with caplog.at_level("WARNING"):
+            resp = client.post(
+                "/sun/optimized-route",
+                json={
+                    "start": [40.000, -74.000],
+                    "end": [41.0005, -74.000],
+                    "datetime": "2026-05-24T14:00:00",
+                    "preference": "sun",
+                },
+                headers=auth_headers,
+            )
     assert resp.status_code == 400
     assert "No path found" in resp.json()["detail"]
+    assert any("no path found" in r.message.lower() for r in caplog.records)
+    assert any("same_component=False" in r.message for r in caplog.records)
 
 
 def test_optimized_route_endpoint_needs_wide_bbox_for_sideways_detour(client, auth_headers):

@@ -14,6 +14,7 @@ from src.routing import (
     _haversine_m,
     _path_length_m,
     compute_edge_weights,
+    describe_no_path_found,
     fetch_road_graph,
     find_distance_path,
     find_optimized_path,
@@ -136,6 +137,14 @@ def optimized_route(
     optimized_path_s = time.perf_counter() - optimized_path_start
 
     if not path_nodes:
+        diagnosis = describe_no_path_found(graph, start_node, end_node)
+        logger.warning(
+            "optimized_route no path found: preference=%s start=%s end=%s nodes=%d edges=%d "
+            "num_components=%d component_sizes=%s start_component=%s end_component=%s same_component=%s",
+            body.preference, body.start, body.end, graph.number_of_nodes(), graph.number_of_edges(),
+            diagnosis["num_components"], diagnosis["component_sizes"],
+            diagnosis["start_component"], diagnosis["end_component"], diagnosis["same_component"],
+        )
         raise HTTPException(status_code=400, detail="No path found between these locations")
 
     distance_path_start = time.perf_counter()

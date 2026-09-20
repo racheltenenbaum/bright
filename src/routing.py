@@ -417,6 +417,28 @@ def nearest_node(graph: nx.DiGraph, lat: float, lng: float, candidates: set | No
     )
 
 
+def describe_no_path_found(graph: nx.DiGraph, start_node: int, end_node: int) -> dict:
+    """Diagnostic-only — called on the "No path found" failure path (never
+    the hot path) to answer the question a bare 400 can't: are start and end
+    genuinely stranded in separate chunks of the fetched road network (e.g.
+    a river/canal crossing not reached by the search bbox), or something
+    else? Runs its own connected-components pass since nearest_node_candidates
+    already ran and returned by the time this is needed — recomputing here
+    only costs anything on the failure path, so it's not worth threading the
+    result through just to avoid it.
+    """
+    components = sorted(nx.connected_components(graph.to_undirected()), key=len, reverse=True)
+    start_component = next((i for i, c in enumerate(components) if start_node in c), None)
+    end_component = next((i for i, c in enumerate(components) if end_node in c), None)
+    return {
+        "num_components": len(components),
+        "component_sizes": [len(c) for c in components[:5]],
+        "start_component": start_component,
+        "end_component": end_component,
+        "same_component": start_component is not None and start_component == end_component,
+    }
+
+
 # Shadow polygons (+ the spatial index built from them) depend only on a
 # building set and the sun's position — never on which specific graph is
 # asking — so they're cached across requests, not just within one. Keyed by
