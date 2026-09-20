@@ -13,6 +13,14 @@ VALID_SPOT_ICONS = frozenset({
 })
 
 
+def _validate_password_strength(v: str) -> str:
+    if len(v) < 8:
+        raise ValueError("password must be at least 8 characters")
+    if not any(c.isdigit() for c in v):
+        raise ValueError("password must contain at least one number")
+    return v
+
+
 class UserCreate(BaseModel):
     first_name: str
     email: EmailStr
@@ -21,11 +29,7 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v):
-        if len(v) < 8:
-            raise ValueError("password must be at least 8 characters")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("password must contain at least one number")
-        return v
+        return _validate_password_strength(v)
 
 
 class UserResponse(BaseModel):
@@ -44,6 +48,20 @@ class UserResponse(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v):
+        return _validate_password_strength(v)
 
 
 class GoogleAuthRequest(BaseModel):

@@ -57,7 +57,7 @@ function placeMarkerSvg(color, name, selected) {
       `<path fill="${color}" stroke="#fff" stroke-width="1.5" d="M40 0C33.4 0 28 5.4 28 12c0 9 12 24 12 24S52 21 52 12C52 5.4 46.6 0 40 0z"/>` +
       `<circle cx="40" cy="12" r="5" fill="white"/>` +
       `<rect x="1" y="37" width="78" height="12" rx="3" fill="none"/>` +
-      `<text x="40" y="47" text-anchor="middle" font-size="8" font-family="Arial,sans-serif" fill="rgba(50,40,0,0.85)" font-weight="600">${label}</text>` +
+      `<text x="40" y="47" text-anchor="middle" font-size="8" font-family="Nunito,Arial,sans-serif" fill="rgba(50,40,0,0.85)" font-weight="600">${label}</text>` +
       `</svg>`
     )}`,
     scaledSize: new window.google.maps.Size(screenW, screenH),

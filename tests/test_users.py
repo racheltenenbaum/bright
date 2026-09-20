@@ -1,4 +1,7 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+
+import src.email_client as email_client_module
+import src.routers.users as users_module
 
 
 def test_register_success(client):
@@ -335,3 +338,144 @@ def test_oauth_only_account_cannot_password_login(client):
 
     response = client.post("/users/login", json={"email": "oauthonly@example.com", "password": "whatever123"})
     assert response.status_code == 401
+
+
+# --- Forgot / reset password ---
+
+def _mock_sendgrid_ok():
+    m = MagicMock()
+    m.raise_for_status = MagicMock()
+    return m
+
+
+def _patch_sendgrid_configured():
+    return (
+        patch.object(email_client_module, "_SENDGRID_API_KEY", "SG_test_key"),
+        patch.object(email_client_module, "_SENDGRID_FROM", "sender@example.com"),
+    )
+
+
+def test_forgot_password_unknown_email_returns_generic_ok(client):
+    with patch("requests.post") as mock_post:
+        response = client.post("/users/forgot-password", json={"email": "ghost@example.com"})
+    assert response.status_code == 202
+    mock_post.assert_not_called()
+
+
+def test_forgot_password_sends_reset_email_with_link(client, test_user):
+    mock_resp = _mock_sendgrid_ok()
+    p1, p2 = _patch_sendgrid_configured()
+    with p1, p2, patch("requests.post", return_value=mock_resp) as mock_post:
+        response = client.post("/users/forgot-password", json={"email": "test@example.com"})
+    assert response.status_code == 202
+    mock_post.assert_called_once()
+    _, kwargs = mock_post.call_args
+    assert kwargs["json"]["personalizations"] == [{"to": [{"email": "test@example.com"}]}]
+    text = kwargs["json"]["content"][0]["value"]
+    assert f"{users_module._APP_URL}/reset-password?token=" in text
+
+
+def test_forgot_password_oauth_only_account_sends_notice_not_reset_link(client):
+    idinfo = {"sub": "g-7", "email": "oauth2@example.com", "given_name": "O", "email_verified": True}
+    with patch("src.routers.users.verify_google_token", return_value=idinfo):
+        client.post("/users/auth/google", json={"id_token": "fake"})
+
+    mock_resp = _mock_sendgrid_ok()
+    p1, p2 = _patch_sendgrid_configured()
+    with p1, p2, patch("requests.post", return_value=mock_resp) as mock_post:
+        response = client.post("/users/forgot-password", json={"email": "oauth2@example.com"})
+    assert response.status_code == 202
+    _, kwargs = mock_post.call_args
+    text = kwargs["json"]["content"][0]["value"]
+    assert "Google" in text
+    assert "reset-password" not in text
+
+
+def test_forgot_password_apple_only_account_mentions_apple(client):
+    claims = {"sub": "a-9", "email": "appleonly@example.com"}
+    with patch("src.routers.users.verify_apple_token", return_value=claims):
+        client.post("/users/auth/apple", json={"id_token": "fake", "first_name": "App"})
+
+    mock_resp = _mock_sendgrid_ok()
+    p1, p2 = _patch_sendgrid_configured()
+    with p1, p2, patch("requests.post", return_value=mock_resp) as mock_post:
+        response = client.post("/users/forgot-password", json={"email": "appleonly@example.com"})
+    assert response.status_code == 202
+    _, kwargs = mock_post.call_args
+    assert "Apple" in kwargs["json"]["content"][0]["value"]
+
+
+def test_forgot_password_no_credentials_is_noop(client, test_user):
+    with patch.object(email_client_module, "_SENDGRID_API_KEY", None), \
+         patch("requests.post") as mock_post:
+        response = client.post("/users/forgot-password", json={"email": "test@example.com"})
+    assert response.status_code == 202
+    mock_post.assert_not_called()
+
+
+def test_forgot_password_oauth_only_no_credentials_is_noop(client):
+    idinfo = {"sub": "g-8", "email": "oauth3@example.com", "given_name": "O", "email_verified": True}
+    with patch("src.routers.users.verify_google_token", return_value=idinfo):
+        client.post("/users/auth/google", json={"id_token": "fake"})
+
+    with patch.object(email_client_module, "_SENDGRID_API_KEY", None), \
+         patch("requests.post") as mock_post:
+        response = client.post("/users/forgot-password", json={"email": "oauth3@example.com"})
+    assert response.status_code == 202
+    mock_post.assert_not_called()
+
+
+def test_forgot_password_email_failure_still_returns_generic_ok(client, test_user):
+    p1, p2 = _patch_sendgrid_configured()
+    with p1, p2, patch("requests.post", side_effect=Exception("boom")):
+        response = client.post("/users/forgot-password", json={"email": "test@example.com"})
+    assert response.status_code == 202
+
+
+def test_reset_password_success_allows_login_with_new_password(client, test_user):
+    from src.auth import create_password_reset_token
+
+    token = create_password_reset_token(test_user.id)
+    response = client.post("/users/reset-password", json={"token": token, "new_password": "newpass123"})
+    assert response.status_code == 200
+
+    old_login = client.post("/users/login", json={"email": "test@example.com", "password": "password123"})
+    assert old_login.status_code == 401
+    new_login = client.post("/users/login", json={"email": "test@example.com", "password": "newpass123"})
+    assert new_login.status_code == 200
+
+
+def test_reset_password_invalid_token_rejected(client):
+    response = client.post("/users/reset-password", json={"token": "garbage", "new_password": "newpass123"})
+    assert response.status_code == 400
+
+
+def test_reset_password_deleted_user_rejected(client, auth_headers, test_user):
+    from src.auth import create_password_reset_token
+
+    token = create_password_reset_token(test_user.id)
+    client.delete("/users/me", headers=auth_headers)
+    response = client.post("/users/reset-password", json={"token": token, "new_password": "newpass123"})
+    assert response.status_code == 400
+
+
+def test_reset_password_weak_password_rejected(client, test_user):
+    from src.auth import create_password_reset_token
+
+    token = create_password_reset_token(test_user.id)
+    response = client.post("/users/reset-password", json={"token": token, "new_password": "short"})
+    assert response.status_code == 422
+
+
+def test_reset_password_token_cannot_be_used_as_access_token(client, test_user):
+    from src.auth import create_password_reset_token
+
+    token = create_password_reset_token(test_user.id)
+    response = client.get("/routes", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+
+
+def test_access_token_cannot_be_used_as_reset_token(client, auth_headers):
+    access_token = auth_headers["Authorization"].split(" ")[1]
+    response = client.post("/users/reset-password", json={"token": access_token, "new_password": "newpass123"})
+    assert response.status_code == 400

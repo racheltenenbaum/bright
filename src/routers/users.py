@@ -1,18 +1,45 @@
+import logging
+import os
+
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-import bcrypt
 
 from src.database import get_db
-from src.limiter import limiter, RATE_LIMIT_LOGIN, RATE_LIMIT_REGISTER
+from src.email_client import send_email
+from src.limiter import limiter, RATE_LIMIT_LOGIN, RATE_LIMIT_REGISTER, RATE_LIMIT_FORGOT_PASSWORD
 from src.models import User, Route, Spot
 from src.schemas import (
     UserCreate, UserResponse, LoginRequest, TokenResponse, UpdateUserRequest,
-    GoogleAuthRequest, AppleAuthRequest,
+    GoogleAuthRequest, AppleAuthRequest, ForgotPasswordRequest, ResetPasswordRequest,
 )
-from src.auth import create_access_token, get_current_user
+from src.auth import create_access_token, get_current_user, create_password_reset_token, verify_password_reset_token
 from src.oauth import verify_google_token, verify_apple_token
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/users", tags=["users"])
+
+_APP_URL = os.getenv("APP_URL", "http://localhost:5173")
+
+
+def _send_password_reset_email(to_email: str, token: str) -> None:
+    reset_link = f"{_APP_URL}/reset-password?token={token}"
+    send_email(
+        to_email,
+        "Reset your bright password",
+        f"Reset your password here (link expires in 30 minutes): {reset_link}",
+    )
+
+
+def _send_oauth_only_notice_email(to_email: str, providers: list[str]) -> None:
+    how = " or ".join(providers)
+    send_email(
+        to_email,
+        "About your bright account",
+        f"This bright account signs in with {how} — it doesn't have a password to reset. "
+        f"Just use \"Continue with {providers[0]}\" on the login screen.",
+    )
 
 # Used when a new OAuth account has no real name to fall back on (Apple only
 # sends a name on the very first authorization, and a Hide My Email address
@@ -76,6 +103,42 @@ def login(request: Request, credentials: LoginRequest, db: Session = Depends(get
 
     token = create_access_token(user.id)
     return {"access_token": token, "token_type": "bearer", "user": user}
+
+
+@router.post("/forgot-password", status_code=202)
+@limiter.limit(RATE_LIMIT_FORGOT_PASSWORD)
+def forgot_password(request: Request, body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    # Always returns the same response regardless of what's found, so the
+    # endpoint can't be used to enumerate registered emails — only the
+    # emailed content (seen only by whoever owns that inbox) differs.
+    user = db.query(User).filter(User.email == body.email).first()
+    if user:
+        try:
+            if user.hashed_password:
+                token = create_password_reset_token(user.id)
+                _send_password_reset_email(user.email, token)
+            else:
+                providers = []
+                if user.google_sub:
+                    providers.append("Google")
+                if user.apple_sub:
+                    providers.append("Apple")
+                _send_oauth_only_notice_email(user.email, providers or ["Google"])
+        except Exception:
+            logger.exception("Failed to send forgot-password email")
+    return {"ok": True}
+
+
+@router.post("/reset-password")
+@limiter.limit(RATE_LIMIT_FORGOT_PASSWORD)
+def reset_password(request: Request, body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user_id = verify_password_reset_token(body.token)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    user.hashed_password = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/auth/google", response_model=TokenResponse)

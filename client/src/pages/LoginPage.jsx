@@ -46,7 +46,11 @@ export default function LoginPage() {
             <label>Password</label>
             <input name="password" type="password" value={form.password} onChange={handleChange} required />
           </div>
-          {error && <p style={{ color: "#C0392B", margin: "0 0 12px", fontSize: "0.85em" }}>{error}</p>}
+          {error && (
+            <p style={{ color: "#C0392B", margin: "0 0 12px", fontSize: "0.85em" }}>
+              {error} — <Link to="/forgot-password" state={{ email: form.email }}>Forgot password?</Link>
+            </p>
+          )}
           <button type="submit" style={{ width: "100%", padding: "0.65em", fontSize: "0.95em", marginTop: "6px" }}>
             to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
           </button>

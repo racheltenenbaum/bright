@@ -8,6 +8,8 @@ import { track } from "./analytics";
 const HomePage = lazy(() => import("./pages/HomePage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const PlanRoutePage = lazy(() => import("./pages/PlanRoutePage"));
 const MyRoutesPage = lazy(() => import("./pages/MyRoutesPage"));
 const MyAccountPage = lazy(() => import("./pages/MyAccountPage"));
@@ -81,6 +83,8 @@ function Layout() {
             <Route path="/share/:token" element={<SharedRoutePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             {/* Plan Route works anonymously — an account is only needed to
                 save a route/spot, not to use the app itself. */}
             <Route path="/plan" element={<PlanRoutePage />} />

@@ -10,6 +10,7 @@ os.environ["RATE_LIMIT_LOGIN"] = "3/minute"
 os.environ["RATE_LIMIT_REGISTER"] = "3/minute"
 os.environ["RATE_LIMIT_WEATHER"] = "3/minute"
 os.environ["RATE_LIMIT_SHADOW"] = "3/minute"
+os.environ["RATE_LIMIT_FORGOT_PASSWORD"] = "3/minute"
 
 import pytest
 import bcrypt

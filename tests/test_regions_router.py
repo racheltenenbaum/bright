@@ -66,28 +66,31 @@ def test_notify_me_saved_even_if_email_fails(client, auth_headers, db):
     assert db.query(RegionNotifyRequest).count() == 1
 
 
-def test_send_notify_confirmation_email_resend_configured():
+def test_send_notify_confirmation_email_sendgrid_configured():
     from unittest.mock import MagicMock, patch
+    import src.email_client as email_client_module
     import src.routers.regions as regions_module
 
     mock_resp = MagicMock()
     mock_resp.raise_for_status = MagicMock()
-    with patch.object(regions_module, "_RESEND_API_KEY", "re_test_key"), \
+    with patch.object(email_client_module, "_SENDGRID_API_KEY", "SG_test_key"), \
+         patch.object(email_client_module, "_SENDGRID_FROM", "sender@example.com"), \
          patch("requests.post", return_value=mock_resp) as mock_post:
         regions_module._send_notify_confirmation_email("someone@example.com")
     mock_post.assert_called_once()
     _, kwargs = mock_post.call_args
-    assert kwargs["headers"]["Authorization"] == "Bearer re_test_key"
-    assert kwargs["json"]["to"] == "someone@example.com"
-    assert kwargs["json"]["from"] == regions_module._RESEND_FROM
+    assert kwargs["headers"]["Authorization"] == "Bearer SG_test_key"
+    assert kwargs["json"]["personalizations"] == [{"to": [{"email": "someone@example.com"}]}]
+    assert kwargs["json"]["from"] == {"email": "sender@example.com"}
     mock_resp.raise_for_status.assert_called_once()
 
 
 def test_send_notify_confirmation_email_no_credentials_is_noop():
     from unittest.mock import patch
+    import src.email_client as email_client_module
     import src.routers.regions as regions_module
 
-    with patch.object(regions_module, "_RESEND_API_KEY", None), \
+    with patch.object(email_client_module, "_SENDGRID_API_KEY", None), \
          patch("requests.post") as mock_post:
         regions_module._send_notify_confirmation_email("someone@example.com")
     mock_post.assert_not_called()

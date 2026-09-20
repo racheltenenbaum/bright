@@ -13,6 +13,7 @@ if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY environment variable is not set")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 30
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/users/login")
 # auto_error=False: resolves to None instead of raising 401 when no
@@ -31,9 +32,35 @@ def create_access_token(user_id: int) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def create_password_reset_token(user_id: int) -> str:
+    payload = {
+        "sub": str(user_id),
+        # Marks this as a single-purpose token so it can't double as a
+        # bearer access token (get_current_user rejects anything carrying a
+        # "purpose" claim) — a leaked reset-email link must not itself grant
+        # login access to the account.
+        "purpose": "password_reset",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_password_reset_token(token: str) -> int:
+    """Returns the user id encoded in a password-reset token, or raises 400."""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("purpose") != "password_reset":
+            raise JWTError("not a password reset token")
+        return int(payload["sub"])
+    except (JWTError, KeyError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("purpose"):
+            raise JWTError("not an access token")
         user_id = int(payload["sub"])
     except (JWTError, KeyError):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -57,6 +84,8 @@ def get_current_user_optional(
         return None
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("purpose"):
+            return None
         user_id = int(payload["sub"])
     except (JWTError, KeyError):
         return None
