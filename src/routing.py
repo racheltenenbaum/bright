@@ -417,17 +417,23 @@ def nearest_node(graph: nx.DiGraph, lat: float, lng: float, candidates: set | No
     )
 
 
-def describe_no_path_found(graph: nx.DiGraph, start_node: int, end_node: int) -> dict:
-    """Diagnostic-only — called on the "No path found" failure path (never
-    the hot path) to answer the question a bare 400 can't: are start and end
-    genuinely stranded in separate chunks of the fetched road network (e.g.
-    a river/canal crossing not reached by the search bbox), or something
-    else? Runs its own connected-components pass since nearest_node_candidates
-    already ran and returned by the time this is needed — recomputing here
-    only costs anything on the failure path, so it's not worth threading the
-    result through just to avoid it.
+def connected_components_by_size(graph: nx.DiGraph) -> list[set]:
+    """All connected components of graph, largest first. Only ever called on
+    the "No path found" failure path (never the hot path) — this pass isn't
+    worth threading through from nearest_node_candidates just to avoid
+    recomputing it once on failure.
     """
-    components = sorted(nx.connected_components(graph.to_undirected()), key=len, reverse=True)
+    return sorted(nx.connected_components(graph.to_undirected()), key=len, reverse=True)
+
+
+def describe_no_path_found(graph: nx.DiGraph, start_node: int, end_node: int) -> dict:
+    """Diagnostic-only — answers the question a bare 400 can't: are start
+    and end genuinely stranded in separate chunks of the fetched road
+    network (e.g. a river/canal crossing not reached by the search bbox, or
+    real missing OSM path data for a plaza — a real reported case, either
+    cause), or something else?
+    """
+    components = connected_components_by_size(graph)
     start_component = next((i for i, c in enumerate(components) if start_node in c), None)
     end_component = next((i for i, c in enumerate(components) if end_node in c), None)
     return {
@@ -437,6 +443,18 @@ def describe_no_path_found(graph: nx.DiGraph, start_node: int, end_node: int) ->
         "end_component": end_component,
         "same_component": start_component is not None and start_component == end_component,
     }
+
+
+def nearest_node_in_set(graph: nx.DiGraph, lat: float, lng: float, node_set: set) -> int:
+    """Like nearest_node, but restricted to an explicit node set rather than
+    nearest_node_candidates' own "big enough" component filter — used to
+    snap specifically into the graph's single largest component, when a
+    plain nearest_node pick landed in a smaller, disconnected one instead.
+    """
+    return min(
+        node_set,
+        key=lambda n: _haversine_m(lat, lng, graph.nodes[n]["lat"], graph.nodes[n]["lng"]),
+    )
 
 
 # Shadow polygons (+ the spatial index built from them) depend only on a

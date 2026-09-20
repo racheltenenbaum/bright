@@ -84,9 +84,14 @@ class RoadHandler(osmium.SimpleHandler):
     street grid on import — a real reported case, confirmed live: several
     Hofburg-area plazas near Heldenplatz are exactly this pattern.
     """
-    def __init__(self, bbox: tuple[float, float, float, float] | None):
+    def __init__(self, bbox: tuple[float, float, float, float] | None, areas_only: bool = False):
         super().__init__()
         self.bbox = bbox  # (s, w, n, e) — skip edges entirely outside this, if given
+        # areas_only: skip plain way() edges entirely — for a targeted patch
+        # import into a region that's already fully imported, so only the
+        # newly-handled relation/area edges get written, with zero risk of
+        # duplicating the way edges that region already has.
+        self.areas_only = areas_only
         self.edges: list[dict] = []
         self.skipped_invalid_location = 0
 
@@ -110,6 +115,8 @@ class RoadHandler(osmium.SimpleHandler):
             })
 
     def way(self, w):
+        if self.areas_only:
+            return
         if not _allowed_highway(w.tags):
             return
         oneway = w.tags.get("oneway") == "yes"
@@ -155,8 +162,14 @@ def _flush(db, region: str, edges: list[dict]) -> None:
     db.commit()
 
 
-def run_import(pbf_path: str, region: str, bbox: tuple[float, float, float, float] | None, dry_run: bool) -> int:
-    handler = RoadHandler(bbox)
+def run_import(
+    pbf_path: str,
+    region: str,
+    bbox: tuple[float, float, float, float] | None,
+    dry_run: bool,
+    areas_only: bool = False,
+) -> int:
+    handler = RoadHandler(bbox, areas_only=areas_only)
     handler.apply_file(pbf_path, locations=True)
 
     print(f"parsed {len(handler.edges)} edges "
@@ -193,10 +206,16 @@ if __name__ == "__main__":
     parser.add_argument("--bbox", help="s,w,n,e — import just one area (validation)")
     parser.add_argument("--full", action="store_true", help="import the whole extract, no bbox filter")
     parser.add_argument("--dry-run", action="store_true", help="parse and report counts only, no DB writes")
+    parser.add_argument(
+        "--areas-only", action="store_true",
+        help="skip plain way() edges — for a targeted patch into an already-fully-imported "
+             "region, so only newly-handled multipolygon-relation edges get written, with no "
+             "risk of duplicating way edges the region already has",
+    )
     args = parser.parse_args()
 
     if not args.bbox and not args.full:
         parser.error("specify --bbox s,w,n,e for a test area, or --full for the whole extract")
 
     bbox = tuple(map(float, args.bbox.split(","))) if args.bbox else None
-    run_import(args.pbf_path, args.region, bbox, args.dry_run)
+    run_import(args.pbf_path, args.region, bbox, args.dry_run, areas_only=args.areas_only)

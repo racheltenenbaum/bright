@@ -578,6 +578,32 @@ def test_describe_no_path_found_same_component():
     assert result["start_component"] == result["end_component"]
 
 
+# ── connected_components_by_size / nearest_node_in_set ──────────────────────────
+
+def test_connected_components_by_size_orders_largest_first():
+    data = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.000, "lon": -74.000},
+            {"type": "node", "id": 2, "lat": 40.0005, "lon": -74.000},
+            {"type": "node", "id": 3, "lat": 40.0010, "lon": -74.000},
+            {"type": "way", "id": 100, "nodes": [1, 2, 3], "tags": {"highway": "residential"}},
+            {"type": "node", "id": 4, "lat": 41.000, "lon": -74.000},
+            {"type": "node", "id": 5, "lat": 41.0005, "lon": -74.000},
+            {"type": "way", "id": 101, "nodes": [4, 5], "tags": {"highway": "residential"}},
+        ]
+    }
+    g = build_graph(data)
+    components = routing_module.connected_components_by_size(g)
+    assert [len(c) for c in components] == [3, 2]
+
+
+def test_nearest_node_in_set_restricted_to_given_nodes():
+    g = build_graph(_simple_osm())  # nodes 1,2,3 at lat 40.000/40.001/40.002
+    # Closest overall is node 3, but restricting the candidate set to {1, 2}
+    # must pick node 2 (closer of the two allowed) instead.
+    assert routing_module.nearest_node_in_set(g, 40.002, -74.000, {1, 2}) == 2
+
+
 # ── compute_edge_weights ──────────────────────────────────────────────────────
 
 def test_compute_edge_weights_sun_prefers_sunny():
@@ -1568,6 +1594,84 @@ def test_optimized_route_no_retry_when_wide_bbox_also_disconnected(client, auth_
             )
     assert resp.status_code == 400
     assert any("retried=True" in r.message for r in caplog.records)
+
+
+_FALLBACK_OSM = {
+    "elements": [
+        # Main, well-connected component (6 nodes — above
+        # MIN_COMPONENT_SIZE_FOR_NEAREST_NODE, so it's real "big" nearest_node
+        # territory, not the small-graph fallback-to-all-nodes exception).
+        {"type": "node", "id": 1, "lat": 40.0000, "lon": -74.000},
+        {"type": "node", "id": 2, "lat": 40.0002, "lon": -74.000},
+        {"type": "node", "id": 3, "lat": 40.0004, "lon": -74.000},
+        {"type": "node", "id": 4, "lat": 40.0006, "lon": -74.000},
+        {"type": "node", "id": 5, "lat": 40.0008, "lon": -74.000},
+        {"type": "node", "id": 6, "lat": 40.0010, "lon": -74.000},
+        {"type": "way", "id": 100, "nodes": [1, 2, 3, 4, 5, 6], "tags": {"highway": "residential"}},
+        # A smaller but still "big enough" (5-node) isolated component, far
+        # from the main one — a real Heldenplatz-shaped case: OSM genuinely
+        # has no path data connecting it, not a bbox-too-narrow problem.
+        {"type": "node", "id": 10, "lat": 41.0000, "lon": -74.000},
+        {"type": "node", "id": 11, "lat": 41.0002, "lon": -74.000},
+        {"type": "node", "id": 12, "lat": 41.0004, "lon": -74.000},
+        {"type": "node", "id": 13, "lat": 41.0006, "lon": -74.000},
+        {"type": "node", "id": 14, "lat": 41.0008, "lon": -74.000},
+        {"type": "way", "id": 101, "nodes": [10, 11, 12, 13, 14], "tags": {"highway": "residential"}},
+    ]
+}
+
+
+def test_optimized_route_falls_back_to_nearest_reachable_point(client, auth_headers, caplog):
+    """A real reported case: Heldenplatz's open plaza surface genuinely has
+    no OSM path data crossing it — not fixable by widening the search bbox
+    or handling OSM relations better, since there's nothing there to find.
+    Rachel's explicit requirement: this must never surface as a hard error
+    for something this clearly reachable in reality. When the destination
+    lands in a small isolated component even after the widened retry, the
+    route must fall back to the nearest point in the graph's main connected
+    component and still return 200, not 400."""
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_road_graph", return_value=build_graph(_FALLBACK_OSM)),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        with caplog.at_level("WARNING"):
+            resp = client.post(
+                "/sun/optimized-route",
+                json={
+                    "start": [40.0000, -74.000], "end": [41.0004, -74.000],
+                    "datetime": "2026-05-24T14:00:00", "preference": "sun",
+                },
+                headers=auth_headers,
+            )
+    assert resp.status_code == 200
+    waypoints = resp.json()["waypoints"]
+    assert len(waypoints) > 0
+    # The route must land in the main component (near lat 40.00x), not the
+    # isolated one (lat 41.00x) — confirms the fallback actually rerouted
+    # to a reachable point instead of just silently returning garbage.
+    assert all(lat < 41.0 for lat, lng in waypoints)
+    assert any("falling back to nearest reachable point" in r.message for r in caplog.records)
+
+
+def test_optimized_route_fallback_declines_for_too_small_main_component(client, auth_headers):
+    """The fallback must not engage when even the "main" component is too
+    small to be meaningful (e.g. tiny test-scale graphs) — must still fail
+    cleanly with a 400, not silently reroute to an arbitrary tiny island."""
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routers.routing.fetch_road_graph", return_value=build_graph(_RETRY_DISCONNECTED_OSM)),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={
+                "start": _RETRY_START, "end": _RETRY_END,
+                "datetime": "2026-05-24T14:00:00", "preference": "sun",
+            },
+            headers=auth_headers,
+        )
+    assert resp.status_code == 400
 
 
 def test_optimized_route_retry_still_finds_no_road_network(client, auth_headers):

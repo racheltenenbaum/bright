@@ -10,17 +10,20 @@ from src.auth import get_current_user_optional
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import User
 from src.routing import (
+    MIN_COMPONENT_SIZE_FOR_NEAREST_NODE,
     ROUTE_BBOX_MAX_PADDING_M,
     SHADE_DETOUR_MULTIPLIER,
     _haversine_m,
     _path_length_m,
     compute_edge_weights,
+    connected_components_by_size,
     describe_no_path_found,
     fetch_road_graph,
     find_distance_path,
     find_optimized_path,
     nearest_node,
     nearest_node_candidates,
+    nearest_node_in_set,
     nodes_to_coords,
     route_bbox_padding_m,
     simplify_path,
@@ -187,6 +190,40 @@ def optimized_route(
     nearest_node_s = attempt["timings"]["nearest_node_s"]
     optimized_path_s = attempt["timings"]["optimized_path_s"]
 
+    fell_back = False
+    if not path_nodes:
+        # Last resort before giving up entirely: a real, well-connected
+        # destination (e.g. Heldenplatz — a real reported case) can still
+        # land in a small isolated component if OSM genuinely has no path
+        # data crossing that specific spot (not fixable by better relation
+        # handling — there's nothing there to handle). Rather than error
+        # out on something this clearly reachable in reality, snap
+        # whichever endpoint isn't in the graph's single largest component
+        # to the nearest node that IS, and try once more. The user's route
+        # then ends at the nearest real, connected point rather than the
+        # exact pin — a reasonable trade for never hard-failing on this.
+        components = connected_components_by_size(graph)
+        main_component = components[0] if components else set()
+        if len(main_component) >= MIN_COMPONENT_SIZE_FOR_NEAREST_NODE:
+            fallback_start = (
+                start_node if start_node in main_component
+                else nearest_node_in_set(graph, body.start[0], body.start[1], main_component)
+            )
+            fallback_end = (
+                end_node if end_node in main_component
+                else nearest_node_in_set(graph, body.end[0], body.end[1], main_component)
+            )
+            fallback_path = find_optimized_path(graph, fallback_start, fallback_end)
+            if fallback_path:
+                logger.warning(
+                    "optimized_route falling back to nearest reachable point: "
+                    "preference=%s start=%s end=%s start_snapped=%s end_snapped=%s",
+                    body.preference, body.start, body.end,
+                    fallback_start != start_node, fallback_end != end_node,
+                )
+                start_node, end_node, path_nodes = fallback_start, fallback_end, fallback_path
+                fell_back = True
+
     if not path_nodes:
         diagnosis = describe_no_path_found(graph, start_node, end_node)
         logger.warning(
@@ -222,7 +259,7 @@ def optimized_route(
     simplify_s = time.perf_counter() - simplify_start
 
     logger.info(
-        "optimized_route timing preference=%s distance_m=%.0f nodes=%d edges=%d retried=%s "
+        "optimized_route timing preference=%s distance_m=%.0f nodes=%d edges=%d retried=%s fell_back=%s "
         "bbox=%.3fs road_graph=%.3fs buildings=%s edge_weights=%.3fs nearest_node=%.3fs "
         "optimized_path=%.3fs distance_path=%.3fs simplify=%.3fs total=%.3fs",
         body.preference,
@@ -230,6 +267,7 @@ def optimized_route(
         graph.number_of_nodes(),
         graph.number_of_edges(),
         retried,
+        fell_back,
         bbox_s,
         road_graph_s,
         f"{buildings_s:.3f}s" if buildings_s is not None else "skipped(sun-below-horizon)",

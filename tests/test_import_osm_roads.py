@@ -78,6 +78,19 @@ def test_multipolygon_plaza_becomes_routable_and_connects_to_surrounding_ways(tm
     )
 
 
+def test_areas_only_skips_plain_way_edges(tmp_path):
+    """For a targeted patch into a region that's already fully imported —
+    only the newly-handled relation/area edges should be written, so a
+    re-run can't duplicate way edges the region already has."""
+    osm_path = _write_plaza_osm(tmp_path)
+    handler = RoadHandler(bbox=None, areas_only=True)
+    handler.apply_file(osm_path, locations=True)
+
+    # Only the 4 plaza-ring edges — the footway (a plain way) must be skipped.
+    assert len(handler.edges) == 4
+    assert not any(e["from_lat"] == 48.206 or e["to_lat"] == 48.206 for e in handler.edges)
+
+
 def test_multipolygon_without_allowed_highway_tag_is_skipped(tmp_path):
     """A multipolygon relation for something irrelevant (e.g. a building
     footprint, or a highway type not in ALLOWED_HIGHWAY_TYPES) must not
