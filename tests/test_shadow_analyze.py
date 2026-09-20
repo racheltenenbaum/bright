@@ -871,3 +871,44 @@ def test_shadow_analyze_batch_works_without_auth(client):
                     "routes": [ROUTE], "datetime": DATETIME
                 })
     assert response.status_code == 200
+
+
+# ── /sun/buildings-near (diagnostic) ────────────────────────────────────────────
+
+def test_buildings_near_returns_real_data(client):
+    with patch(
+        "src.routers.shadow_analyze._fetch_buildings_for_bbox",
+        return_value=[{"footprint": [[48.19, 16.36]], "height": 18.5}],
+    ) as mock_fetch:
+        response = client.get("/sun/buildings-near", params={"lat": 48.19, "lng": 16.36})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["buildings"] == [{"footprint": [[48.19, 16.36]], "height": 18.5}]
+    # bbox passed to the fetch must actually bracket the query point
+    s, w, n, e = mock_fetch.call_args[0]
+    assert s < 48.19 < n
+    assert w < 16.36 < e
+
+
+def test_buildings_near_caps_radius(client):
+    from src.routers.shadow_analyze import _BUILDINGS_NEAR_MAX_RADIUS_M
+    with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=[]) as mock_fetch:
+        client.get("/sun/buildings-near", params={"lat": 48.19, "lng": 16.36, "radius_m": 10_000.0})
+    s, w, n, e = mock_fetch.call_args[0]
+    capped_delta = _BUILDINGS_NEAR_MAX_RADIUS_M / 111_000
+    assert abs((n - 48.19) - capped_delta) < 1e-6
+
+
+def test_buildings_near_caps_result_count(client):
+    from src.routers.shadow_analyze import _BUILDINGS_NEAR_MAX_RESULTS
+    many = [{"footprint": [], "height": 1.0}] * (_BUILDINGS_NEAR_MAX_RESULTS + 10)
+    with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=many):
+        response = client.get("/sun/buildings-near", params={"lat": 48.19, "lng": 16.36})
+    assert len(response.json()["buildings"]) == _BUILDINGS_NEAR_MAX_RESULTS
+
+
+def test_buildings_near_handles_none_result(client):
+    with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=None):
+        response = client.get("/sun/buildings-near", params={"lat": 48.19, "lng": 16.36})
+    assert response.status_code == 200
+    assert response.json()["buildings"] == []

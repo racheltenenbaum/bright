@@ -539,3 +539,30 @@ def shadow_analyze_batch(
         time=time_str,
         routes=route_results,
     )
+
+
+class BuildingsNearResponse(BaseModel):
+    buildings: list[dict]
+
+
+# Diagnostic-only endpoint: exposes the real building footprint/height data
+# the shading computation actually used near a point, so a shading-accuracy
+# report can be checked against real data (does the building exist in our
+# import, is its height plausible) without needing raw DB access — added
+# 2026-09-20 to investigate a report of routes showing "sunny" for streets
+# that were actually shaded. Radius and result count are capped so this
+# can't be used to bulk-scrape the building dataset.
+_BUILDINGS_NEAR_MAX_RADIUS_M = 150.0
+_BUILDINGS_NEAR_MAX_RESULTS = 50
+
+
+@router.get("/buildings-near", response_model=BuildingsNearResponse)
+@limiter.limit(RATE_LIMIT_SHADOW)
+def buildings_near(request: Request, lat: float, lng: float, radius_m: float = 60.0):
+    radius_m = min(max(radius_m, 10.0), _BUILDINGS_NEAR_MAX_RADIUS_M)
+    delta_lat = radius_m / 111_000
+    delta_lng = radius_m / (111_000 * max(math.cos(math.radians(lat)), 0.01))
+    s, w, n, e = lat - delta_lat, lng - delta_lng, lat + delta_lat, lng + delta_lng
+    buildings = _fetch_buildings_for_bbox(s, w, n, e)
+    buildings = buildings if buildings is not None else []
+    return BuildingsNearResponse(buildings=buildings[:_BUILDINGS_NEAR_MAX_RESULTS])
