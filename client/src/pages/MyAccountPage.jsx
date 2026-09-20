@@ -18,6 +18,7 @@ const MAP_PREVIEW_FALLBACK = {
   terrain:   "linear-gradient(135deg, #c8d4a0 0%, #a8b880 25%, #d4c898 50%, #b0a068 75%, #c8d4a8 100%)",
 };
 import { useAuth } from "../context/AuthContext";
+import { track } from "../analytics";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faEnvelope, faCalendarDays, faPen, faCheck, faXmark, faSlidersH, faSun, faCloud, faChevronDown, faMap, faTrash } from "@fortawesome/free-solid-svg-icons";
@@ -165,8 +166,13 @@ export default function MyAccountPage() {
     ? new Date(user.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : "—";
 
+  // "there" is the backend's placeholder for OAuth sign-ins that came with
+  // no real name (Apple only ever sends one on the very first
+  // authorization) — never shown or pre-filled as if it were a real name.
+  const hasPlaceholderName = user?.first_name === "there";
+
   function startEdit() {
-    setDraft(user.first_name);
+    setDraft(hasPlaceholderName ? "" : user.first_name);
     setNameError(null);
     setEditing(true);
   }
@@ -274,6 +280,7 @@ export default function MyAccountPage() {
       await api.delete("/users/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      track("Deleted Account");
       logout();
       navigate("/");
     } catch {
@@ -316,6 +323,7 @@ export default function MyAccountPage() {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") cancelEdit(); }}
+                  placeholder="Your name"
                   autoFocus
                   style={{ flex: 1 }}
                 />
@@ -328,15 +336,27 @@ export default function MyAccountPage() {
               </div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "0.97em", fontWeight: 600, color: "var(--color-text)" }}>
-                  {user?.first_name}
-                </span>
-                <button
-                  onClick={startEdit}
-                  style={{ background: "none", border: "none", boxShadow: "none", padding: "2px 4px", fontSize: "0.8em", color: "var(--color-subtext)" }}
-                >
-                  <FontAwesomeIcon icon={faPen} />
-                </button>
+                {hasPlaceholderName ? (
+                  <button
+                    onClick={startEdit}
+                    className="btn-outline"
+                    style={{ padding: "0.25em 0.8em", fontSize: "0.85em" }}
+                  >
+                    add your name<FontAwesomeIcon icon={faPen} style={{ marginLeft: "6px" }} />
+                  </button>
+                ) : (
+                  <>
+                    <span style={{ fontSize: "0.97em", fontWeight: 600, color: "var(--color-text)" }}>
+                      {user?.first_name}
+                    </span>
+                    <button
+                      onClick={startEdit}
+                      style={{ background: "none", border: "none", boxShadow: "none", padding: "2px 4px", fontSize: "0.8em", color: "var(--color-subtext)" }}
+                    >
+                      <FontAwesomeIcon icon={faPen} />
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {nameError && <p style={{ margin: 0, fontSize: "0.82em", color: "#FF5A3C", fontWeight: 700 }}>{nameError}</p>}

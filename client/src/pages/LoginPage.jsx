@@ -2,8 +2,10 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
+import { track } from "../analytics";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faStar } from "@fortawesome/free-solid-svg-icons";
+import SocialAuthButtons from "../components/SocialAuthButtons";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -21,6 +23,7 @@ export default function LoginPage() {
     try {
       const res = await api.post("/users/login", form);
       login(res.data.user, res.data.access_token);
+      track("Logged In");
       navigate("/plan");
     } catch (err) {
       setError(err.response?.data?.detail || "Something went wrong");
@@ -48,6 +51,12 @@ export default function LoginPage() {
             to the sun <FontAwesomeIcon icon={faStar} style={{ fontSize: "0.75em" }} />
           </button>
         </form>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0" }}>
+          <div style={{ flex: 1, height: "1px", background: "var(--color-divider)" }} />
+          <span style={{ fontSize: "0.78em", color: "var(--color-subtext)", fontWeight: 600 }}>or</span>
+          <div style={{ flex: 1, height: "1px", background: "var(--color-divider)" }} />
+        </div>
+        <SocialAuthButtons onError={setError} />
         <p style={{ margin: "18px 0 0", textAlign: "center", fontSize: "0.88em", color: "var(--color-subtext)" }}>
           Don't have an account? <Link to="/register">Register</Link>
         </p>

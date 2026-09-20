@@ -1,8 +1,9 @@
 import { lazy, Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import PropTypes from "prop-types";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
+import { track } from "./analytics";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
@@ -43,6 +44,12 @@ function sunAltitude(lat, lng) {
 }
 
 function Layout() {
+  const location = useLocation();
+
+  useEffect(() => {
+    track("Page View", { path: location.pathname });
+  }, [location.pathname]);
+
   useEffect(() => {
     function applyTheme(lat, lng) {
       document.body.classList.toggle("night-mode", sunAltitude(lat, lng) <= 0);

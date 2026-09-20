@@ -9,7 +9,10 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     first_name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False)
-    hashed_password = Column(String(255), nullable=False)
+    # Nullable: OAuth-only accounts (Google/Apple) never set a password.
+    hashed_password = Column(String(255), nullable=True)
+    google_sub = Column(String(255), nullable=True, unique=True)
+    apple_sub = Column(String(255), nullable=True, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     pref_max_detour = Column(Integer, nullable=False, default=30, server_default="30")
     pref_mode = Column(String(10), nullable=False, default="sun", server_default="sun")

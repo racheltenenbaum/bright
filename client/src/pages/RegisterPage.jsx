@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
+import { track } from "../analytics";
+import SocialAuthButtons from "../components/SocialAuthButtons";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -45,6 +47,7 @@ export default function RegisterPage() {
     try {
       const res = await api.post("/users/register", form);
       login(res.data.user, res.data.access_token);
+      track("Signed Up");
       navigate("/plan");
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -110,6 +113,12 @@ export default function RegisterPage() {
             Register
           </button>
         </form>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0" }}>
+          <div style={{ flex: 1, height: "1px", background: "var(--color-divider)" }} />
+          <span style={{ fontSize: "0.78em", color: "var(--color-subtext)", fontWeight: 600 }}>or</span>
+          <div style={{ flex: 1, height: "1px", background: "var(--color-divider)" }} />
+        </div>
+        <SocialAuthButtons onError={setError} />
         <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: "0.78em", color: "var(--color-subtext)" }}>
           By creating an account, you agree to our <Link to="/privacy">Privacy Policy</Link>.
         </p>

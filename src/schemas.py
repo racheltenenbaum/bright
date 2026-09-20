@@ -46,6 +46,18 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+
+
+class AppleAuthRequest(BaseModel):
+    id_token: str
+    # Apple only ever includes the user's name in the client-side
+    # authorization response, and only on their very first authorization —
+    # never in the id_token itself — so the frontend passes it through here.
+    first_name: str | None = None
+
+
 class UpdateUserRequest(BaseModel):
     first_name: str | None = None
     pref_max_detour: int | None = None

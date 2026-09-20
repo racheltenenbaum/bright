@@ -68,5 +68,17 @@
 	<string>bright uses your device's compass to show which direction you're facing while navigating.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Google Sign-In requires the iOS OAuth client ID reversed
+				     (dot-separated components in reverse order) as a URL
+				     scheme, so Google can redirect back into the app. -->
+				<string>com.googleusercontent.apps.838539937170-v4uv1mc4467p9vljmagd0vptrcpqkeno</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

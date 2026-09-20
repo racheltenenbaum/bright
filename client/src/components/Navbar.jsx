@@ -46,7 +46,7 @@ export default function Navbar() {
       <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "10px" }}>
         {user ? (
           <span style={{ color: "var(--color-subtext)", fontSize: "0.88em", fontWeight: 700 }}>
-            Hi, {user.first_name}! <FontAwesomeIcon icon={faHand} />
+            {user.first_name === "there" ? "Hi there!" : `Hi, ${user.first_name}!`} <FontAwesomeIcon icon={faHand} />
           </span>
         ) : (
           <button onClick={() => navigate("/login")} style={{ fontSize: "0.85em", padding: "0.45em 1.2em" }}>

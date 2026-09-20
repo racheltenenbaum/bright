@@ -7,5 +7,13 @@
   },
   "ios": {
     "inspectable": true
+  },
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["email", "profile"],
+      "iosClientId": "838539937170-v4uv1mc4467p9vljmagd0vptrcpqkeno.apps.googleusercontent.com",
+      "androidClientId": "838539937170-ll046olpjtudfti20nkksagqnauqdnll.apps.googleusercontent.com",
+      "serverClientId": "838539937170-b35phf2jnu9icarnv1tarcak4je8sqc1.apps.googleusercontent.com"
+    }
   }
 }

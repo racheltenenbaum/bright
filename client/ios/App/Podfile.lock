@@ -1,34 +1,72 @@
 PODS:
+  - AppAuth (1.7.6):
+    - AppAuth/Core (= 1.7.6)
+    - AppAuth/ExternalUserAgent (= 1.7.6)
+  - AppAuth/Core (1.7.6)
+  - AppAuth/ExternalUserAgent (1.7.6):
+    - AppAuth/Core
   - Capacitor (5.7.8):
     - CapacitorCordova
+  - CapacitorCommunityAppleSignIn (5.0.0):
+    - Capacitor
   - CapacitorCordova (5.7.8)
   - CapacitorGeolocation (5.0.8):
     - Capacitor
   - CapacitorShare (5.0.8):
     - Capacitor
+  - CodetrixStudioCapacitorGoogleAuth (0.0.1):
+    - Capacitor
+    - GoogleSignIn (~> 6.2.4)
+  - GoogleSignIn (6.2.4):
+    - AppAuth (~> 1.5)
+    - GTMAppAuth (~> 1.3)
+    - GTMSessionFetcher/Core (< 3.0, >= 1.1)
+  - GTMAppAuth (1.3.1):
+    - AppAuth/Core (~> 1.6)
+    - GTMSessionFetcher/Core (< 3.0, >= 1.5)
+  - GTMSessionFetcher/Core (2.3.0)
 
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorCommunityAppleSignIn (from `../../node_modules/@capacitor-community/apple-sign-in`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
   - "CapacitorShare (from `../../node_modules/@capacitor/share`)"
+  - "CodetrixStudioCapacitorGoogleAuth (from `../../node_modules/@codetrix-studio/capacitor-google-auth`)"
+
+SPEC REPOS:
+  trunk:
+    - AppAuth
+    - GoogleSignIn
+    - GTMAppAuth
+    - GTMSessionFetcher
 
 EXTERNAL SOURCES:
   Capacitor:
     :path: "../../node_modules/@capacitor/ios"
+  CapacitorCommunityAppleSignIn:
+    :path: "../../node_modules/@capacitor-community/apple-sign-in"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorGeolocation:
     :path: "../../node_modules/@capacitor/geolocation"
   CapacitorShare:
     :path: "../../node_modules/@capacitor/share"
+  CodetrixStudioCapacitorGoogleAuth:
+    :path: "../../node_modules/@codetrix-studio/capacitor-google-auth"
 
 SPEC CHECKSUMS:
+  AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
   Capacitor: 747aadb4fa786f460d8cd9d0557cb81440a13747
+  CapacitorCommunityAppleSignIn: eafdd59b18b38161fa5cceee7b0e31312b122958
   CapacitorCordova: 31ab98dca2ddcee051027a1afe7e8c85c82f7297
   CapacitorGeolocation: 0572212732f7ee65828d069a9663a274be89b9fc
   CapacitorShare: abef1f7be4e10b448693b0b83b540cb4b92dc849
+  CodetrixStudioCapacitorGoogleAuth: fcce058390347c1ce5d8ac4764bdf1f5c1ee233b
+  GoogleSignIn: 5651ce3a61e56ca864160e79b484cd9ed3f49b7a
+  GTMAppAuth: 0ff230db599948a9ad7470ca667337803b3fc4dd
+  GTMSessionFetcher: 3a63d75eecd6aa32c2fc79f578064e1214dfdec2
 
-PODFILE CHECKSUM: 38e97ca6bfc64cc95a81b3a7442d48ac3b542d63
+PODFILE CHECKSUM: 936ed8aaf6dc4d0c105df799f8fd8e2d38340188
 
 COCOAPODS: 1.16.2

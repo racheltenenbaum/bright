@@ -22,6 +22,7 @@ import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
 import { addressFromGeocodeResult } from "../utils/address";
 import { isCovered } from "../utils/coverage";
+import { track } from "../analytics";
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -958,7 +959,11 @@ export default function RouteMap({ regions }) {
   }
 
   function togglePreference() {
-    setPreference((p) => (p === "sun" ? "shade" : "sun"));
+    setPreference((p) => {
+      const next = p === "sun" ? "shade" : "sun";
+      track("Toggled Preference", { preference: next, mode });
+      return next;
+    });
     clearPolylines(polylinesRef);
     setSunData(null);
   }
@@ -990,6 +995,7 @@ export default function RouteMap({ regions }) {
         { lat: coverageNotice.lat, lng: coverageNotice.lng },
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      track("Requested Region Notify");
       setNotifyStatus("done");
     } catch (_) {
       setNotifyStatus("idle");
@@ -1116,6 +1122,18 @@ export default function RouteMap({ regions }) {
 
     if (!checkCoverage(start, end)) return;
 
+    // Fail fast on an obviously-too-far route before hitting the backend at
+    // all — the real walking distance can only be >= this straight-line
+    // distance, so if even that already exceeds the cap there's no point
+    // waiting on optimized-route (which can itself fail to find a path
+    // within its search area for a long/barrier-crossing route, triggering
+    // a confusing "sun/shade unavailable" fallback) or Google Directions.
+    const straightLineKm = haversineKm(start.lat, start.lng, end.lat, end.lng);
+    if (straightLineKm > 5) {
+      setError("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
+      return;
+    }
+
     setPlanning(true);
     clearPolylines(polylinesRef);
     try {
@@ -1148,6 +1166,7 @@ export default function RouteMap({ regions }) {
       );
 
       let waypoints;
+      let fallbackRoutingUsed = false;
       try {
         let routeRes;
         try {
@@ -1178,6 +1197,7 @@ export default function RouteMap({ regions }) {
         // Google Directions has no concept of sun/shade — this route will
         // look identical regardless of preference, so the user must be told.
         setUsedFallbackRouting(true);
+        fallbackRoutingUsed = true;
         const directionsService = new window.google.maps.DirectionsService();
         const result = await directionsService.route({
           origin: start,
@@ -1186,7 +1206,7 @@ export default function RouteMap({ regions }) {
         });
         if (!result.routes?.length) throw new Error("No route found");
         if (result.routes[0].legs[0].distance.value > 5000) {
-          setError("Route is over 5 km - please choose a shorter journey.");
+          setError("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
           return;
         }
         waypoints = result.routes[0].overview_path.map((p) => [p.lat(), p.lng()]);
@@ -1198,7 +1218,7 @@ export default function RouteMap({ regions }) {
         return sum + haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], pt[0], pt[1]);
       }, 0);
       if (distKm > 5) {
-        setError("Route is over 5 km - please choose a shorter journey.");
+        setError("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
         return;
       }
 
@@ -1211,6 +1231,12 @@ export default function RouteMap({ regions }) {
       const { sun_altitude, sun_azimuth, date, segments, shadow_available } = shadowRes.data;
 
       applyRouteResult(waypoints, segments, sun_altitude, sun_azimuth, date, shadow_available, preference);
+      track("Planned Route", {
+        preference,
+        distance_km: Math.round(distKm * 10) / 10,
+        used_fallback_routing: fallbackRoutingUsed,
+        shadow_available,
+      });
 
       if (
         !weatherLocationRef.current ||
@@ -1258,6 +1284,7 @@ export default function RouteMap({ regions }) {
       setSavedRouteName(saveForm.name.trim());
       setSaveForm(null);
       setRouteSaved(true);
+      track("Saved Route", { preference });
     } catch {
       setSaveError("Could not save route. Please try again.");
     }
@@ -1278,6 +1305,7 @@ export default function RouteMap({ regions }) {
         setShareCopied(true);
         setTimeout(() => setShareCopied(false), 2000);
       }
+      track("Shared Route");
     } catch { /* ignore */ }
   }
 
@@ -1292,6 +1320,7 @@ export default function RouteMap({ regions }) {
         setSharePlaceCopied(true);
         setTimeout(() => setSharePlaceCopied(false), 2000);
       }
+      track("Shared Place");
     } catch { /* ignore */ }
   }
 
@@ -1394,6 +1423,7 @@ export default function RouteMap({ regions }) {
       }
 
       setPlacesSunAltitude(res.data.sun_altitude);
+      track("Searched Places", { preference, types: placeTypes, has_keyword: !!keyword, result_count: places.length });
       renderPlaceMarkers(places);
       if (places.length === 0) {
         mapRef.current.setZoom(Math.max(mapRef.current.getZoom() - 1, 10));
@@ -1451,6 +1481,7 @@ export default function RouteMap({ regions }) {
       );
       setSpots((prev) => [...prev, res.data]);
       setPlaceSaveSuccess(saveSpotModal.place.place_id);
+      track("Saved Spot", { icon: saveSpotModal.icon });
       setSaveSpotModal(null);
       setTimeout(() => setPlaceSaveSuccess(null), 2500);
     } catch {
@@ -1530,6 +1561,7 @@ export default function RouteMap({ regions }) {
     }
     setError(null);
     setMode(newMode);
+    track("Switched Mode", { mode: newMode });
   }
 
   function loadSavedRoute(route) {
@@ -1820,12 +1852,42 @@ export default function RouteMap({ regions }) {
             )}
           </div>
         </div>
-        {/* Plan Route button — right below the destination field */}
-        {!planning && start && end && !sunData && (
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button onClick={planRoute} style={{ fontSize: "0.85em", padding: "0.4em 1.2em", fontWeight: 800 }}>Plan Route</button>
-          </div>
-        )}
+        {/* Subtle early heads-up as soon as both addresses are in — the hard
+            stop (same 5km check) still runs on submit in planRoute(); this
+            is just a quieter, earlier nudge so the user isn't surprised by
+            it only after hitting Plan Route. Shared with the button below so
+            both reflect the exact same distance check. */}
+        {(() => {
+          const tooFar = start && end && haversineKm(start.lat, start.lng, end.lat, end.lng) > 5;
+          return (
+            <>
+              {tooFar && (
+                <p style={{ margin: "2px 0 0", fontSize: "0.75em", color: colors.subtext }}>
+                  This route is over 5 km long — choose a shorter walk for accurate sun/shade routing
+                </p>
+              )}
+              {/* Plan Route button — right below the destination field */}
+              {!planning && start && end && !sunData && (
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={planRoute}
+                    disabled={tooFar}
+                    style={{
+                      fontSize: "0.85em",
+                      padding: "0.4em 1.2em",
+                      fontWeight: 800,
+                      ...(tooFar
+                        ? { background: "#D9D9D9", color: "#8A8A8A", borderColor: "#D9D9D9", cursor: "not-allowed" }
+                        : null),
+                    }}
+                  >
+                    Plan Route
+                  </button>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* Spot chips — shown when start or end is empty, filtered to map region */}
         {(() => {
@@ -2005,7 +2067,11 @@ export default function RouteMap({ regions }) {
         </div>
       )}
 
-      {error && (
+      {error && error.startsWith("This route is over 5 km long") ? (
+        <p style={{ margin: "0 0 8px", fontSize: "0.78em", color: colors.subtext }}>
+          {error}
+        </p>
+      ) : error && (
         <div
           style={{
             marginBottom: "8px",
