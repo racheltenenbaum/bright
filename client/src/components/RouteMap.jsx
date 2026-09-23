@@ -17,6 +17,7 @@ import {
   faChevronLeft,
   faChevronRight,
   faMapLocationDot,
+  faSliders,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -27,6 +28,12 @@ import { track } from "../analytics";
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const MAP_ID  = import.meta.env.VITE_GOOGLE_MAPS_ID;
+
+const DETOUR_PRESETS = [
+  { label: "Direct", desc: "Shortest path", value: 10 },
+  { label: "Balanced", desc: "A little further, worth it", value: 30 },
+  { label: "Flexible", desc: "Chase the best sun/shade", value: 70 },
+];
 
 const LIBRARIES = ["places"];
 
@@ -168,6 +175,79 @@ function snapHeadingToRoute(rawHeading, routeCoords, segmentIdx) {
     : reverseBearing;
 }
 
+// Meters ahead of a turn (or the destination) to start showing a hint —
+// close enough to be actionable, far enough to give a moment to react at
+// walking speed. DISMISS is deliberately wider than SHOW (hysteresis): with
+// realistic GPS noise, distance-to-turn hovers right around a single cutoff
+// and the hint would otherwise flicker on/off repeatedly as noise nudges it
+// across that line — confirmed by simulation against real routes (dozens of
+// flickers per walk with a single threshold). Once shown, a hint now needs
+// to fall back past the wider distance (or the segment to actually change)
+// before it's dismissed.
+const TURN_HINT_SHOW_DISTANCE_M = 60;
+const TURN_HINT_DISMISS_DISTANCE_M = 85;
+// Below this angle the route is close enough to straight that calling it
+// out would just be noise — real nav apps don't announce every gentle curve.
+const TURN_HINT_MIN_ANGLE_DEG = 20;
+
+// Basic, subtle turn-by-turn hint for Go mode: null most of the time (no
+// upcoming turn close enough to matter yet), a short instruction once one
+// is. Deliberately simple — direction + rough distance, no street names or
+// voice guidance. activeTargetRef tracks which waypoint index the currently
+// -shown hint (if any) targets, purely so the hysteresis above has memory
+// of "was this already showing" across calls — the caller owns the ref.
+function getUpcomingTurn(routeCoords, segmentIdx, currentLocation, activeTargetRef) {
+  if (!routeCoords || !currentLocation || routeCoords.length < 2) return null;
+  const lastIdx = routeCoords.length - 1;
+
+  function withThreshold(targetIdx, distanceM) {
+    const wasActive = activeTargetRef.current === targetIdx;
+    const threshold = wasActive ? TURN_HINT_DISMISS_DISTANCE_M : TURN_HINT_SHOW_DISTANCE_M;
+    if (distanceM > threshold) {
+      if (wasActive) activeTargetRef.current = null;
+      return false;
+    }
+    activeTargetRef.current = targetIdx;
+    return true;
+  }
+
+  // Arriving takes priority once we're on (or effectively past) the final
+  // segment, checked against the true final point rather than requiring
+  // segmentIdx to land exactly on length-2 — GPS noise can make the
+  // monotonic segment tracker jump straight to the very last waypoint,
+  // skipping the "last segment" index entirely, which would otherwise mean
+  // this never fires at all (confirmed by simulation: real routes with
+  // realistic noise sometimes never showed "Arriving" before this fix).
+  if (segmentIdx >= lastIdx - 1) {
+    const [destLat, destLng] = routeCoords[lastIdx];
+    const distM = haversineKm(currentLocation.lat, currentLocation.lng, destLat, destLng) * 1000;
+    if (!withThreshold(lastIdx, distM)) return null;
+    return { text: `Arriving ${distM < 10 ? "now" : `in ${Math.round(distM)}m`}` };
+  }
+
+  const [turnLat, turnLng] = routeCoords[segmentIdx + 1];
+  const distanceM = haversineKm(currentLocation.lat, currentLocation.lng, turnLat, turnLng) * 1000;
+  if (!withThreshold(segmentIdx + 1, distanceM)) return null;
+
+  const [lat1, lng1] = routeCoords[segmentIdx];
+  const [lat2, lng2] = routeCoords[segmentIdx + 1];
+  const [lat3, lng3] = routeCoords[segmentIdx + 2];
+  const bearingIn = computeBearing(lat1, lng1, lat2, lng2);
+  const bearingOut = computeBearing(lat2, lng2, lat3, lng3);
+  // Signed turn angle: positive = clockwise = right, negative = left.
+  const angle = (((bearingOut - bearingIn + 540) % 360) - 180);
+  const absAngle = Math.abs(angle);
+  if (absAngle < TURN_HINT_MIN_ANGLE_DEG) {
+    activeTargetRef.current = null;
+    return null;
+  }
+
+  const distanceText = distanceM < 10 ? "now" : `in ${Math.round(distanceM)}m`;
+  const side = angle > 0 ? "right" : "left";
+  const magnitude = absAngle > 135 ? "Sharp" : absAngle > 45 ? "Turn" : "Slight";
+  return { text: `${magnitude} ${side} ${distanceText}` };
+}
+
 function formatRouteStats(waypoints) {
   const distKm = waypoints.reduce((sum, pt, i) => {
     if (i === 0) return 0;
@@ -192,7 +272,7 @@ function headingDotSvg(headingDeg) {
   return encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">' +
       `<g transform="rotate(${headingDeg} 16 16)">` +
-      '<path d="M16 1 L25 21 L16 15.5 L7 21 Z" fill="#FFD600" opacity="0.55"/>' +
+      '<path d="M16 1 L25 21 L16 15.5 L7 21 Z" fill="#FFD600" opacity="0.9" stroke="white" stroke-width="0.75" stroke-linejoin="round"/>' +
       "</g>" +
       '<circle cx="16" cy="16" r="7" fill="#FFD600" stroke="white" stroke-width="2"/>' +
       "</svg>",
@@ -237,7 +317,7 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
 }
 
 export default function RouteMap({ regions }) {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: API_KEY,
@@ -295,13 +375,30 @@ export default function RouteMap({ regions }) {
   const [routeStats, setRouteStats] = useState(null);
   const [routeCoords, setRouteCoords] = useState(null);
   const [routeSegments, setRouteSegments] = useState(null);
+  const [detourPopoverOpen, setDetourPopoverOpen] = useState(false);
+  const [detourSaving, setDetourSaving] = useState(false);
+  const [showReplanBanner, setShowReplanBanner] = useState(false);
+  const detourPopoverRef = useRef(null);
   const pendingRestoreDrawRef = useRef(false);
   const skipNextPersistRef = useRef(false);
   const [goMode, setGoMode] = useState(false);
   const goModeRef = useRef(false);
   const [goSegmentIdx, setGoSegmentIdx] = useState(0);
+  // Furthest segment reached so far this Go session — nearestIdx (by raw
+  // GPS distance) must never be allowed to regress below this. Simulated
+  // against real routes with realistic GPS noise (3-12m): the raw
+  // nearest-waypoint match jumps backward constantly (tens to 100+ times
+  // per walk even at good accuracy), each one snapping the map's heading
+  // and the turn hint backward then forward again — exactly the erratic
+  // behavior "face only the walking direction" was meant to fix, just
+  // moved one level down. Clamping to non-decreasing eliminates it: a real
+  // walker essentially always progresses forward along the route.
+  const maxGoSegmentIdxRef = useRef(0);
+  // Which waypoint index the currently-shown turn hint targets, if any —
+  // see getUpcomingTurn's hysteresis for why this needs to persist across
+  // calls rather than being recomputed fresh each time.
+  const activeTurnTargetRef = useRef(null);
   const [deviceHeading, setDeviceHeading] = useState(null);
-  const prevGoLocationRef = useRef(null);
   const preGoZoomRef = useRef(null);
   const lastHeadingUpdateRef = useRef(0);
   const [planning, setPlanning] = useState(false);
@@ -742,21 +839,29 @@ export default function RouteMap({ regions }) {
       const d = (lat - currentLocation.lat) ** 2 + (lng - currentLocation.lng) ** 2;
       if (d < minDist) { minDist = d; nearestIdx = i; }
     });
+    // Never regress — see maxGoSegmentIdxRef's declaration for why.
+    nearestIdx = Math.max(nearestIdx, maxGoSegmentIdxRef.current);
+    maxGoSegmentIdxRef.current = nearestIdx;
     setGoSegmentIdx(nearestIdx);
 
     const map = mapRef.current;
     if (map) {
       map.panTo(currentLocation);
-      const prev = prevGoLocationRef.current;
-      // Only rotate on real movement — GPS jitter while stationary would
-      // otherwise spin the heading erratically.
-      if (prev && haversineKm(prev.lat, prev.lng, currentLocation.lat, currentLocation.lng) * 1000 > 3) {
-        const bearing = computeBearing(prev.lat, prev.lng, currentLocation.lat, currentLocation.lng);
-        map.setHeading(bearing);
-        setMapHeading(bearing);
-      }
+      // Face the direction the *route* runs at this segment, not raw GPS
+      // movement — consecutive live fixes are close together and noisy
+      // (typical walking-speed accuracy), so a bearing computed from two of
+      // them can swing wildly between updates even when walking in a
+      // straight line, spinning the map. The route's own segment geometry
+      // is fixed, so this only changes cleanly when you actually reach a
+      // new segment (i.e. a real turn) — matching how Waze/turn-by-turn
+      // nav apps orient the map.
+      const segIdx = Math.min(Math.max(nearestIdx, 0), routeCoords.length - 2);
+      const [lat1, lng1] = routeCoords[segIdx];
+      const [lat2, lng2] = routeCoords[segIdx + 1];
+      const bearing = computeBearing(lat1, lng1, lat2, lng2);
+      map.setHeading(bearing);
+      setMapHeading(bearing);
     }
-    prevGoLocationRef.current = currentLocation;
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fade the portion of the route already walked, so it's visually distinct
@@ -946,7 +1051,6 @@ export default function RouteMap({ regions }) {
 
   function exitGoMode() {
     setGoMode(false);
-    prevGoLocationRef.current = null;
     const map = mapRef.current;
     if (map) {
       map.setHeading(0);
@@ -966,6 +1070,45 @@ export default function RouteMap({ regions }) {
     });
     clearPolylines(polylinesRef);
     setSunData(null);
+  }
+
+  // Click-outside-to-close for the detour tolerance popover.
+  useEffect(() => {
+    if (!detourPopoverOpen) return;
+    function handleClickOutside(e) {
+      if (detourPopoverRef.current && !detourPopoverRef.current.contains(e.target)) {
+        setDetourPopoverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [detourPopoverOpen]);
+
+  async function selectDetourPreset(value) {
+    setDetourPopoverOpen(false);
+    if (user?.pref_max_detour === value) return;
+    setDetourSaving(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await api.patch(
+        "/users/me",
+        { pref_max_detour: value },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      updateUser({ pref_max_detour: res.data.pref_max_detour });
+      track("Changed Detour Preset", { pref_max_detour: value });
+      // If a route is already on screen, it was calculated under the old
+      // setting — offer to re-plan rather than silently leaving a stale
+      // route displayed under the new preference.
+      if (routeCoords && start && end && !planning) {
+        setShowReplanBanner(true);
+      }
+    } catch (err) {
+      console.error("Failed to update detour preference:", err);
+      setError("Couldn't update detour setting — try again");
+    } finally {
+      setDetourSaving(false);
+    }
   }
 
   function checkCoverage(newStart, newEnd) {
@@ -1119,6 +1262,7 @@ export default function RouteMap({ regions }) {
     setSunData(null);
     setUsedFallbackRouting(false);
     setNoShadeAvailable(false);
+    setShowReplanBanner(false);
 
     if (!checkCoverage(start, end)) return;
 
@@ -1600,6 +1744,7 @@ export default function RouteMap({ regions }) {
     setRouteStats(null);
     setRouteCoords(null);
     setRouteSegments(null);
+    setShowReplanBanner(false);
     exitGoMode();
     clearPolylines(polylinesRef);
     clearPlaceMarkers();
@@ -1675,10 +1820,104 @@ export default function RouteMap({ regions }) {
         {isNighttime && (
           <span style={{ fontSize: "0.85em", fontWeight: 700, color: colors.text, marginLeft: "2px" }}>🌙 After sunset</span>
         )}
+        {mode === "route" && (
+          <div
+            ref={detourPopoverRef}
+            style={{ position: "relative", marginLeft: start && !planning ? 0 : "auto" }}
+          >
+            <button
+              onClick={() => setDetourPopoverOpen((o) => !o)}
+              aria-expanded={detourPopoverOpen}
+              aria-label="Detour tolerance"
+              disabled={detourSaving}
+              style={{
+                width: "30px", height: "30px", borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: 0, cursor: detourSaving ? "default" : "pointer",
+                background: detourPopoverOpen ? colors.accent : colors.surface,
+                border: `1.5px solid ${colors.accentFaint}`,
+                color: colors.text, boxShadow: "none",
+              }}
+            >
+              <FontAwesomeIcon icon={faSliders} style={{ fontSize: "13px" }} />
+            </button>
+            {detourPopoverOpen && (
+              <div
+                style={{
+                  position: "absolute", top: "36px", right: 0, width: "212px",
+                  background: colors.surface, border: `1.5px solid ${colors.accentFaint}`,
+                  borderRadius: "14px", boxShadow: `0 10px 24px ${colors.accentGlow}`,
+                  padding: "10px", zIndex: 30,
+                }}
+              >
+                <p style={{
+                  margin: "0 0 7px", fontSize: "10px", fontWeight: 700,
+                  textTransform: "uppercase", letterSpacing: "0.06em", color: colors.subtext,
+                }}>
+                  Detour tolerance
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {DETOUR_PRESETS.map((preset) => {
+                    const currentValue = user?.pref_max_detour ?? 30;
+                    const nearest = DETOUR_PRESETS.reduce((best, p) =>
+                      Math.abs(p.value - currentValue) < Math.abs(best.value - currentValue) ? p : best);
+                    const selected = preset.value === nearest.value;
+                    return (
+                      <div
+                        key={preset.label}
+                        onClick={() => selectDetourPreset(preset.value)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "8px 10px", borderRadius: "10px", cursor: "pointer",
+                          border: `1.5px solid ${selected ? colors.accent : colors.accentFaint}`,
+                          background: selected ? colors.accentGlow : "transparent",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "12px", fontWeight: 700, color: colors.text }}>{preset.label}</div>
+                          <div style={{ fontSize: "10.5px", color: colors.subtext, marginTop: "1px" }}>{preset.desc}</div>
+                        </div>
+                        <div style={{
+                          width: "15px", height: "15px", borderRadius: "50%", flexShrink: 0,
+                          border: `1.5px solid ${selected ? colors.accent : colors.accentFaint}`,
+                          background: selected ? colors.accent : "transparent",
+                        }} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {mode === "route" && (start && !planning) && (
-          <button onClick={reset} style={{ marginLeft: "auto", fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
+          <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
         )}
       </div>
+
+      {/* Detour setting changed while a route is already on screen — the
+          displayed route was calculated under the old setting, so surface
+          an explicit re-plan action rather than silently leaving it stale. */}
+      {showReplanBanner && start && end && !planning && (
+        <div style={{
+          marginBottom: "6px", display: "flex", alignItems: "center", gap: "8px",
+          padding: "8px 10px", borderRadius: "10px",
+          background: colors.accentGlow, border: `1.5px solid ${colors.accentFaint}`,
+        }}>
+          <span style={{ fontSize: "0.78em", fontWeight: 600, color: colors.text, flex: 1 }}>
+            Detour setting changed
+          </span>
+          <button
+            onClick={() => { setShowReplanBanner(false); planRoute(); }}
+            style={{
+              fontSize: "0.75em", fontWeight: 700, padding: "0.35em 0.9em",
+              background: colors.accent, border: "none", borderRadius: "8px", cursor: "pointer",
+            }}
+          >
+            Re-plan route
+          </button>
+        </div>
+      )}
 
       {/* Address inputs + action buttons — route mode only */}
       <div
@@ -2171,6 +2410,27 @@ export default function RouteMap({ regions }) {
       <div className="route-map" style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div className="map-wrapper" style={{ height: "100%", flex: "none", position: "relative" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
+          {goMode && (() => {
+            const turn = getUpcomingTurn(routeCoords, goSegmentIdx, currentLocation, activeTurnTargetRef);
+            if (!turn) return null;
+            return (
+              <div
+                style={{
+                  position: "absolute", top: "10px", left: "10px", zIndex: 6,
+                  background: colors.surface,
+                  padding: "6px 14px",
+                  borderRadius: "20px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: colors.text,
+                  border: `1.5px solid ${colors.accentFaint}`,
+                  boxShadow: `0 2px 8px ${colors.accentGlow}`,
+                }}
+              >
+                {turn.text}
+              </div>
+            );
+          })()}
           {planning && (
             <div style={{
               position: "absolute", inset: 0, zIndex: 20,
@@ -2340,6 +2600,8 @@ export default function RouteMap({ regions }) {
                   }
                   setGoMode(true);
                   setGoSegmentIdx(0);
+                  maxGoSegmentIdxRef.current = 0;
+                  activeTurnTargetRef.current = null;
                 }
               }}
               style={{
