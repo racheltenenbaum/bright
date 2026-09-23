@@ -30,6 +30,12 @@ def send_email(to: str, subject: str, text: str) -> None:
             "from": {"email": _SENDGRID_FROM},
             "subject": subject,
             "content": [{"type": "text/plain", "value": text}],
+            # SendGrid rewrites links to its own click-tracking domain by
+            # default, which breaks Universal Links / App Links — the OS
+            # only recognizes a tap as opening our app if the tapped link's
+            # own domain matches our verified one, not a domain it redirects
+            # through afterward. Password-reset links must stay literal.
+            "tracking_settings": {"click_tracking": {"enable": False}},
         },
         timeout=10,
     )

@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.racheltenenbaum.bright",
+      "sha256_cert_fingerprints": [
+        "8C:F5:26:C4:AF:46:1F:16:3A:67:74:60:B1:6C:E1:D5:57:69:96:6D:87:83:95:3F:8C:07:F6:63:5A:D7:F6:F1"
+      ]
+    }
+  }
+]

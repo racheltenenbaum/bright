@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
+import { App as CapacitorApp } from "@capacitor/app";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
 import { track } from "./analytics";
@@ -47,10 +48,29 @@ function sunAltitude(lat, lng) {
 
 function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     track("Page View", { path: location.pathname });
   }, [location.pathname]);
+
+  // Universal Links (iOS) / App Links (Android) deliver the full external
+  // URL here when the app is opened via one — e.g. a password-reset email
+  // link — instead of that URL loading in a browser. A no-op on web, where
+  // links already navigate normally.
+  useEffect(() => {
+    const listenerPromise = CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+      try {
+        const parsed = new URL(url);
+        navigate(parsed.pathname + parsed.search);
+      } catch {
+        // malformed URL — ignore rather than crash the app
+      }
+    });
+    return () => {
+      listenerPromise.then((listener) => listener.remove());
+    };
+  }, [navigate]);
 
   useEffect(() => {
     function applyTheme(lat, lng) {

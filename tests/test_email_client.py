@@ -25,6 +25,9 @@ def test_send_email_success_posts_expected_payload():
     assert body["from"] == {"email": "sender@example.com"}
     assert body["subject"] == "Subject line"
     assert body["content"] == [{"type": "text/plain", "value": "Body text"}]
+    # Click tracking must stay off — a wrapped link would break Universal
+    # Links / App Links for password-reset emails.
+    assert body["tracking_settings"] == {"click_tracking": {"enable": False}}
     mock_resp.raise_for_status.assert_called_once()
 
 

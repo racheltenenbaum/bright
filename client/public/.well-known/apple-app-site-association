@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "95XR3CFAPW.com.racheltenenbaum.bright",
+        "paths": ["/reset-password", "/reset-password/*"]
+      }
+    ]
+  }
+}
