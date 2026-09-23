@@ -18,6 +18,7 @@ import {
   faChevronRight,
   faMapLocationDot,
   faSliders,
+  faCircleInfo,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -30,10 +31,14 @@ const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const MAP_ID  = import.meta.env.VITE_GOOGLE_MAPS_ID;
 
 const DETOUR_PRESETS = [
-  { label: "Direct", desc: "Shortest path", value: 10 },
+  { label: "Speed First", desc: "Shortest path", value: 10 },
   { label: "Balanced", desc: "A little further, worth it", value: 30 },
-  { label: "Flexible", desc: "Chase the best sun/shade", value: 70 },
+  { label: "Sun/Shade First", desc: "Chase the best sun/shade", value: 70 },
 ];
+
+const DETOUR_INFO_TEXT =
+  "How far bright will detour from the most direct path to find better sun or shade. " +
+  "Speed First sticks close to the shortest route; Sun/Shade First will walk further if it means more time in the sun (or shade).";
 
 const LIBRARIES = ["places"];
 
@@ -376,6 +381,7 @@ export default function RouteMap({ regions }) {
   const [routeCoords, setRouteCoords] = useState(null);
   const [routeSegments, setRouteSegments] = useState(null);
   const [detourPopoverOpen, setDetourPopoverOpen] = useState(false);
+  const [detourInfoOpen, setDetourInfoOpen] = useState(false);
   const [detourSaving, setDetourSaving] = useState(false);
   const [showReplanBanner, setShowReplanBanner] = useState(false);
   const detourPopoverRef = useRef(null);
@@ -1078,6 +1084,7 @@ export default function RouteMap({ regions }) {
     function handleClickOutside(e) {
       if (detourPopoverRef.current && !detourPopoverRef.current.contains(e.target)) {
         setDetourPopoverOpen(false);
+        setDetourInfoOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -1086,6 +1093,7 @@ export default function RouteMap({ regions }) {
 
   async function selectDetourPreset(value) {
     setDetourPopoverOpen(false);
+    setDetourInfoOpen(false);
     if (user?.pref_max_detour === value) return;
     setDetourSaving(true);
     try {
@@ -1826,9 +1834,9 @@ export default function RouteMap({ regions }) {
             style={{ position: "relative", marginLeft: start && !planning ? 0 : "auto" }}
           >
             <button
-              onClick={() => setDetourPopoverOpen((o) => !o)}
+              onClick={() => { setDetourPopoverOpen((o) => !o); setDetourInfoOpen(false); }}
               aria-expanded={detourPopoverOpen}
-              aria-label="Detour tolerance"
+              aria-label="Sun/Shade Priority"
               disabled={detourSaving}
               style={{
                 width: "30px", height: "30px", borderRadius: "50%",
@@ -1850,12 +1858,37 @@ export default function RouteMap({ regions }) {
                   padding: "10px", zIndex: 30,
                 }}
               >
-                <p style={{
-                  margin: "0 0 7px", fontSize: "10px", fontWeight: 700,
-                  textTransform: "uppercase", letterSpacing: "0.06em", color: colors.subtext,
-                }}>
-                  Detour tolerance
-                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "7px" }}>
+                  <p style={{
+                    margin: 0, fontSize: "10px", fontWeight: 700,
+                    textTransform: "uppercase", letterSpacing: "0.06em", color: colors.subtext,
+                  }}>
+                    Sun/Shade Priority
+                  </p>
+                  <button
+                    onClick={() => setDetourInfoOpen((o) => !o)}
+                    aria-expanded={detourInfoOpen}
+                    aria-label="What is Sun/Shade Priority?"
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      width: "15px", height: "15px", padding: 0, marginLeft: "auto",
+                      background: "transparent", border: "none", cursor: "pointer",
+                      color: colors.subtext, boxShadow: "none",
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faCircleInfo} style={{ fontSize: "13px" }} />
+                  </button>
+                </div>
+                {detourInfoOpen && (
+                  <p style={{
+                    margin: "-2px 0 9px", fontSize: "11px", lineHeight: 1.5,
+                    color: colors.subtext, background: colors.accentGlow,
+                    border: `1px solid ${colors.accentFaint}`, borderRadius: "8px",
+                    padding: "7px 9px",
+                  }}>
+                    {DETOUR_INFO_TEXT}
+                  </p>
+                )}
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   {DETOUR_PRESETS.map((preset) => {
                     const currentValue = user?.pref_max_detour ?? 30;
