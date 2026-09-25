@@ -25,4 +25,22 @@ end
 
 post_install do |installer|
   assertDeploymentTarget(installer)
+
+  # GoogleSignIn/GTMAppAuth/GTMSessionFetcher (pulled in transitively via
+  # CodetrixStudioCapacitorGoogleAuth) are pinned to old versions that
+  # predate Apple's privacy manifest requirement (ITMS-91061). Upgrading
+  # them means porting the plugin's Swift code to a breaking-changed API
+  # we haven't verified, so instead we inject the manifest Apple requires
+  # directly into each pod's build output as a resource.
+  privacy_manifest_targets = ['GoogleSignIn', 'GTMAppAuth', 'GTMSessionFetcher']
+  template = File.join(__dir__, 'PrivacyManifests', 'PrivacyInfo.xcprivacy')
+  installer.pods_project.targets.each do |target|
+    next unless privacy_manifest_targets.include?(target.name)
+    dest_dir = File.join(installer.sandbox.root, target.name)
+    dest = File.join(dest_dir, 'PrivacyInfo.xcprivacy')
+    FileUtils.mkdir_p(dest_dir)
+    FileUtils.cp(template, dest)
+    file_ref = target.project.main_group.find_subpath(target.name, true).new_reference(dest)
+    target.resources_build_phase.add_file_reference(file_ref, true)
+  end
 end
