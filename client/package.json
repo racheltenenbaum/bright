@@ -26,6 +26,8 @@
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
     "@fortawesome/react-fontawesome": "^3.3.1",
     "@react-google-maps/api": "^2.20.8",
+    "@sentry/capacitor": "3.2.2",
+    "@sentry/react": "10.43.0",
     "axios": "^1.16.1",
     "leaflet": "^1.9.4",
     "mixpanel-browser": "^2.83.0",

@@ -2,8 +2,10 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import { initAnalytics } from './analytics.js'
+import { initErrorMonitoring } from './errorMonitoring.js'
 import './index.css'
 
+initErrorMonitoring()
 initAnalytics()
 
 ReactDOM.createRoot(document.getElementById('root')).render(

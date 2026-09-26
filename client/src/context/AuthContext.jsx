@@ -1,5 +1,6 @@
 import { createContext, useContext, useState } from "react";
 import { identify, resetAnalytics } from "../analytics";
+import { identifyErrorMonitoring, resetErrorMonitoring } from "../errorMonitoring";
 
 const AuthContext = createContext(null);
 
@@ -7,7 +8,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem("user");
     const parsed = saved ? JSON.parse(saved) : null;
-    if (parsed) identify(parsed);
+    if (parsed) {
+      identify(parsed);
+      identifyErrorMonitoring(parsed);
+    }
     return parsed;
   });
 
@@ -16,6 +20,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem("user", JSON.stringify(userData));
     localStorage.setItem("token", token);
     identify(userData);
+    identifyErrorMonitoring(userData);
   }
 
   function logout() {
@@ -23,6 +28,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     resetAnalytics();
+    resetErrorMonitoring();
   }
 
   function updateUser(patch) {
