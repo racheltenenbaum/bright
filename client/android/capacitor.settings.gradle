@@ -16,3 +16,6 @@ project(':capacitor-share').projectDir = new File('../node_modules/@capacitor/sh
 
 include ':codetrix-studio-capacitor-google-auth'
 project(':codetrix-studio-capacitor-google-auth').projectDir = new File('../node_modules/@codetrix-studio/capacitor-google-auth/android')
+
+include ':sentry-capacitor'
+project(':sentry-capacitor').projectDir = new File('../node_modules/@sentry/capacitor/android')
