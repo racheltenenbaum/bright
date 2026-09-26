@@ -54,6 +54,19 @@ class OptimizedRouteRequest(BaseModel):
     end: list[float]     # [lat, lng]
     datetime: str        # ISO string
     preference: str      # "sun" or "shade"
+    # Optional per-request override (e.g. the Plan Route screen's Sun/Shade
+    # Priority control) — lets anonymous users, and logged-in users trying a
+    # different value ad hoc, affect this request without needing an
+    # account or saving to one. Falls back to the account's stored
+    # pref_max_detour (or DEFAULT_MAX_DETOUR if anonymous) when omitted.
+    max_detour: int | None = None
+
+    @field_validator("max_detour")
+    @classmethod
+    def valid_max_detour(cls, v):
+        if v is not None and not (1 <= v <= 100):
+            raise ValueError("max_detour must be between 1 and 100")
+        return v
 
     @field_validator("datetime")
     @classmethod
@@ -142,8 +155,16 @@ def optimized_route(
 
     # Routing works without an account — a logged-out user just gets the
     # same default detour tolerance a new account would start with
-    # (User.pref_max_detour's own default), rather than being blocked.
-    pref_max_detour = current_user.pref_max_detour if current_user else DEFAULT_MAX_DETOUR
+    # (User.pref_max_detour's own default), rather than being blocked. An
+    # explicit body.max_detour (set locally, not persisted, for anonymous
+    # users — or an ad hoc override for logged-in ones) always wins over
+    # the account's stored preference.
+    if body.max_detour is not None:
+        pref_max_detour = body.max_detour
+    elif current_user:
+        pref_max_detour = current_user.pref_max_detour
+    else:
+        pref_max_detour = DEFAULT_MAX_DETOUR
     max_detour = pref_max_detour / 100
     if body.preference == "shade":
         max_detour *= SHADE_DETOUR_MULTIPLIER

@@ -384,6 +384,15 @@ export default function RouteMap({ regions }) {
   const [detourInfoOpen, setDetourInfoOpen] = useState(false);
   const [detourSaving, setDetourSaving] = useState(false);
   const [showReplanBanner, setShowReplanBanner] = useState(false);
+  // Sun/Shade Priority is a default-available control, not an account
+  // feature — anonymous users can change it too, it just only persists to
+  // an account (via PATCH below) when logged in. This local value is what
+  // actually gets sent on every /sun/optimized-route request, so trying a
+  // different value takes effect immediately either way.
+  const [detourOverride, setDetourOverride] = useState(user?.pref_max_detour ?? 30);
+  useEffect(() => {
+    if (user?.pref_max_detour != null) setDetourOverride(user.pref_max_detour);
+  }, [user?.pref_max_detour]);
   const detourPopoverRef = useRef(null);
   const pendingRestoreDrawRef = useRef(false);
   const skipNextPersistRef = useRef(false);
@@ -1094,8 +1103,21 @@ export default function RouteMap({ regions }) {
   async function selectDetourPreset(value) {
     setDetourPopoverOpen(false);
     setDetourInfoOpen(false);
-    if (!user) { setAuthPromptOpen(true); return; }
-    if (user?.pref_max_detour === value) return;
+    if (detourOverride === value) return;
+    const previousValue = detourOverride;
+    setDetourOverride(value);
+    track("Changed Detour Preset", { pref_max_detour: value, logged_in: !!user });
+    // If a route is already on screen, it was calculated under the old
+    // setting — offer to re-plan rather than silently leaving a stale
+    // route displayed under the new preference.
+    if (routeCoords && start && end && !planning) {
+      setShowReplanBanner(true);
+    }
+    // Anonymous users get the value applied to this session only — no
+    // account to persist it to, and no reason to interrupt them for one
+    // (only Save Route/Spot prompts sign-in, matching every other
+    // default-available Plan Route feature).
+    if (!user) return;
     setDetourSaving(true);
     try {
       const token = localStorage.getItem("token");
@@ -1105,16 +1127,14 @@ export default function RouteMap({ regions }) {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       updateUser({ pref_max_detour: res.data.pref_max_detour });
-      track("Changed Detour Preset", { pref_max_detour: value });
-      // If a route is already on screen, it was calculated under the old
-      // setting — offer to re-plan rather than silently leaving a stale
-      // route displayed under the new preference.
-      if (routeCoords && start && end && !planning) {
-        setShowReplanBanner(true);
-      }
     } catch (err) {
-      console.error("Failed to update detour preference:", err);
-      setError("Couldn't update detour setting — try again");
+      console.error("Failed to save detour preference:", err);
+      // The in-session value (already applied above) still works for
+      // routing — only persisting it to the account failed, so this is a
+      // quieter, non-blocking notice rather than setError's route-planning
+      // banner.
+      setDetourOverride(previousValue);
+      setError("Couldn't save detour setting to your account — try again");
     } finally {
       setDetourSaving(false);
     }
@@ -1314,7 +1334,10 @@ export default function RouteMap({ regions }) {
       // Try OSM-optimized routing; fall back to Google Directions if unavailable
       const requestOptimizedRoute = () => api.post(
         "/sun/optimized-route",
-        { start: [start.lat, start.lng], end: [end.lat, end.lng], datetime, preference },
+        {
+          start: [start.lat, start.lng], end: [end.lat, end.lng], datetime, preference,
+          max_detour: detourOverride,
+        },
         { headers: { Authorization: `Bearer ${token}` }, timeout: 35000 },
       );
 
@@ -1892,9 +1915,8 @@ export default function RouteMap({ regions }) {
                 )}
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   {DETOUR_PRESETS.map((preset) => {
-                    const currentValue = user?.pref_max_detour ?? 30;
                     const nearest = DETOUR_PRESETS.reduce((best, p) =>
-                      Math.abs(p.value - currentValue) < Math.abs(best.value - currentValue) ? p : best);
+                      Math.abs(p.value - detourOverride) < Math.abs(best.value - detourOverride) ? p : best);
                     const selected = preset.value === nearest.value;
                     return (
                       <div
@@ -2426,7 +2448,7 @@ export default function RouteMap({ regions }) {
           <FontAwesomeIcon icon={faTriangleExclamation} style={{ color: "#F0B429", fontSize: "1em", flexShrink: 0 }} />
           <span style={{ color: "#7D5A00", fontWeight: 700, fontSize: "0.82em" }}>
             With the sun's current position, there's no shaded route nearby
-            {user?.pref_max_detour <= 50 && (
+            {detourOverride <= 50 && (
               <>
                 {" — "}
                 <Link to="/my-account" style={{ color: "#7D5A00", textDecoration: "underline" }}>
