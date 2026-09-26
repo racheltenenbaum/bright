@@ -1094,6 +1094,7 @@ export default function RouteMap({ regions }) {
   async function selectDetourPreset(value) {
     setDetourPopoverOpen(false);
     setDetourInfoOpen(false);
+    if (!user) { setAuthPromptOpen(true); return; }
     if (user?.pref_max_detour === value) return;
     setDetourSaving(true);
     try {
