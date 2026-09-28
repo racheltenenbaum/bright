@@ -253,6 +253,21 @@ function getUpcomingTurn(routeCoords, segmentIdx, currentLocation, activeTargetR
   return { text: `${magnitude} ${side} ${distanceText}` };
 }
 
+// Live "walk on your left/right" hint for the current Go-mode segment.
+// sunny_side is defined relative to the segment's own forward direction
+// (routeSegments[i] runs routeCoords[i] -> routeCoords[i+1]), which is the
+// direction of travel — matching how goSegmentIdx/snapHeadingToRoute already
+// reason about the route — so no heading-based correction is needed as long
+// as the user is walking forward along the route (goSegmentIdx is monotonic
+// and never regresses, so "walking it backward" isn't a supported case).
+function getSideHint(routeSegments, segmentIdx, preference) {
+  if (!routeSegments || !routeSegments.length) return null;
+  const seg = routeSegments[segmentIdx] ?? routeSegments[routeSegments.length - 1];
+  const side = walkSideFor(seg?.sunny_side, preference);
+  if (!side) return null;
+  return { text: `Walk on your ${side}` };
+}
+
 function formatRouteStats(waypoints) {
   const distKm = waypoints.reduce((sum, pt, i) => {
     if (i === 0) return 0;
@@ -267,6 +282,101 @@ function formatRouteStats(waypoints) {
 function clearPolylines(ref) {
   ref.current.forEach((p) => p.setMap(null));
   ref.current = [];
+}
+
+function clearSideMarkers(ref) {
+  ref.current.forEach((m) => m.setMap(null));
+  ref.current = [];
+}
+
+// Perpendicular offset from (lat, lng), bearingDeg degrees clockwise from
+// north, distanceM meters away — small-angle approximation, mirrors
+// _offset_point in src/shadow.py. Used only to nudge a marker a few meters
+// off the route centerline, not to trace a precise parallel line, so the
+// approximation is well within tolerance.
+function offsetLatLng(lat, lng, bearingDeg, distanceM) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const bearing = toRad(bearingDeg);
+  const angularDist = distanceM / R;
+  const lat1 = toRad(lat);
+  const lng1 = toRad(lng);
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angularDist) + Math.cos(lat1) * Math.sin(angularDist) * Math.cos(bearing),
+  );
+  const lng2 =
+    lng1 +
+    Math.atan2(
+      Math.sin(bearing) * Math.sin(angularDist) * Math.cos(lat1),
+      Math.cos(angularDist) - Math.sin(lat1) * Math.sin(lat2),
+    );
+  return [(lat2 * 180) / Math.PI, (lng2 * 180) / Math.PI];
+}
+
+// Which physical side (relative to travel direction) the user should
+// actually walk on for the active preference — sunny_side names the SUNNY
+// side, so "shade" preference means walking the opposite side from it.
+function walkSideFor(sunnySide, preference) {
+  if (sunnySide == null || sunnySide === "both" || sunnySide === "neither") return null;
+  if (preference === "shade") return sunnySide === "left" ? "right" : "left";
+  return sunnySide;
+}
+
+const SIDE_MARKER_MIN_SPACING_M = 15;
+
+// Chevron pointing "up" (toward the top of the un-rotated SVG), rotated
+// in-markup to point toward the recommended side — google.maps.Icon (an
+// image URL, as opposed to a vector Symbol) has no rotation property of its
+// own, so the rotation has to be baked into the SVG itself, same approach
+// as headingDotSvg above.
+function sideIndicatorSvg(color, rotationDeg) {
+  return encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">' +
+      `<g transform="rotate(${rotationDeg} 8 8)">` +
+      `<path d="M8 1 L14 8 L10 8 L10 15 L6 15 L6 8 L2 8 Z" fill="${color}" stroke="white" stroke-width="1" stroke-linejoin="round"/>` +
+      "</g>" +
+      "</svg>",
+  );
+}
+
+function drawSideIndicators(mapInstance, sideMarkersRef, coords, segments, sunAltitude, preference) {
+  clearSideMarkers(sideMarkersRef);
+  if (!mapInstance || !coords || !segments || sunAltitude <= 0) return;
+
+  let lastMarkerLatLng = null;
+  coords.slice(0, -1).forEach((point, i) => {
+    const seg = segments[i] ?? segments[segments.length - 1];
+    const side = walkSideFor(seg.sunny_side, preference);
+    if (!side) return;
+
+    const [lat1, lng1] = point;
+    const [lat2, lng2] = coords[i + 1];
+    const midLat = (lat1 + lat2) / 2;
+    const midLng = (lng1 + lng2) / 2;
+
+    if (lastMarkerLatLng) {
+      const gapM = haversineKm(lastMarkerLatLng[0], lastMarkerLatLng[1], midLat, midLng) * 1000;
+      if (gapM < SIDE_MARKER_MIN_SPACING_M) return;
+    }
+
+    const bearing = computeBearing(lat1, lng1, lat2, lng2);
+    const sideBearing = (bearing + (side === "left" ? -90 : 90) + 360) % 360;
+    const [markerLat, markerLng] = offsetLatLng(midLat, midLng, sideBearing, 5);
+
+    const color = preference === "shade" ? "#5E8FAD" : "#FFD700";
+    const marker = new window.google.maps.Marker({
+      position: { lat: markerLat, lng: markerLng },
+      map: mapInstance,
+      icon: {
+        url: `data:image/svg+xml,${sideIndicatorSvg(color, sideBearing)}`,
+        anchor: new window.google.maps.Point(8, 8),
+      },
+      clickable: false,
+      zIndex: 1,
+    });
+    sideMarkersRef.current.push(marker);
+    lastMarkerLatLng = [midLat, midLng];
+  });
 }
 
 // A location dot with a directional cone, rotated to the given compass
@@ -334,6 +444,7 @@ export default function RouteMap({ regions }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const polylinesRef = useRef([]);
+  const sideMarkersRef = useRef([]);
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
   const currentLocationMarkerRef = useRef(null);
@@ -735,6 +846,7 @@ export default function RouteMap({ regions }) {
     if (!pendingRestoreDrawRef.current || !mapRef.current || !routeCoords || !routeSegments || !sunData) return;
     pendingRestoreDrawRef.current = false;
     drawRoute(mapRef.current, polylinesRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
+    drawSideIndicators(mapRef.current, sideMarkersRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
     const bounds = new window.google.maps.LatLngBounds();
     routeCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
     requestAnimationFrame(() => {
@@ -1013,6 +1125,7 @@ export default function RouteMap({ regions }) {
         setEndAddress(address);
         setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
         clearPolylines(polylinesRef);
+        clearSideMarkers(sideMarkersRef);
         setSunData(null);
         setSavedRouteName(null);
         setRouteSaved(false);
@@ -1084,6 +1197,7 @@ export default function RouteMap({ regions }) {
       return next;
     });
     clearPolylines(polylinesRef);
+    clearSideMarkers(sideMarkersRef);
     setSunData(null);
   }
 
@@ -1193,6 +1307,7 @@ export default function RouteMap({ regions }) {
       setStart(coords);
       setStartAddress(address);
       clearPolylines(polylinesRef);
+      clearSideMarkers(sideMarkersRef);
       setSunData(null);
       setSavedRouteName(null);
       setRouteSaved(false);
@@ -1201,6 +1316,7 @@ export default function RouteMap({ regions }) {
       setEnd(coords);
       setEndAddress(address);
       clearPolylines(polylinesRef);
+      clearSideMarkers(sideMarkersRef);
       setSunData(null);
       setSavedRouteName(null);
       setRouteSaved(false);
@@ -1263,6 +1379,7 @@ export default function RouteMap({ regions }) {
     setRouteCoords(waypoints);
     setRouteSegments(segments);
     drawRoute(mapRef.current, polylinesRef, waypoints, segments, sunAltitude, pref);
+    drawSideIndicators(mapRef.current, sideMarkersRef, waypoints, segments, sunAltitude, pref);
 
     const bounds = new window.google.maps.LatLngBounds();
     waypoints.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
@@ -1309,6 +1426,7 @@ export default function RouteMap({ regions }) {
 
     setPlanning(true);
     clearPolylines(polylinesRef);
+    clearSideMarkers(sideMarkersRef);
     try {
       const token = localStorage.getItem("token");
       const midLat = (start.lat + end.lat) / 2;
@@ -1701,6 +1819,7 @@ export default function RouteMap({ regions }) {
     setError(null);
     setMode("route");
     clearPolylines(polylinesRef);
+    clearSideMarkers(sideMarkersRef);
     setSunData(null);
     setEnd({ lat: place.lat, lng: place.lng });
     setEndAddress(place.name || place.address || "");
@@ -1720,6 +1839,7 @@ export default function RouteMap({ regions }) {
     if (newMode === mode) return;
     if (newMode === "places") {
       clearPolylines(polylinesRef);
+      clearSideMarkers(sideMarkersRef);
       setStart(null); setEnd(null);
       setStartAddress(""); setEndAddress("");
       setSunData(null); setRouteStats(null);
@@ -1742,6 +1862,7 @@ export default function RouteMap({ regions }) {
 
   function loadSavedRoute(route) {
     clearPolylines(polylinesRef);
+    clearSideMarkers(sideMarkersRef);
     setSunData(null);
     setSaveForm(null);
     setSaveError(null);
@@ -1779,6 +1900,7 @@ export default function RouteMap({ regions }) {
     setShowReplanBanner(false);
     exitGoMode();
     clearPolylines(polylinesRef);
+    clearSideMarkers(sideMarkersRef);
     clearPlaceMarkers();
     setSelectedPlace(null);
     setPlaceDetails(null);
@@ -2004,6 +2126,7 @@ export default function RouteMap({ regions }) {
                   setStartAddress(e.target.value);
                   setStart(null);
                   clearPolylines(polylinesRef);
+                  clearSideMarkers(sideMarkersRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2030,6 +2153,7 @@ export default function RouteMap({ regions }) {
                   setCoverageNotice(null);
                   setNotifyStatus("idle");
                   clearPolylines(polylinesRef);
+                  clearSideMarkers(sideMarkersRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2051,6 +2175,7 @@ export default function RouteMap({ regions }) {
                   setStart(currentLocation);
                   setStartAddress(address);
                   clearPolylines(polylinesRef);
+                  clearSideMarkers(sideMarkersRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2106,6 +2231,7 @@ export default function RouteMap({ regions }) {
                   setCoverageNotice(null);
                   setNotifyStatus("idle");
                   clearPolylines(polylinesRef);
+                  clearSideMarkers(sideMarkersRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2127,6 +2253,7 @@ export default function RouteMap({ regions }) {
                   setEnd(currentLocation);
                   setEndAddress(address);
                   clearPolylines(polylinesRef);
+                  clearSideMarkers(sideMarkersRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2211,6 +2338,7 @@ export default function RouteMap({ regions }) {
                       setStart(coords);
                       setStartAddress(spot.name || spot.address);
                       clearPolylines(polylinesRef);
+                      clearSideMarkers(sideMarkersRef);
                       setSunData(null);
                       setSavedRouteName(null);
                       setRouteSaved(false);
@@ -2468,23 +2596,32 @@ export default function RouteMap({ regions }) {
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
           {goMode && (() => {
             const turn = getUpcomingTurn(routeCoords, goSegmentIdx, currentLocation, activeTurnTargetRef);
-            if (!turn) return null;
+            const sideHint = getSideHint(routeSegments, goSegmentIdx, preference);
+            if (!turn && !sideHint) return null;
+            const pillStyle = {
+              position: "absolute", left: "10px", zIndex: 6,
+              background: colors.surface,
+              padding: "6px 14px",
+              borderRadius: "20px",
+              fontSize: "13px",
+              fontWeight: 700,
+              color: colors.text,
+              border: `1.5px solid ${colors.accentFaint}`,
+              boxShadow: `0 2px 8px ${colors.accentGlow}`,
+            };
             return (
-              <div
-                style={{
-                  position: "absolute", top: "10px", left: "10px", zIndex: 6,
-                  background: colors.surface,
-                  padding: "6px 14px",
-                  borderRadius: "20px",
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: colors.text,
-                  border: `1.5px solid ${colors.accentFaint}`,
-                  boxShadow: `0 2px 8px ${colors.accentGlow}`,
-                }}
-              >
-                {turn.text}
-              </div>
+              <>
+                {turn && (
+                  <div style={{ ...pillStyle, top: "10px" }}>
+                    {turn.text}
+                  </div>
+                )}
+                {sideHint && (
+                  <div style={{ ...pillStyle, top: turn ? "52px" : "10px" }}>
+                    {sideHint.text}
+                  </div>
+                )}
+              </>
             );
           })()}
           {planning && (
@@ -2639,6 +2776,20 @@ export default function RouteMap({ regions }) {
                     }}
                   />
                   {preference === "shade" ? "Sunny" : "Shaded"}
+                </span>
+                <span
+                  style={{ display: "flex", alignItems: "center", gap: "4px" }}
+                >
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      background: preference === "shade" ? "#5E8FAD" : "#FFD700",
+                      display: "inline-block",
+                      clipPath: "polygon(50% 0%, 100% 50%, 62.5% 50%, 62.5% 100%, 37.5% 100%, 37.5% 50%, 0% 50%)",
+                    }}
+                  />
+                  Walk here
                 </span>
               </div>
             </div>
