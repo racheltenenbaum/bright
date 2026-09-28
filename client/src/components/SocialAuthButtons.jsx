@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGoogle, faApple } from "@fortawesome/free-brands-svg-icons";
+import * as Sentry from "@sentry/capacitor";
 import { useAuth } from "../context/AuthContext";
 import { track } from "../analytics";
 import { signInWithGoogle, signInWithApple, isAppleSignInSupported } from "../utils/socialAuth";
@@ -21,7 +22,12 @@ export default function SocialAuthButtons({ onError }) {
       login(data.user, data.access_token);
       track(`Signed In With ${provider === "google" ? "Google" : "Apple"}`);
       navigate("/plan");
-    } catch {
+    } catch (err) {
+      // This was previously a bare `catch {}` — silently discarding the
+      // real error, which is why a real reported Google sign-in failure
+      // left literally no trace anywhere to diagnose it from.
+      console.error(`${provider} sign-in failed:`, err);
+      Sentry.captureException(err, { tags: { flow: `social-auth-${provider}` } });
       onError(`Could not sign in with ${provider === "google" ? "Google" : "Apple"}. Please try again.`);
     } finally {
       setPending(null);
