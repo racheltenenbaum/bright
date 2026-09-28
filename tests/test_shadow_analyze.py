@@ -556,7 +556,10 @@ def test_shadow_analyze_no_buildings_shadow_still_available(client, auth_headers
                     "coordinates": ROUTE, "datetime": DATETIME
                 }, headers=auth_headers)
     assert response.status_code == 200
-    assert response.json()["shadow_available"] is True
+    data = response.json()
+    assert data["shadow_available"] is True
+    # No buildings means nothing blocks the sun on either side of the street.
+    assert all(s["sunny_side"] == "both" for s in data["segments"])
 
 
 def test_shadow_analyze_api_failure_shadow_not_available(client, auth_headers):
@@ -760,6 +763,9 @@ def test_shadow_analyze_sun_below_horizon(client, auth_headers):
     data = response.json()
     assert all(s["shaded"] for s in data["segments"])
     assert data["sun_altitude"] == -5.0
+    # No shade computation is meaningful in the dark — leave unset rather
+    # than forcing a value like "neither".
+    assert all(s["sunny_side"] is None for s in data["segments"])
 
 
 def test_shadow_analyze_success(client, auth_headers):
@@ -773,6 +779,22 @@ def test_shadow_analyze_success(client, auth_headers):
     data = response.json()
     assert data["sun_altitude"] == 45.0
     assert len(data["segments"]) == len(ROUTE)
+
+
+def test_shadow_analyze_populates_sunny_side(client, auth_headers):
+    """sunny_side should be computed for every segment via which_side_sunny,
+    running against real (unmocked) shade geometry."""
+    with patch("src.routers.shadow_analyze.get_sun_position", return_value=SUN_POS):
+        with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox", return_value=BUILDINGS):
+            with patch("src.routers.shadow_analyze._fetch_elevations", return_value=[0.0] * len(ROUTE)):
+                response = client.post("/sun/shadow-analyze", json={
+                    "coordinates": ROUTE, "datetime": DATETIME
+                }, headers=auth_headers)
+    assert response.status_code == 200
+    segments = response.json()["segments"]
+    assert len(segments) == len(ROUTE)
+    for s in segments:
+        assert s["sunny_side"] in {"left", "right", "both", "neither"}
 
 
 def test_shadow_analyze_backtrack_spur_gets_consistent_shading(client, auth_headers):
@@ -801,9 +823,14 @@ def test_shadow_analyze_backtrack_spur_gets_consistent_shading(client, auth_head
             with patch("src.routers.shadow_analyze.precompute_shadow_polygons", return_value=["fake"]):
                 with patch("src.routers.shadow_analyze.build_shadow_polygon_index", return_value=None):
                     with patch("src.routers.shadow_analyze.is_point_shaded_by_index", side_effect=fake_shaded):
-                        response = client.post("/sun/shadow-analyze", json={
-                            "coordinates": route, "datetime": DATETIME
-                        }, headers=auth_headers)
+                        # which_side_sunny (src/shadow.py) calls its own
+                        # module-level is_point_shaded_by_index reference,
+                        # not the one imported into shadow_analyze — must
+                        # patch both for the fake shading to apply everywhere.
+                        with patch("src.shadow.is_point_shaded_by_index", side_effect=fake_shaded):
+                            response = client.post("/sun/shadow-analyze", json={
+                                "coordinates": route, "datetime": DATETIME
+                            }, headers=auth_headers)
 
     assert response.status_code == 200
     segments = response.json()["segments"]
@@ -812,6 +839,10 @@ def test_shadow_analyze_backtrack_spur_gets_consistent_shading(client, auth_head
         assert segments[i]["shaded"] == segments[mirror]["shaded"], (
             f"index {i} and its physically-identical mirror {mirror} "
             f"disagree: {segments[i]['shaded']} vs {segments[mirror]['shaded']}"
+        )
+        assert segments[i]["sunny_side"] == segments[mirror]["sunny_side"], (
+            f"index {i} and its physically-identical mirror {mirror} "
+            f"disagree on sunny_side: {segments[i]['sunny_side']} vs {segments[mirror]['sunny_side']}"
         )
 
 

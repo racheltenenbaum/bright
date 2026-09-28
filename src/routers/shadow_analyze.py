@@ -385,13 +385,18 @@ def shadow_analyze(
     shadow_index = build_shadow_polygon_index(shadow_polygons)
 
     shaded_map: dict[int, bool] = {}
+    side_map: dict[int, str] = {}
     for idx, lat, lng in samples:
         shaded_map[idx] = is_point_shaded_by_index(lat, lng, shadow_polygons, shadow_index, sun_altitude)
+        next_idx = min(idx + 1, n - 1)
+        lat2, lng2 = body.coordinates[next_idx][0], body.coordinates[next_idx][1]
+        side_map[idx] = which_side_sunny(lat, lng, lat2, lng2, shadow_polygons, shadow_index, sun_altitude)
 
     segments = [
         SegmentResult(
             index=i,
             shaded=shaded_map[i] if i in shaded_map else _nearest_shaded(shaded_map, i, body.coordinates),
+            sunny_side=side_map[i] if i in side_map else _nearest_sunny_side(side_map, i, body.coordinates),
         )
         for i in range(n)
     ]
