@@ -1007,11 +1007,19 @@ export default function RouteMap({ regions }) {
         if (cancelled || error || !location) return;
         updateLocationMarker(location.latitude, location.longitude);
       },
-    ).then((id) => { if (!cancelled) watcherId = id; else BackgroundGeolocation.removeWatcher({ id }); });
+    ).then((id) => {
+      if (!cancelled) watcherId = id;
+      else BackgroundGeolocation.removeWatcher({ id }).catch(() => {});
+    }).catch(() => {
+      // Not implemented on web (this plugin is native-only) — the regular
+      // Geolocation watcher above keeps running regardless of goMode, so
+      // Go mode still gets location on web, just without the background/
+      // locked-screen reliability this plugin provides on iOS/Android.
+    });
 
     return () => {
       cancelled = true;
-      if (watcherId !== null) BackgroundGeolocation.removeWatcher({ id: watcherId });
+      if (watcherId !== null) BackgroundGeolocation.removeWatcher({ id: watcherId }).catch(() => {});
     };
   }, [goMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
