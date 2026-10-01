@@ -538,9 +538,9 @@ export default function RouteMap({ regions }) {
   const spokenTurnTargetRef = useRef(null);
   const [voiceEnabled, setVoiceEnabled] = useState(() => {
     try {
-      return localStorage.getItem("goModeVoiceEnabled") !== "false";
+      return localStorage.getItem("goModeVoiceEnabled") === "true";
     } catch (_) {
-      return true;
+      return false;
     }
   });
   const [deviceHeading, setDeviceHeading] = useState(null);
