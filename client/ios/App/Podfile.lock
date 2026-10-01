@@ -11,6 +11,10 @@ PODS:
     - Capacitor
   - CapacitorCommunityAppleSignIn (5.0.0):
     - Capacitor
+  - CapacitorCommunityBackgroundGeolocation (1.2.26):
+    - Capacitor
+  - CapacitorCommunityTextToSpeech (3.0.1):
+    - Capacitor
   - CapacitorCordova (5.7.8)
   - CapacitorGeolocation (5.0.8):
     - Capacitor
@@ -38,6 +42,8 @@ DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
   - "CapacitorCommunityAppleSignIn (from `../../node_modules/@capacitor-community/apple-sign-in`)"
+  - "CapacitorCommunityBackgroundGeolocation (from `../../node_modules/@capacitor-community/background-geolocation`)"
+  - "CapacitorCommunityTextToSpeech (from `../../node_modules/@capacitor-community/text-to-speech`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
   - "CapacitorShare (from `../../node_modules/@capacitor/share`)"
@@ -59,6 +65,10 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/app"
   CapacitorCommunityAppleSignIn:
     :path: "../../node_modules/@capacitor-community/apple-sign-in"
+  CapacitorCommunityBackgroundGeolocation:
+    :path: "../../node_modules/@capacitor-community/background-geolocation"
+  CapacitorCommunityTextToSpeech:
+    :path: "../../node_modules/@capacitor-community/text-to-speech"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorGeolocation:
@@ -75,6 +85,8 @@ SPEC CHECKSUMS:
   Capacitor: 747aadb4fa786f460d8cd9d0557cb81440a13747
   CapacitorApp: 102e553c3b1fdc255969c39aa19b529675690ef4
   CapacitorCommunityAppleSignIn: eafdd59b18b38161fa5cceee7b0e31312b122958
+  CapacitorCommunityBackgroundGeolocation: 64561a9463d1decd1b58349a5b999327e24bf9ed
+  CapacitorCommunityTextToSpeech: a47d2746124fc06f1018791b3f154cfd2c5c4fe6
   CapacitorCordova: 31ab98dca2ddcee051027a1afe7e8c85c82f7297
   CapacitorGeolocation: 0572212732f7ee65828d069a9663a274be89b9fc
   CapacitorShare: abef1f7be4e10b448693b0b83b540cb4b92dc849
@@ -85,6 +97,6 @@ SPEC CHECKSUMS:
   Sentry: 88746bf877eff714bc45315a39ad1d1efea2cdda
   SentryCapacitor: a159b966e73da91a92f40f2f5240da91f774e4ca
 
-PODFILE CHECKSUM: 7531afeb13e57b6f49441287756862a57c2a39c1
+PODFILE CHECKSUM: 38391ce40d58eea58ffcea30d5049f7931f98a95
 
 COCOAPODS: 1.16.2

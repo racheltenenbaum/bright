@@ -46,4 +46,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Required on Android 11+ so TextToSpeech can find the system TTS
+         engine — see @capacitor-community/text-to-speech's install docs.
+         (ACCESS_BACKGROUND_LOCATION, FOREGROUND_SERVICE*, and
+         POST_NOTIFICATIONS for the Go-mode tracking notification come from
+         @capacitor-community/background-geolocation's own manifest, merged
+         automatically by Gradle — not duplicated here.) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 </manifest>

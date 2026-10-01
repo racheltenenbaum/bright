@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { useAuth } from "../context/AuthContext";
 import { Geolocation } from "@capacitor/geolocation";
+import { registerPlugin } from "@capacitor/core";
+import { TextToSpeech } from "@capacitor-community/text-to-speech";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import api from "../api";
@@ -19,12 +21,16 @@ import {
   faMapLocationDot,
   faSliders,
   faCircleInfo,
+  faVolumeHigh,
+  faVolumeXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
 import { addressFromGeocodeResult } from "../utils/address";
 import { isCovered } from "../utils/coverage";
 import { track } from "../analytics";
+
+const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
 
 const MAP_CENTER = { lat: 51.505, lng: -0.09 };
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -524,6 +530,19 @@ export default function RouteMap({ regions }) {
   // see getUpcomingTurn's hysteresis for why this needs to persist across
   // calls rather than being recomputed fresh each time.
   const activeTurnTargetRef = useRef(null);
+  const [turnHint, setTurnHint] = useState(null);
+  // Which turn target (activeTurnTargetRef's value) has already been spoken
+  // — separate from activeTurnTargetRef itself because that ref's value
+  // doesn't tell you whether THIS target has been announced yet, only which
+  // one is currently showing.
+  const spokenTurnTargetRef = useRef(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    try {
+      return localStorage.getItem("goModeVoiceEnabled") !== "false";
+    } catch (_) {
+      return true;
+    }
+  });
   const [deviceHeading, setDeviceHeading] = useState(null);
   const preGoZoomRef = useRef(null);
   const lastHeadingUpdateRef = useRef(0);
@@ -877,6 +896,32 @@ export default function RouteMap({ regions }) {
     setRouteSunAltitude(computeSunAltitude((start.lat + end.lat) / 2, (start.lng + end.lng) / 2));
   }, [start, end]);
 
+  // Shared by the normal (plan-mode) location watcher below and the
+  // Go-mode background watcher (further down) — just the "move the dot"
+  // part, not the one-time pan/autocomplete-bias setup that only makes
+  // sense before a route exists.
+  function updateLocationMarker(lat, lng) {
+    if (!mapRef.current) return;
+    setCurrentLocation({ lat, lng });
+    localStorage.setItem("bright_lat", lat);
+    localStorage.setItem("bright_lng", lng);
+    if (currentLocationMarkerRef.current) {
+      currentLocationMarkerRef.current.setPosition({ lat, lng });
+    } else {
+      currentLocationMarkerRef.current = new window.google.maps.Marker({
+        position: { lat, lng },
+        map: mapRef.current,
+        icon: {
+          url: `data:image/svg+xml;charset=UTF-8,${plainDotSvg()}`,
+          scaledSize: new window.google.maps.Size(22, 22),
+          anchor: new window.google.maps.Point(11, 11),
+        },
+        zIndex: 1,
+        title: "Your location",
+      });
+    }
+  }
+
   // Show current location dot
   useEffect(() => {
     if (!isLoaded) return;
@@ -886,9 +931,7 @@ export default function RouteMap({ regions }) {
 
     function handlePosition(lat, lng) {
       if (cancelled || !mapRef.current) return;
-      setCurrentLocation({ lat, lng });
-      localStorage.setItem("bright_lat", lat);
-      localStorage.setItem("bright_lng", lng);
+      updateLocationMarker(lat, lng);
       if (!initialPanDone && !startRef.current) {
         if (!skipInitialPanRef.current) {
           mapRef.current.panTo({ lat, lng });
@@ -907,21 +950,6 @@ export default function RouteMap({ regions }) {
         startAutocompleteRef.current?.setBounds(bias);
         endAutocompleteRef.current?.setBounds(bias);
         placeNameAutocompleteRef.current?.setBounds(bias);
-      }
-      if (currentLocationMarkerRef.current) {
-        currentLocationMarkerRef.current.setPosition({ lat, lng });
-      } else {
-        currentLocationMarkerRef.current = new window.google.maps.Marker({
-          position: { lat, lng },
-          map: mapRef.current,
-          icon: {
-            url: `data:image/svg+xml;charset=UTF-8,${plainDotSvg()}`,
-            scaledSize: new window.google.maps.Size(22, 22),
-            anchor: new window.google.maps.Point(11, 11),
-          },
-          zIndex: 1,
-          title: "Your location",
-        });
       }
     }
 
@@ -957,6 +985,36 @@ export default function RouteMap({ regions }) {
     };
   }, [isLoaded]);
 
+  // While in Go mode, switch to a background-capable watcher so location
+  // (and the turn announcements it drives) keep updating with the screen
+  // locked — the plain Geolocation watcher above is not guaranteed to keep
+  // delivering updates once backgrounded. Scoped entirely to goMode: the
+  // normal watcher above is untouched and keeps handling plan-mode location.
+  useEffect(() => {
+    if (!goMode) return;
+    let watcherId = null;
+    let cancelled = false;
+
+    BackgroundGeolocation.addWatcher(
+      {
+        backgroundTitle: "bright is navigating",
+        backgroundMessage: "Tracking your walk and announcing turns.",
+        requestPermissions: true,
+        stale: false,
+        distanceFilter: 5,
+      },
+      (location, error) => {
+        if (cancelled || error || !location) return;
+        updateLocationMarker(location.latitude, location.longitude);
+      },
+    ).then((id) => { if (!cancelled) watcherId = id; else BackgroundGeolocation.removeWatcher({ id }); });
+
+    return () => {
+      cancelled = true;
+      if (watcherId !== null) BackgroundGeolocation.removeWatcher({ id: watcherId });
+    };
+  }, [goMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // In Go mode, find which route segment the user is currently on
   useEffect(() => {
     if (!goMode || !currentLocation || !routeCoords) return;
@@ -990,6 +1048,31 @@ export default function RouteMap({ regions }) {
       setMapHeading(bearing);
     }
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Compute the turn hint for the banner, and speak brand-new instructions
+  // exactly once. getUpcomingTurn mutates activeTurnTargetRef as its own
+  // hysteresis side effect, so it must be called from exactly one place
+  // (here) rather than also inline in render — see activeTurnTargetRef's
+  // declaration. turn.text keeps changing every call as the distance ticks
+  // down even for the "same" instruction, so "new instruction" is detected
+  // by comparing activeTurnTargetRef's value (the waypoint index it's
+  // currently pinned to) against what was last spoken, not by comparing text.
+  useEffect(() => {
+    if (!goMode) {
+      setTurnHint(null);
+      spokenTurnTargetRef.current = null;
+      TextToSpeech.stop().catch(() => {});
+      return;
+    }
+    const turn = getUpcomingTurn(routeCoords, goSegmentIdx, currentLocation, activeTurnTargetRef);
+    setTurnHint(turn);
+    if (turn && activeTurnTargetRef.current !== spokenTurnTargetRef.current) {
+      spokenTurnTargetRef.current = activeTurnTargetRef.current;
+      if (voiceEnabled) {
+        TextToSpeech.speak({ text: turn.text, lang: "en-US", category: "playback" }).catch(() => {});
+      }
+    }
+  }, [goMode, goSegmentIdx, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fade the portion of the route already walked, so it's visually distinct
   // from what's ahead. polylinesRef holds one polyline per segment, in the
@@ -2595,7 +2678,7 @@ export default function RouteMap({ regions }) {
         <div className="map-wrapper" style={{ height: "100%", flex: "none", position: "relative" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
           {goMode && (() => {
-            const turn = getUpcomingTurn(routeCoords, goSegmentIdx, currentLocation, activeTurnTargetRef);
+            const turn = turnHint;
             const sideHint = getSideHint(routeSegments, goSegmentIdx, preference);
             if (!turn && !sideHint) return null;
             const pillStyle = {
@@ -2822,6 +2905,32 @@ export default function RouteMap({ regions }) {
               }}
             >
               {goMode ? "Stop" : "Go"}
+            </button>
+          )}
+          {goMode && (
+            <button
+              onClick={() => {
+                setVoiceEnabled((prev) => {
+                  const next = !prev;
+                  try {
+                    localStorage.setItem("goModeVoiceEnabled", String(next));
+                  } catch (_) { /* ignore */ }
+                  if (!next) TextToSpeech.stop().catch(() => {});
+                  return next;
+                });
+              }}
+              title={voiceEnabled ? "Mute voice directions" : "Unmute voice directions"}
+              style={{
+                position: "absolute", top: "122px", right: "10px", zIndex: 10,
+                width: "40px", height: "40px", borderRadius: "50%",
+                background: colors.surface,
+                border: `1.5px solid ${colors.accentFaint}`,
+                boxShadow: `0 2px 8px ${colors.accentGlow}`,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                padding: 0,
+              }}
+            >
+              <FontAwesomeIcon icon={voiceEnabled ? faVolumeHigh : faVolumeXmark} style={{ color: colors.subtext, fontSize: "16px" }} />
             </button>
           )}
           {selectedPlace && (

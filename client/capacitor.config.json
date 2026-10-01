@@ -8,6 +8,9 @@
   "ios": {
     "inspectable": true
   },
+  "android": {
+    "useLegacyBridge": true
+  },
   "plugins": {
     "GoogleAuth": {
       "scopes": ["email", "profile"],

@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@capacitor-community/apple-sign-in": "^5.0.0",
+    "@capacitor-community/background-geolocation": "^1.2.26",
+    "@capacitor-community/text-to-speech": "^3.0.1",
     "@capacitor/android": "^5.7.8",
     "@capacitor/app": "^5.0.8",
     "@capacitor/cli": "^5.7.8",
