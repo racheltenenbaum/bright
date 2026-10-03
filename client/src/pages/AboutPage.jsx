@@ -46,6 +46,17 @@ const FEATURES = [
   },
 ];
 
+// Data credits required by each source's license. Add a line here whenever a
+// new data source (e.g. a new city's building dataset) goes live — see
+// docs/DATA_SOURCES.md.
+const CREDITS = [
+  { label: "© OpenStreetMap contributors", href: "https://www.openstreetmap.org/copyright" },
+  { label: "Stadt Wien – data.wien.gv.at", href: "https://data.wien.gv.at" },
+  { label: "Tel Aviv-Yafo Municipality GIS", href: "https://gisn.tel-aviv.gov.il" },
+  { label: "© LGL Baden-Württemberg (dl-de/by-2-0)", href: "https://www.lgl-bw.de" },
+  { label: "Esri World Imagery", href: "https://www.esri.com" },
+];
+
 export default function AboutPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -164,6 +175,15 @@ export default function AboutPage() {
 
         <p style={{ margin: "32px 0 0", textAlign: "center", fontSize: "0.78em", color: "var(--color-subtext)" }}>
           <Link to="/privacy">Privacy Policy</Link>
+        </p>
+        <p className="about-credits">
+          Map data:{" "}
+          {CREDITS.map(({ label, href }, i) => (
+            <span key={href}>
+              {i > 0 && " · "}
+              <a href={href} target="_blank" rel="noopener noreferrer">{label}</a>
+            </span>
+          ))}
         </p>
 
       </div>

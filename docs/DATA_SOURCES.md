@@ -7,6 +7,12 @@ region bounding boxes and `scripts/import_*.py` for the ingestion scripts.
 
 Update this file whenever a region's data is (re-)imported.
 
+**Attribution:** several of these sources require a visible credit (OSM's
+ODbL, Vienna's CC BY 4.0, Baden-Württemberg's dl-de/by-2-0, Esri imagery).
+These live in the `CREDITS` list at the bottom of the About page
+(`client/src/pages/AboutPage.jsx`) — add a line there whenever a new data
+source goes live.
+
 ## Tree canopy (all regions, via `scripts/import_tree_rows.py`)
 
 OSM's `natural=tree_row` tag (a line of street trees) is converted into

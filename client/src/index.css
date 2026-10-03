@@ -592,6 +592,19 @@ body.night-mode .auth-card {
 .about-step-walk {
   animation: person-walk 0.75s ease-in-out infinite;
 }
+.about-credits {
+  margin: 10px auto 0;
+  max-width: 520px;
+  text-align: center;
+  font-size: 0.68em;
+  line-height: 1.6;
+  color: var(--color-subtext);
+  opacity: 0.8;
+}
+.about-credits a {
+  color: inherit;
+  white-space: nowrap;
+}
 
 @media (min-width: 1024px) {
   .about-inner {
