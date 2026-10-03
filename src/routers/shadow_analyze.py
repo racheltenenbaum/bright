@@ -17,7 +17,7 @@ from src.database import SessionLocal
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import OsmBuilding, User
 from src.regions import REGION_BOUNDS, region_for_bbox as _region_for_bbox
-from src.routing import WALKING_SPEED_MPS, _haversine_m, sun_slice_count, sun_slice_index, sun_slice_offset
+from src.routing import WALKING_SPEED_MPS, _haversine_m, plan_sun_slices
 from src.shadow import (
     build_shadow_polygon_index,
     extract_buildings_from_overpass,
@@ -365,14 +365,12 @@ def shadow_analyze(
     n = len(body.coordinates)
 
     # Each point is shaded by the sun when the walker reaches it (matching
-    # how /sun/optimized-route chose the path — see SUN_TIME_SLICE_MIN).
+    # how /sun/optimized-route chose the path — see SUN_SLICE_TARGET_MIN).
     walked = [0.0]
     for (lat1, lng1), (lat2, lng2) in zip(body.coordinates, body.coordinates[1:]):
         walked.append(walked[-1] + _haversine_m(lat1, lng1, lat2, lng2))
-    suns = [
-        get_sun_position(mid[0], mid[1], departure + sun_slice_offset(k))
-        for k in range(sun_slice_count(walked[-1], speed_mps))
-    ]
+    plan = plan_sun_slices(walked[-1], speed_mps)
+    suns = [get_sun_position(mid[0], mid[1], departure + plan.offset(k)) for k in range(plan.count)]
 
     if all(alt <= 0 for alt, _ in suns):
         return ShadowAnalyzeResponse(
@@ -400,7 +398,7 @@ def shadow_analyze(
     shaded_map: dict[int, bool] = {}
     side_map: dict[int, str | None] = {}
     for idx, lat, lng in samples:
-        k = sun_slice_index(walked[idx], len(suns), speed_mps)
+        k = plan.index(walked[idx])
         alt, az = suns[k]
         if alt <= 0:
             shaded_map[idx] = True

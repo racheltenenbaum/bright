@@ -1,7 +1,7 @@
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
@@ -30,8 +30,6 @@ from src.routing import (
     route_bbox_padding_m,
     path_edge_kinds,
     simplify_path_with_kinds,
-    sun_slice_count,
-    sun_slice_offset,
 )
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
 from src.utils.astronomy import get_sun_position, resolve_departure
@@ -112,7 +110,7 @@ class OptimizedRouteResponse(BaseModel):
     date: str
 
 
-def _attempt_route(s, w, n, e, body, suns, speed_mps):
+def _attempt_route(s, w, n, e, body, sun_at, sun_up, speed_mps):
     """One fetch-graph-and-pathfind attempt for a given bbox. Split out from
     optimized_route so it can be retried with a wider bbox when start/end
     land in disconnected chunks of the first, narrower fetch (see the
@@ -129,7 +127,7 @@ def _attempt_route(s, w, n, e, body, suns, speed_mps):
         road_future = pool.submit(_timed, fetch_road_graph, s, w, n, e)
         bldg_future = pool.submit(_timed, _fetch_buildings_for_bbox, s, w, n, e)
         graph, timings["road_graph_s"] = road_future.result()
-        if any(alt > 0 for alt, _ in suns):
+        if sun_up:
             bldg_result, timings["buildings_s"] = bldg_future.result()
         else:
             bldg_result, timings["buildings_s"] = [], None
@@ -146,7 +144,7 @@ def _attempt_route(s, w, n, e, body, suns, speed_mps):
     timings["nearest_node_s"] = time.perf_counter() - nearest_node_start
 
     edge_weights_start = time.perf_counter()
-    compute_edge_weights_timed(graph, buildings, suns, body.preference, start_node, speed_mps)
+    compute_edge_weights_timed(graph, buildings, sun_at, body.preference, start_node, end_node, speed_mps)
     timings["edge_weights_s"] = time.perf_counter() - edge_weights_start
 
     optimized_path_start = time.perf_counter()
@@ -195,19 +193,19 @@ def optimized_route(
     all_coords = [body.start, body.end]
     straight_line_m = _haversine_m(body.start[0], body.start[1], body.end[0], body.end[1])
 
-    # Sun per time slice of the walk (see SUN_TIME_SLICE_MIN): long enough to
-    # cover the longest route the detour cap allows, with real streets being
-    # ~1.4x the straight line.
-    max_walk_m = straight_line_m * ROUTE_CIRCUITY * (1 + max_detour)
-    suns = [
-        get_sun_position(mid_lat, mid_lng, departure + sun_slice_offset(k))
-        for k in range(sun_slice_count(max_walk_m, speed_mps))
-    ]
+    # Sun at a given time into the walk (see SUN_SLICE_TARGET_MIN). Buildings
+    # are only needed if the sun is up at some point during the longest walk
+    # the detour cap allows (real streets being ~1.4x the straight line).
+    def sun_at(offset):
+        return get_sun_position(mid_lat, mid_lng, departure + offset)
+
+    max_walk_s = straight_line_m * ROUTE_CIRCUITY * (1 + max_detour) / speed_mps
+    sun_up = sun_altitude > 0 or sun_at(timedelta(seconds=max_walk_s))[0] > 0
     padding_m = route_bbox_padding_m(straight_line_m, max_detour)
     s, w, n, e = _route_bbox(all_coords, padding_m=padding_m)
     bbox_s = time.perf_counter() - bbox_start
 
-    attempt = _attempt_route(s, w, n, e, body, suns, speed_mps)
+    attempt = _attempt_route(s, w, n, e, body, sun_at, sun_up, speed_mps)
     retried = False
 
     if attempt["empty_graph"]:
@@ -225,7 +223,7 @@ def optimized_route(
             body.preference, body.start, body.end, padding_m,
         )
         s, w, n, e = _route_bbox(all_coords, padding_m=ROUTE_BBOX_MAX_PADDING_M)
-        attempt = _attempt_route(s, w, n, e, body, suns, speed_mps)
+        attempt = _attempt_route(s, w, n, e, body, sun_at, sun_up, speed_mps)
         retried = True
 
         if attempt["empty_graph"]:

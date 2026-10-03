@@ -7,23 +7,27 @@ import pytest
 
 from src.routing import (
     MAX_SUN_SLICES,
-    SUN_TIME_SLICE_MIN,
+    SUN_SLICE_TARGET_MIN,
     WALKING_SPEED_MPS,
     build_graph,
     compute_edge_weights,
     compute_edge_weights_timed,
-    sun_slice_count,
-    sun_slice_index,
-    sun_slice_offset,
+    plan_sun_slices,
 )
 from src.utils.astronomy import resolve_departure
 
-SLICE_M = SUN_TIME_SLICE_MIN * 60 * WALKING_SPEED_MPS  # meters walked per slice
+# Walk length (m) that takes exactly one target slice at the default pace.
+TARGET_M = SUN_SLICE_TARGET_MIN * 60 * WALKING_SPEED_MPS
 
 
 def _m(x: float, y: float) -> tuple[float, float]:
     """Local meters → lat/lng around (40, -74). x = east, y = north."""
     return 40.0 + y / 111_320, -74.0 + x / (111_320 * 0.766044)
+
+
+def _sun_at_offset(offset):
+    """Azimuth 90 for anything under 10 minutes in, 270 after."""
+    return (45.0, 90.0) if offset < timedelta(minutes=10) else (45.0, 270.0)
 
 
 # --- departure time ----------------------------------------------------------
@@ -40,29 +44,39 @@ def test_resolve_departure_falls_back_to_now_for_naive_time():
     assert abs((dt - datetime.now(timezone.utc)).total_seconds()) < 5
 
 
-# --- slice helpers -----------------------------------------------------------
+# --- slice planning ----------------------------------------------------------
 
-def test_sun_slice_count():
-    assert sun_slice_count(0) == 1
-    assert sun_slice_count(SLICE_M * 0.9) == 1
-    assert sun_slice_count(SLICE_M * 2.5) == 3
-    assert sun_slice_count(SLICE_M * 100) == MAX_SUN_SLICES
-
-
-def test_sun_slice_count_respects_walking_speed():
-    assert sun_slice_count(SLICE_M * 1.5, speed_mps=WALKING_SPEED_MPS * 2) == 1
+def test_short_walk_is_one_slice_at_its_midpoint():
+    plan = plan_sun_slices(TARGET_M * 0.5)
+    assert plan.count == 1
+    assert plan.offset(0) == timedelta(minutes=SUN_SLICE_TARGET_MIN * 0.25)
+    assert plan.index(TARGET_M * 10) == 0
 
 
-def test_sun_slice_index():
-    assert sun_slice_index(0, 3) == 0
-    assert sun_slice_index(SLICE_M * 0.99, 3) == 0
-    assert sun_slice_index(SLICE_M * 1.01, 3) == 1
-    assert sun_slice_index(SLICE_M * 10, 3) == 2
+def test_longer_walk_splits_evenly():
+    plan = plan_sun_slices(TARGET_M * 1.5)
+    assert plan.count == 2
+    half_m = TARGET_M * 0.75
+    assert plan.index(0) == 0
+    assert plan.index(half_m * 0.99) == 0
+    assert plan.index(half_m * 1.01) == 1
+    assert plan.index(half_m * 5) == 1
+    assert plan.offset(1) == timedelta(minutes=SUN_SLICE_TARGET_MIN * 0.75 * 1.5)
 
 
-def test_sun_slice_offset_is_slice_midpoint():
-    assert sun_slice_offset(0) == timedelta(minutes=SUN_TIME_SLICE_MIN / 2)
-    assert sun_slice_offset(2) == timedelta(minutes=SUN_TIME_SLICE_MIN * 2.5)
+def test_slice_count_is_capped():
+    plan = plan_sun_slices(TARGET_M * 100)
+    assert plan.count == MAX_SUN_SLICES
+
+
+def test_slice_plan_respects_walking_speed():
+    assert plan_sun_slices(TARGET_M * 1.5, speed_mps=WALKING_SPEED_MPS * 2).count == 1
+
+
+def test_zero_length_walk():
+    plan = plan_sun_slices(0)
+    assert plan.count == 1
+    assert plan.index(0) == 0
 
 
 # --- time-aware edge weights -------------------------------------------------
@@ -80,16 +94,20 @@ def _fake_polygons(buildings, alt, az):
     return (alt, az), None
 
 
+def _last(g):
+    return max(g.nodes)
+
+
 def test_timed_weights_shade_far_edges_by_later_sun():
-    g = build_graph(_line_osm(SLICE_M * 2))
-    suns = [(45.0, 90.0), (45.0, 270.0)]
+    # ~2000m line: ~30 min with slack → two slices, split ~1150m in.
+    g = build_graph(_line_osm(2000))
     with (
         patch("src.routing._shadow_polygons_and_index", side_effect=_fake_polygons),
         patch("src.routing.is_point_shaded_by_index",
               side_effect=lambda lat, lng, polys, idx, alt: polys[1] == 270.0),
     ):
-        compute_edge_weights_timed(g, [], suns, "sun", start_node=1)
-    last = max(g.nodes)
+        compute_edge_weights_timed(g, [], _sun_at_offset, "sun", 1, _last(g))
+    last = _last(g)
     assert g.edges[1, 2]["shaded"] is False
     assert g.edges[last - 1, last]["shaded"] is True
     # Sun preference penalizes the shaded (far) edge only.
@@ -98,21 +116,23 @@ def test_timed_weights_shade_far_edges_by_later_sun():
 
 
 def test_timed_weights_treat_slices_after_sunset_as_shaded():
-    g = build_graph(_line_osm(SLICE_M * 2))
-    suns = [(5.0, 260.0), (-1.0, 265.0)]
+    g = build_graph(_line_osm(2000))
     with (
         patch("src.routing._shadow_polygons_and_index", side_effect=_fake_polygons),
         patch("src.routing.is_point_shaded_by_index", return_value=False),
     ):
-        compute_edge_weights_timed(g, [], suns, "shade", start_node=1)
-    last = max(g.nodes)
+        compute_edge_weights_timed(
+            g, [], lambda off: (5.0, 260.0) if off < timedelta(minutes=10) else (-1.0, 265.0),
+            "shade", 1, _last(g),
+        )
+    last = _last(g)
     assert g.edges[1, 2]["shaded"] is False
     assert g.edges[last - 1, last]["shaded"] is True
 
 
 def test_timed_weights_all_below_horizon_is_plain_distance():
-    g = build_graph(_line_osm(SLICE_M * 2))
-    compute_edge_weights_timed(g, [], [(-5.0, 280.0), (-8.0, 285.0)], "sun", start_node=1)
+    g = build_graph(_line_osm(2000))
+    compute_edge_weights_timed(g, [], lambda off: (-5.0, 280.0), "sun", 1, _last(g))
     for _, _, d in g.edges(data=True):
         assert d["weight"] == d["distance_m"]
 
@@ -122,13 +142,13 @@ def test_timed_weights_single_slice_matches_untimed():
     g2 = build_graph(_line_osm(1000))
     with patch("src.routing.is_point_shaded_by_index", side_effect=lambda lat, *a: lat > 40.004):
         compute_edge_weights(g1, [], 45.0, 180.0, "shade")
-        compute_edge_weights_timed(g2, [], [(45.0, 180.0)], "shade", start_node=1)
+        compute_edge_weights_timed(g2, [], lambda off: (45.0, 180.0), "shade", 1, _last(g2))
     for u, v, d in g1.edges(data=True):
         assert g2.edges[u, v]["weight"] == d["weight"]
 
 
 def test_timed_weights_unreachable_edges_use_first_slice():
-    osm = _line_osm(500)
+    osm = _line_osm(2000)
     a, b = _m(500, 0), _m(500, 100)
     osm["elements"] += [
         {"type": "node", "id": 90, "lat": a[0], "lon": a[1]},
@@ -141,8 +161,26 @@ def test_timed_weights_unreachable_edges_use_first_slice():
         patch("src.routing.is_point_shaded_by_index",
               side_effect=lambda lat, lng, polys, idx, alt: polys[1] == 270.0),
     ):
-        compute_edge_weights_timed(g, [], [(45.0, 90.0), (45.0, 270.0)], "sun", start_node=1)
+        compute_edge_weights_timed(g, [], _sun_at_offset, "sun", 1, 9)
     assert g.edges[90, 91]["shaded"] is False
+    assert g.edges[8, 9]["shaded"] is True
+
+
+def test_timed_weights_unreachable_end_uses_one_slice():
+    osm = _line_osm(2000)
+    a = _m(500, 0)
+    osm["elements"] += [{"type": "node", "id": 90, "lat": a[0], "lon": a[1]},
+                        {"type": "node", "id": 91, "lat": a[0] + 0.001, "lon": a[1]},
+                        {"type": "way", "id": 200, "nodes": [90, 91], "tags": {"highway": "residential"}}]
+    g = build_graph(osm)
+    with (
+        patch("src.routing._shadow_polygons_and_index", side_effect=_fake_polygons),
+        patch("src.routing.is_point_shaded_by_index",
+              side_effect=lambda lat, lng, polys, idx, alt: polys[1] == 270.0),
+    ):
+        compute_edge_weights_timed(g, [], _sun_at_offset, "sun", 1, 91)
+    # One slice, departure-ish sun (azimuth 90) everywhere.
+    assert not any(d["shaded"] for _, _, d in g.edges(data=True))
 
 
 # --- end to end: the route picks its far branch by the shade at arrival -----
@@ -152,7 +190,7 @@ def _branch_osm() -> dict:
     west and east — well past the first slice. Morning-ish sun shades the
     west branch; the later sun the walker actually meets there shades the
     east one."""
-    stem_end = SLICE_M * 1.3
+    stem_end = 1500
     pts = {
         1: _m(0, 0),
         2: _m(0, stem_end / 2),
@@ -175,9 +213,8 @@ _DEPARTURE = datetime(2026, 5, 24, 12, 0, tzinfo=timezone.utc)
 
 
 def _sun_by_time(lat, lng, dt=None):
-    # Azimuth 90 for the first slice, 270 from the second slice on.
     assert dt is not None, "routing must pass the departure time through"
-    return (45.0, 90.0) if dt < _DEPARTURE + timedelta(minutes=SUN_TIME_SLICE_MIN) else (45.0, 270.0)
+    return _sun_at_offset(dt - _DEPARTURE)
 
 
 def _shaded_by_sun_side(lat, lng, polys, idx, alt):
@@ -193,7 +230,7 @@ def test_optimized_route_uses_sun_at_arrival_time(client, auth_headers, preferen
     the departure sun) — but by the time the walker gets there, the sun has
     moved and it's the east branch that's shaded. Runs the real endpoint
     for each preference."""
-    start, end = _m(0, 0), _m(0, SLICE_M * 1.3 + 500)
+    start, end = _m(0, 0), _m(0, 2000)
     with (
         patch("src.routers.routing.get_sun_position", side_effect=_sun_by_time),
         patch("src.routing.fetch_osm_road_network", return_value=_branch_osm()),
@@ -216,7 +253,7 @@ def test_optimized_route_uses_sun_at_arrival_time(client, auth_headers, preferen
 
 
 def test_optimized_route_reports_departure_sun(client, auth_headers):
-    start, end = _m(0, 0), _m(0, SLICE_M * 1.3 + 500)
+    start, end = _m(0, 0), _m(0, 2000)
     with (
         patch("src.routers.routing.get_sun_position", side_effect=_sun_by_time) as sun,
         patch("src.routing.fetch_osm_road_network", return_value=_branch_osm()),
@@ -287,7 +324,7 @@ def test_optimized_route_rejects_implausible_walking_speed(client, auth_headers,
 def test_optimized_route_walking_speed_changes_slices(client, auth_headers):
     """Walking twice as fast reaches the branches inside the first slice, so
     the departure sun applies there and shade takes the west branch."""
-    start, end = _m(0, 0), _m(0, SLICE_M * 1.3 + 500)
+    start, end = _m(0, 0), _m(0, 2000)
     with (
         patch("src.routers.routing.get_sun_position", side_effect=_sun_by_time),
         patch("src.routing.fetch_osm_road_network", return_value=_branch_osm()),
@@ -331,7 +368,7 @@ def _analyze(client, auth_headers, coords, sun_fn, datetime_str="2026-05-24T14:0
 
 
 def test_shadow_analyze_shades_far_segments_by_later_sun(client, auth_headers):
-    coords = _line_coords(SLICE_M * 2)
+    coords = _line_coords(TARGET_M * 1.5)
     resp = _analyze(client, auth_headers, coords, _sun_by_time)
     assert resp.status_code == 200
     segs = resp.json()["segments"]
@@ -341,10 +378,10 @@ def test_shadow_analyze_shades_far_segments_by_later_sun(client, auth_headers):
 
 
 def test_shadow_analyze_after_sunset_slice_is_shaded(client, auth_headers):
-    coords = _line_coords(SLICE_M * 2)
+    coords = _line_coords(TARGET_M * 1.5)
 
     def sun(lat, lng, dt=None):
-        return (5.0, 90.0) if dt < _DEPARTURE + timedelta(minutes=SUN_TIME_SLICE_MIN) else (-1.0, 270.0)
+        return (5.0, 90.0) if dt - _DEPARTURE < timedelta(minutes=10) else (-1.0, 270.0)
 
     segs = _analyze(client, auth_headers, coords, sun).json()["segments"]
     assert segs[0]["shaded"] is False
@@ -353,7 +390,7 @@ def test_shadow_analyze_after_sunset_slice_is_shaded(client, auth_headers):
 
 
 def test_shadow_analyze_all_dark_skips_buildings(client, auth_headers):
-    coords = _line_coords(SLICE_M * 2)
+    coords = _line_coords(TARGET_M * 1.5)
     with patch("src.routers.shadow_analyze._fetch_buildings_for_bbox"):
         resp = _analyze(client, auth_headers, coords, lambda lat, lng, dt=None: (-5.0, 300.0))
     assert resp.status_code == 200
@@ -361,7 +398,32 @@ def test_shadow_analyze_all_dark_skips_buildings(client, auth_headers):
 
 
 def test_shadow_analyze_walking_speed_changes_slices(client, auth_headers):
-    coords = _line_coords(SLICE_M * 1.5)
+    coords = _line_coords(TARGET_M * 1.5)
     segs = _analyze(client, auth_headers, coords, _sun_by_time,
                     walking_speed_mps=WALKING_SPEED_MPS * 2).json()["segments"]
     assert not any(s["shaded"] for s in segs)
+
+
+def test_optimized_route_fetches_buildings_when_sun_rises_mid_walk(client, auth_headers):
+    """Setting off just before sunrise: the sun is up for later parts of the
+    walk, so shadows are still needed."""
+    def sunrise(lat, lng, dt=None):
+        return (-1.0, 80.0) if dt - _DEPARTURE < timedelta(minutes=10) else (3.0, 85.0)
+
+    building = {"footprint": [], "height": 10}
+    start, end = _m(0, 0), _m(0, 2000)
+    with (
+        patch("src.routers.routing.get_sun_position", side_effect=sunrise),
+        patch("src.routing.fetch_osm_road_network", return_value=_branch_osm()),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[building]),
+        patch("src.routing._shadow_polygons_and_index", side_effect=_fake_polygons) as shadows,
+        patch("src.routing.is_point_shaded_by_index", return_value=False),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={"start": list(start), "end": list(end),
+                  "datetime": "2026-05-24T14:00:00+02:00", "preference": "sun"},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    assert shadows.call_args.args[0] == [building]
