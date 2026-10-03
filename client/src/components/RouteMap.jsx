@@ -546,6 +546,8 @@ export default function RouteMap({ regions }) {
   const [startIsMine, setStartIsMine] = useState(false);
   const [endIsMine, setEndIsMine] = useState(false);
   const autoPrefilledRef = useRef(false);
+  // Reset only appears once the user has actually asked for a route.
+  const [planRequested, setPlanRequested] = useState(false);
   const [sunData, setSunData] = useState(null);
   const [usedFallbackRouting, setUsedFallbackRouting] = useState(false);
   const [noShadeAvailable, setNoShadeAvailable] = useState(false);
@@ -1536,6 +1538,7 @@ export default function RouteMap({ regions }) {
 
   // Wipes a computed route whenever an endpoint changes.
   function clearRouteResult() {
+    setPlanRequested(false);
     clearPolylines(polylinesRef);
     clearSideGlow(sideGlowRef);
     setSunData(null);
@@ -1738,6 +1741,7 @@ export default function RouteMap({ regions }) {
   // panel (the caller tells the user instead). Returns whether it succeeded.
   async function planRoute({ origin = start, rerouting = false } = {}) {
     if (!rerouting) {
+      setPlanRequested(true);
       setError(null);
       setSunData(null);
       setUsedFallbackRouting(false);
@@ -2198,6 +2202,7 @@ export default function RouteMap({ regions }) {
       setStartAddress(""); setEndAddress("");
       setStartIsMine(false); setEndIsMine(false);
       autoPrefilledRef.current = false;
+      setPlanRequested(false);
       setSunData(null); setRouteStats(null);
       setRouteCoords(null);
       setRouteSaved(false); setSavedRouteName(null);
@@ -2240,6 +2245,7 @@ export default function RouteMap({ regions }) {
   }
 
   function reset() {
+    setPlanRequested(false);
     setStart(null);
     setEnd(null);
     setStartAddress("");
@@ -2308,15 +2314,17 @@ export default function RouteMap({ regions }) {
         </p>
       )}
 
-      {/* Sun / Shade toggle + Reset */}
-      <div style={{ marginBottom: "6px", display: "flex", alignItems: "center", gap: "10px" }}>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1 }}>
-          <FontAwesomeIcon icon={faSun} /> Sun
+      {/* Sun / Shade toggle + Reset. After sunset the toggle is disabled and
+          shows icons only, so "After sunset" + Reset fit on one line even on
+          narrow phones. */}
+      <div style={{ marginBottom: "6px", display: "flex", alignItems: "center", gap: isNighttime ? "7px" : "10px" }}>
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "sun" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1, whiteSpace: "nowrap" }}>
+          <FontAwesomeIcon icon={faSun} title="Sun" />{!isNighttime && " Sun"}
         </span>
         <div
           onClick={isNighttime ? undefined : togglePreference}
           style={{
-            width: "48px", height: "26px", borderRadius: "13px",
+            width: "48px", height: "26px", borderRadius: "13px", flexShrink: 0,
             background: preference === "sun" ? "#FFD600" : colors.accent,
             position: "relative", cursor: isNighttime ? "default" : "pointer",
             transition: "background 0.25s", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.12)",
@@ -2330,16 +2338,16 @@ export default function RouteMap({ regions }) {
             transition: "left 0.25s", boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
           }} />
         </div>
-        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1 }}>
-          <FontAwesomeIcon icon={faCloudSun} /> Shade
+        <span style={{ fontSize: "0.88em", fontWeight: 600, color: preference === "shade" ? colors.text : colors.subtext, opacity: isNighttime ? 0.22 : 1, whiteSpace: "nowrap" }}>
+          <FontAwesomeIcon icon={faCloudSun} title="Shade" />{!isNighttime && " Shade"}
         </span>
         {isNighttime && (
-          <span style={{ fontSize: "0.85em", fontWeight: 700, color: colors.text, marginLeft: "2px" }}>🌙 After sunset</span>
+          <span style={{ fontSize: "0.85em", fontWeight: 700, color: colors.text, marginLeft: "2px", whiteSpace: "nowrap", flexShrink: 0 }}>🌙 After sunset</span>
         )}
         {mode === "route" && (
           <div
             ref={detourPopoverRef}
-            style={{ position: "relative", marginLeft: start && !planning ? 0 : "auto" }}
+            style={{ position: "relative", marginLeft: planRequested && !planning ? 0 : "auto" }}
           >
             <button
               onClick={() => { setDetourPopoverOpen((o) => !o); setDetourInfoOpen(false); }}
@@ -2430,8 +2438,8 @@ export default function RouteMap({ regions }) {
             )}
           </div>
         )}
-        {mode === "route" && (start && !planning) && (
-          <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em", marginLeft: "auto" }}>Reset</button>
+        {mode === "route" && planRequested && !planning && (
+          <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em", marginLeft: "auto", flexShrink: 0 }}>Reset</button>
         )}
       </div>
 

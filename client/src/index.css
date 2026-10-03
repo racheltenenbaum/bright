@@ -1069,7 +1069,7 @@ body.night-mode .pac-matched {
 }
 
 .address-input--mine {
-  font-weight: 800 !important;
+  font-weight: 600 !important;
   color: #a87500 !important;
 }
 body.shade-mode .address-input--mine { color: #4a7090 !important; }
@@ -1169,7 +1169,7 @@ body.night-mode .address-input--mine { color: #6ab4dc !important; }
 }
 .location-field-row-text strong { font-weight: 700; }
 .location-field-row-text small { font-size: 11px; opacity: 0.65; font-weight: 600; }
-.location-field-row-text--mine { font-weight: 800; color: #a87500; }
+.location-field-row-text--mine { font-weight: 600; color: #a87500; }
 
 .location-field-row-delete {
   flex-shrink: 0;
@@ -1276,8 +1276,8 @@ body.night-mode .location-field-row-text--mine { color: #6ab4dc; }
 .route-swap {
   align-self: center;
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 14px;
+  height: 28px;
   padding: 0 !important;
   border-radius: 10px !important;
   background: none !important;
