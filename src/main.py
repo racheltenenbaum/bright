@@ -7,7 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from src.limiter import limiter
-from src.routers import users, sun, shadow_analyze, routes, weather, spots, places, routing, feedback, regions
+from src.routers import users, sun, shadow_analyze, routes, weather, spots, places, routing, feedback, regions, admin
 from src.routers.routes import share_router
 from src.routers.spots import spot_share_router
 
@@ -48,6 +48,7 @@ app.include_router(places.router)
 app.include_router(routing.router)
 app.include_router(feedback.router)
 app.include_router(regions.router)
+app.include_router(admin.router)
 
 
 @app.get("/")
