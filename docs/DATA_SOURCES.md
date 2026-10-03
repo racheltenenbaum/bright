@@ -178,11 +178,12 @@ so always import with `--bbox 48.69,9.03,48.87,9.32`, never `--full`.
 
 - Tree canopy imported: 2026-10-03 (production, 2,685 segments), via
   `scripts/import_tree_rows.py --region stuttgart --bbox 48.69,9.03,48.87,9.32`.
-- Roads: _pending_ (dry run: 476,517 edges). First attempt failed with no
-  rows written — the importer now writes `osm_roads.kind`, whose migration
-  (`a3d5f7b9c1e2`) wasn't yet deployed. Import as a single `--bbox` run
-  (not chunked: the roads bbox filter keeps edges that merely touch a
-  chunk, so adjacent chunks would duplicate boundary edges).
+- Roads imported: 2026-10-03 (production, 476,517 edges, `kind` set at
+  insert), via `scripts/import_osm_roads.py --region stuttgart --bbox
+  48.69,9.03,48.87,9.32` as a single run (not chunked: the roads bbox
+  filter keeps edges that merely touch a chunk, so adjacent chunks would
+  duplicate boundary edges). A first attempt earlier that day failed with
+  no rows written, before migration `a3d5f7b9c1e2` (`kind`) was deployed.
 
 ## osm_roads precision fix (2026-09-08, all regions)
 
@@ -222,5 +223,5 @@ unchanged. A manual volume backup was taken first.
 | la | 487,791 | 593,924 (extract is larger than the region box) |
 | telaviv | 4,267 | 4,472 (`--bbox 32.02,34.74,32.15,34.85`) |
 
-Stuttgart has no `osm_roads` rows (its roads come from live Overpass, which
-already carries the tags). Future imports set `kind` directly.
+Stuttgart's roads were imported after this backfill, so they got `kind`
+at insert time. Future imports set `kind` directly.
