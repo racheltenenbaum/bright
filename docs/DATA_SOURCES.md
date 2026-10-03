@@ -37,6 +37,7 @@ bug.
 | NYC | 409 | 1,103 | 2026-09-04 |
 | Tel Aviv | 15 | 33 | 2026-09-04 |
 | LA | ~150 | 357 | 2026-09-04 |
+| Stuttgart | — | 2,685 | 2026-10-03 |
 
 Uses the same extracts already listed below for each region's roads/buildings
 import — no separate download needed.
@@ -165,17 +166,23 @@ dataset — same reasoning as Vienna.
 - Spot-checked: Tagblatt-Turm 61.3m (real ~61m), Bahnhofsturm 56.0m (real
   ~56–58m). Known limitation: slender towers sitting on a larger roof (e.g.
   the Rathaus clock tower) aren't separate parts, so take the main roof height.
-- Imported: _pending_, via `scripts/import_stuttgart_buildings.py`
-  (chunked `--bbox` runs).
+- Imported: 2026-10-03 (production, 363,251 rows), via
+  `scripts/import_stuttgart_buildings.py` in 4 `--bbox` quadrants split at
+  48.78N / 9.175E (rows assigned by footprint centroid, so no duplicates).
 
 **Roads + tree canopy** — source: OSM via BBBike pre-clipped extract
 (`Stuttgart.osm.pbf`, 111MB), downloaded from `download.bbbike.org`
 **2026-10-03 10:25 (local time)** (extract generated 2026-09-26). The
 extract covers a much wider area (48.46–48.93N, 8.79–9.50E) than the city,
 so always import with `--bbox 48.69,9.03,48.87,9.32`, never `--full`.
-Dry run: 476,517 road edges, 2,685 tree canopy segments.
 
-- Imported: _pending_.
+- Tree canopy imported: 2026-10-03 (production, 2,685 segments), via
+  `scripts/import_tree_rows.py --region stuttgart --bbox 48.69,9.03,48.87,9.32`.
+- Roads: _pending_ (dry run: 476,517 edges). First attempt failed with no
+  rows written — the importer now writes `osm_roads.kind`, whose migration
+  (`a3d5f7b9c1e2`) wasn't yet deployed. Import as a single `--bbox` run
+  (not chunked: the roads bbox filter keeps edges that merely touch a
+  chunk, so adjacent chunks would duplicate boundary edges).
 
 ## osm_roads precision fix (2026-09-08, all regions)
 
