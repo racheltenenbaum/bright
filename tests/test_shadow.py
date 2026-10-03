@@ -1,3 +1,4 @@
+import pytest
 from math import cos, radians
 from unittest.mock import patch
 from shapely.geometry import Polygon
@@ -364,3 +365,61 @@ def test_extract_buildings_skips_tree_row_too_few_nodes():
         {"type": "way", "id": 20, "tags": {"natural": "tree_row"}, "nodes": [1]},
     ])
     assert extract_buildings_from_overpass(data) == []
+
+
+def _random_buildings(n: int, seed: int = 7) -> list[dict]:
+    import random
+    rnd = random.Random(seed)
+    out = []
+    for _ in range(n):
+        lat, lng = 48.2 + rnd.uniform(-0.01, 0.01), 16.37 + rnd.uniform(-0.01, 0.01)
+        k = rnd.randint(1, 8)
+        fp = [[lat + rnd.uniform(-1e-4, 1e-4), lng + rnd.uniform(-1e-4, 1e-4)] for _ in range(k)]
+        b = {"footprint": fp, "height": rnd.choice([-2.0, 0.0, 3.0, 12.0, 25.0, 60.0])}
+        if rnd.random() < 0.3:
+            b["base_elevation"] = rnd.uniform(-5, 5)
+        out.append(b)
+    return out
+
+
+@pytest.mark.parametrize("alt,az", [(45.0, 180.0), (8.0, 95.0), (30.0, 300.0)])
+def test_precompute_shadow_polygons_matches_per_building_shadows(alt, az):
+    """The batch precompute must produce exactly the shadows that
+    cast_shadow_polygon builds one building at a time."""
+    buildings = _random_buildings(300)
+    expected = []
+    for b in buildings:
+        h = b["height"] + b.get("base_elevation", 0.0) - 1.5
+        if h <= 0:
+            continue
+        poly = cast_shadow_polygon(b["footprint"], h, alt, az)
+        if poly is not None:
+            expected.append(poly)
+    got = precompute_shadow_polygons(buildings, alt, az, point_elevation=1.5)
+    assert len(got) == len(expected)
+    for g, e in zip(got, expected):
+        assert g.geom_type == e.geom_type
+        assert g.equals_exact(e, 1e-9) or g.normalize().equals_exact(e.normalize(), 1e-9)
+
+
+@pytest.mark.parametrize("alt", [0.0, -3.0, 88.0, 89.5])
+def test_precompute_shadow_polygons_none_when_sun_down_or_overhead(alt):
+    assert precompute_shadow_polygons(_random_buildings(20), alt, 180.0) == []
+
+
+def test_precompute_shadow_polygons_empty_input():
+    assert precompute_shadow_polygons([], 45.0, 180.0) == []
+
+
+def test_precompute_shadow_polygons_ignores_extra_vertex_values():
+    fp = [[48.2, 16.37], [48.2001, 16.37, 9.0], [48.2001, 16.3701]]
+    got = precompute_shadow_polygons([{"footprint": fp, "height": 10.0}], 45.0, 180.0)
+    expected = cast_shadow_polygon(fp, 10.0, 45.0, 180.0)
+    assert got[0].normalize().equals_exact(expected.normalize(), 1e-9)
+
+
+def test_precompute_shadow_polygons_handles_3d_footprints():
+    fp = [[48.2, 16.37, 1.0], [48.2001, 16.37, 1.0], [48.2001, 16.3701, 1.0]]
+    got = precompute_shadow_polygons([{"footprint": fp, "height": 10.0}], 45.0, 180.0)
+    expected = cast_shadow_polygon(fp, 10.0, 45.0, 180.0)
+    assert got[0].normalize().equals_exact(expected.normalize(), 1e-9)

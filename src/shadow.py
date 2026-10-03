@@ -1,4 +1,6 @@
 from math import radians, tan, sin, cos, degrees, atan2, inf
+import numpy as np
+import shapely
 from shapely.geometry import Polygon, Point
 from shapely.strtree import STRtree
 
@@ -82,18 +84,46 @@ def precompute_shadow_polygons(
     depends only on building geometry and sun position, never on the query
     point, so it must not be recomputed per point when checking many points
     (e.g. every edge midpoint in a routing graph) against the same buildings.
+
+    Same shadows as cast_shadow_polygon per building, but batched through
+    numpy/shapely in one pass: the per-vertex Python loop took ~2.5s for a
+    long shade route's ~74k buildings in production, and time-aware routing
+    needs one of these per time slice.
     """
-    if sun_altitude <= 0:
+    if sun_altitude <= 0 or sun_altitude >= 88:
         return []
-    polygons = []
+    tan_alt = tan(radians(sun_altitude))
+    bearing = radians((sun_azimuth + 180) % 360)
+
+    vertices: list = []
+    lengths: list[float] = []
+    counts: list[int] = []
     for building in buildings:
         effective_height = building["height"] + building.get("base_elevation", 0.0) - point_elevation
-        if effective_height <= 0:
+        footprint = building["footprint"]
+        # Fewer than 2 vertices can't make 3 hull points with their tips.
+        if effective_height <= 0 or len(footprint) < 2:
             continue
-        poly = cast_shadow_polygon(building["footprint"], effective_height, sun_altitude, sun_azimuth)
-        if poly is not None:
-            polygons.append(poly)
-    return polygons
+        vertices.extend(footprint)
+        lengths.append(effective_height / tan_alt)
+        counts.append(len(footprint))
+    if not counts:
+        return []
+
+    try:
+        base = np.asarray(vertices, dtype=float)
+    except ValueError:  # a footprint vertex carrying extra values
+        base = np.asarray([v[:2] for v in vertices], dtype=float)
+    base = base[:, :2]
+    shadow_length = np.repeat(lengths, counts)
+    # Same small-angle offset as _offset_point, for every vertex at once.
+    tips = base.copy()
+    tips[:, 0] += np.degrees(shadow_length * cos(bearing) / EARTH_RADIUS_M)
+    tips[:, 1] += np.degrees(shadow_length * sin(bearing) / (EARTH_RADIUS_M * np.cos(np.radians(base[:, 0]))))
+    # Each building's vertices then tips, contiguous, so indices stay sorted.
+    points = np.stack([base, tips], axis=1).reshape(-1, 2)
+    owner = np.repeat(np.arange(len(counts)), np.asarray(counts) * 2)
+    return list(shapely.convex_hull(shapely.multipoints(points, indices=owner)))
 
 
 def is_point_shaded_by_polygons(
