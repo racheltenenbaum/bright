@@ -22,6 +22,7 @@ import {
   faCircleInfo,
   faVolumeHigh,
   faVolumeXmark,
+  faArrowsUpDown,
 } from "@fortawesome/free-solid-svg-icons";
 import { Share } from "@capacitor/share";
 import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
@@ -31,6 +32,10 @@ import { track } from "../analytics";
 import { watchPosition } from "../utils/geolocation";
 import { createOffRouteDetector } from "../utils/offRoute";
 import { useAuthModal } from "../context/AuthModalContext";
+import LocationField from "./LocationField";
+import {
+  loadRecentSearches, addRecentSearch, removeRecentSearch, clearRecentSearches,
+} from "../utils/recentSearches";
 
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
 
@@ -534,6 +539,13 @@ export default function RouteMap({ regions }) {
   const [end, setEnd] = useState(null);
   const [startAddress, setStartAddress] = useState("");
   const [endAddress, setEndAddress] = useState("");
+  // Whether an endpoint is "Your location" (live GPS) rather than a fixed
+  // place. The field then shows "Your location", but start/endAddress still
+  // hold the reverse-geocoded street address — that's what a saved route
+  // stores, never the "Your location" label.
+  const [startIsMine, setStartIsMine] = useState(false);
+  const [endIsMine, setEndIsMine] = useState(false);
+  const autoPrefilledRef = useRef(false);
   const [sunData, setSunData] = useState(null);
   const [usedFallbackRouting, setUsedFallbackRouting] = useState(false);
   const [noShadeAvailable, setNoShadeAvailable] = useState(false);
@@ -617,6 +629,7 @@ export default function RouteMap({ regions }) {
   const [mapHeading, setMapHeading] = useState(0);
 
   const [spots, setSpots] = useState([]);
+  const [recents, setRecents] = useState(() => loadRecentSearches(user?.id));
   const [savedRoutes, setSavedRoutes] = useState([]);
   const [savedRoutesExpanded, setSavedRoutesExpanded] = useState(false);
   const [mode, setMode] = useState("route");
@@ -652,6 +665,17 @@ export default function RouteMap({ regions }) {
     : placesSunAltitude) <= 0;
   currentLocationRef.current = currentLocation;
   modeRef.current = mode;
+  const startIsMineRef = useRef(false);
+  const endIsMineRef = useRef(false);
+  startIsMineRef.current = startIsMine;
+  endIsMineRef.current = endIsMine;
+
+  // Home/Work spots for the fields' quick-pick list — skipped while you're
+  // already standing there (a route home from home is never what you want).
+  const quickSpots = spots
+    .filter((s) => s.icon === "faHouse" || s.icon === "faBriefcase")
+    .filter((s) => !currentLocation || haversineKm(s.lat, s.lng, currentLocation.lat, currentLocation.lng) > 0.15)
+    .sort((a, b) => (a.icon === "faHouse" ? 0 : 1) - (b.icon === "faHouse" ? 0 : 1));
 
   const PLACE_TYPE_OPTIONS = [
     { key: "cafe",       label: "Cafe" },
@@ -710,6 +734,7 @@ export default function RouteMap({ regions }) {
     setEnd({ lat: saved.end_lat, lng: saved.end_lng });
     setStartAddress(saved.start_address || "");
     setEndAddress(saved.end_address || "");
+    autoPrefilledRef.current = true;
     setSavedRouteName(saved.name);
     setRouteSaved(true);
     if (saved.preference) setPreference(saved.preference);
@@ -730,7 +755,9 @@ export default function RouteMap({ regions }) {
     const cachedLng = parseFloat(localStorage.getItem("bright_lng"));
     if (!isNaN(cachedLat) && !isNaN(cachedLng)) {
       setStart({ lat: cachedLat, lng: cachedLng });
-      setStartAddress("My location");
+      setStartAddress("");
+      setStartIsMine(true);
+      autoPrefilledRef.current = true;
       autoCalculateRef.current = true;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -760,6 +787,9 @@ export default function RouteMap({ regions }) {
     setEnd(saved.end);
     setStartAddress(saved.startAddress || "");
     setEndAddress(saved.endAddress || "");
+    setStartIsMine(!!saved.startIsMine);
+    setEndIsMine(!!saved.endIsMine);
+    autoPrefilledRef.current = true;
     if (saved.preference) setPreference(saved.preference);
     if (saved.routeCoords && saved.routeSegments && saved.sunData) {
       setRouteStats(saved.routeStats);
@@ -781,15 +811,47 @@ export default function RouteMap({ regions }) {
       skipNextPersistRef.current = false;
       return;
     }
-    if (!start && !end && !startAddress && !endAddress) {
+    if (!start && !end && !startAddress && !endAddress && !startIsMine && !endIsMine) {
       clearRouteSession();
       return;
     }
     saveRouteSession({
-      start, end, startAddress, endAddress, preference,
+      start, end, startAddress, endAddress, startIsMine, endIsMine, preference,
       routeCoords, routeSegments, sunData, routeStats,
     });
-  }, [start, end, startAddress, endAddress, preference, routeCoords, routeSegments, sunData, routeStats]);
+  }, [start, end, startAddress, endAddress, startIsMine, endIsMine, preference, routeCoords, routeSegments, sunData, routeStats]);
+
+  // Recent searches are per account — reload when the user logs in/out.
+  useEffect(() => {
+    setRecents(loadRecentSearches(user?.id));
+  }, [user?.id]);
+
+  // Start from "Your location" by default (like Google Maps), once per fresh
+  // plan — not after the user cleared the field, and not when a saved or
+  // restored route already set the start. Skipped when you're outside every
+  // covered city, so planning e.g. a Vienna walk from home doesn't open with
+  // a coverage warning.
+  useEffect(() => {
+    if (autoPrefilledRef.current || !isLoaded || mode !== "route" || !currentLocation || !regions?.length) return;
+    autoPrefilledRef.current = true;
+    if (startRef.current || startAddress || sunData) return;
+    if (!isCovered(currentLocation.lat, currentLocation.lng, regions)) return;
+    setStart(currentLocation);
+    setStartAddress("");
+    setStartIsMine(true);
+    geocodeMyLocation("start", currentLocation);
+  }, [isLoaded, mode, currentLocation, regions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Your location" endpoints follow the device until a route is planned.
+  useEffect(() => {
+    if (!currentLocation || sunData || planning) return;
+    [["start", startIsMine, start], ["end", endIsMine, end]].forEach(([type, isMine, point]) => {
+      if (!isMine || !point) return;
+      if (haversineKm(point.lat, point.lng, currentLocation.lat, currentLocation.lng) < 0.02) return;
+      if (type === "start") setStart(currentLocation); else setEnd(currentLocation);
+      geocodeMyLocation(type, currentLocation);
+    });
+  }, [currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync body theme class with preference / nighttime
   useEffect(() => {
@@ -1301,10 +1363,12 @@ export default function RouteMap({ regions }) {
       if (!startRef.current) {
         setStart(coords);
         setStartAddress(address);
+        setStartIsMine(false);
         setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
       } else {
         setEnd(coords);
         setEndAddress(address);
+        setEndIsMine(false);
         setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
         clearPolylines(polylinesRef);
         clearSideGlow(sideGlowRef);
@@ -1470,6 +1534,83 @@ export default function RouteMap({ regions }) {
     }
   }
 
+  // Wipes a computed route whenever an endpoint changes.
+  function clearRouteResult() {
+    clearPolylines(polylinesRef);
+    clearSideGlow(sideGlowRef);
+    setSunData(null);
+    setSavedRouteName(null);
+    setRouteSaved(false);
+    setError(null);
+    setUsedFallbackRouting(false);
+    setNoShadeAvailable(false);
+    setRouteStats(null);
+  }
+
+  function setEndpoint(type, coords, address, { mine = false } = {}) {
+    if (type === "start") {
+      setStart(coords); setStartAddress(address); setStartIsMine(mine);
+    } else {
+      setEnd(coords); setEndAddress(address); setEndIsMine(mine);
+    }
+    clearRouteResult();
+    setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
+    checkCoverage(type === "start" ? coords : startRef.current, type === "end" ? coords : endRef.current);
+    if (!mine) mapRef.current?.panTo(coords);
+  }
+
+  // A "Your location" endpoint still gets a real street address behind the
+  // scenes — that's what saving a route stores.
+  function geocodeMyLocation(type, coords) {
+    new window.google.maps.Geocoder().geocode({ location: coords }, (results) => {
+      // The user may have picked something else while this was in flight.
+      if (!(type === "start" ? startIsMineRef.current : endIsMineRef.current)) return;
+      const address = addressFromGeocodeResult(results?.[0]) || "My location";
+      if (type === "start") setStartAddress(address); else setEndAddress(address);
+    });
+  }
+
+  function pickMyLocation(type) {
+    const coords = currentLocationRef.current;
+    if (!coords) return;
+    if (type === "start") startIsMineRef.current = true; else endIsMineRef.current = true;
+    setEndpoint(type, coords, "", { mine: true });
+    geocodeMyLocation(type, coords);
+  }
+
+  function pickRecent(type, recent) {
+    setRecents(addRecentSearch(user?.id, recent));
+    setEndpoint(type, { lat: recent.lat, lng: recent.lng }, recent.address || recent.name);
+  }
+
+  function typeInField(type, text) {
+    if (type === "start") {
+      setStartAddress(text); setStart(null); setStartIsMine(false);
+    } else {
+      setEndAddress(text); setEnd(null); setEndIsMine(false);
+    }
+    clearRouteResult();
+  }
+
+  function clearField(type) {
+    if (type === "start") {
+      setStartAddress(""); setStart(null); setStartIsMine(false);
+    } else {
+      setEndAddress(""); setEnd(null); setEndIsMine(false);
+    }
+    setCoverageNotice(null);
+    setNotifyStatus("idle");
+    clearRouteResult();
+  }
+
+  function swapEndpoints() {
+    setStart(end); setEnd(start);
+    setStartAddress(endAddress); setEndAddress(startAddress);
+    setStartIsMine(endIsMine); setEndIsMine(startIsMine);
+    clearRouteResult();
+    if (start || end) checkCoverage(end, start);
+  }
+
   function handlePlaceSelected(type) {
     const autocomplete =
       type === "start"
@@ -1483,11 +1624,13 @@ export default function RouteMap({ regions }) {
       lng: place.geometry.location.lng(),
     };
     const address = place.formatted_address || place.name || "";
+    setRecents(addRecentSearch(user?.id, { name: place.name || address, address, ...coords }));
 
     setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
     if (type === "start") {
       setStart(coords);
       setStartAddress(address);
+      setStartIsMine(false);
       clearPolylines(polylinesRef);
       clearSideGlow(sideGlowRef);
       setSunData(null);
@@ -1497,6 +1640,7 @@ export default function RouteMap({ regions }) {
     } else {
       setEnd(coords);
       setEndAddress(address);
+      setEndIsMine(false);
       clearPolylines(polylinesRef);
       clearSideGlow(sideGlowRef);
       setSunData(null);
@@ -2033,9 +2177,11 @@ export default function RouteMap({ regions }) {
     setEndAddress(place.name || place.address || "");
     setSavedRouteName(null);
     setRouteSaved(false);
+    setEndIsMine(false);
     if (currentLocationRef.current) {
       autoCalculateRef.current = true;
       setStart(currentLocationRef.current);
+      setStartIsMine(true);
       new window.google.maps.Geocoder().geocode(
         { location: currentLocationRef.current },
         (results) => setStartAddress(addressFromGeocodeResult(results?.[0]) || "My location"),
@@ -2050,6 +2196,8 @@ export default function RouteMap({ regions }) {
       clearSideGlow(sideGlowRef);
       setStart(null); setEnd(null);
       setStartAddress(""); setEndAddress("");
+      setStartIsMine(false); setEndIsMine(false);
+      autoPrefilledRef.current = false;
       setSunData(null); setRouteStats(null);
       setRouteCoords(null);
       setRouteSaved(false); setSavedRouteName(null);
@@ -2085,6 +2233,8 @@ export default function RouteMap({ regions }) {
     setEnd({ lat: route.end_lat, lng: route.end_lng });
     setStartAddress(route.start_address || "");
     setEndAddress(route.end_address || "");
+    setStartIsMine(false);
+    setEndIsMine(false);
     autoCalculateRef.current = true;
     mapRef.current?.panTo({ lat: route.start_lat, lng: route.start_lng });
   }
@@ -2094,6 +2244,10 @@ export default function RouteMap({ regions }) {
     setEnd(null);
     setStartAddress("");
     setEndAddress("");
+    setStartIsMine(false);
+    setEndIsMine(false);
+    // A fresh plan starts from "Your location" again.
+    autoPrefilledRef.current = false;
     setSunData(null);
     setError(null);
     setCoverageNotice(null);
@@ -2314,173 +2468,52 @@ export default function RouteMap({ regions }) {
           gap: "6px",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-          }}
-        >
-          <div style={{ position: "relative" }}>
-            <Autocomplete
-              onLoad={(a) => { startAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
-              onPlaceChanged={() => handlePlaceSelected("start")}
-            >
-              <input
-                type="text"
-                className="address-input"
-                value={startAddress}
-                onChange={(e) => {
-                  setStartAddress(e.target.value);
-                  setStart(null);
-                  clearPolylines(polylinesRef);
-                  clearSideGlow(sideGlowRef);
-                  setSunData(null);
-                  setSavedRouteName(null);
-                  setRouteSaved(false);
-                  setError(null);
-                  setUsedFallbackRouting(false);
-                  setNoShadeAvailable(false);
-                  setRouteStats(null);
-                }}
-                placeholder="Start address (or click map)"
-                style={
-                  startAddress
-                    ? { paddingRight: "28px" }
-                    : currentLocation && !start
-                    ? { paddingRight: "118px" }
-                    : undefined
-                }
-              />
-            </Autocomplete>
-            {startAddress ? (
-              <button
-                onClick={() => {
-                  setStartAddress("");
-                  setStart(null);
-                  setCoverageNotice(null);
-                  setNotifyStatus("idle");
-                  clearPolylines(polylinesRef);
-                  clearSideGlow(sideGlowRef);
-                  setSunData(null);
-                  setSavedRouteName(null);
-                  setRouteSaved(false);
-                }}
-                style={{
-                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
-                  background: "none", border: "none", boxShadow: "none", cursor: "pointer",
-                  color: colors.subtext, fontSize: "15px", padding: "2px 4px", lineHeight: 1,
-                }}
-              >
-                ×
-              </button>
-            ) : currentLocation && !start && (
-              <button
-                onClick={async () => {
-                  const geocoder = new window.google.maps.Geocoder();
-                  const result = await geocoder.geocode({ location: currentLocation });
-                  const address = addressFromGeocodeResult(result.results[0]) || "My location";
-                  setStart(currentLocation);
-                  setStartAddress(address);
-                  clearPolylines(polylinesRef);
-                  clearSideGlow(sideGlowRef);
-                  setSunData(null);
-                  setSavedRouteName(null);
-                  setRouteSaved(false);
-                  setError(null);
-                  setUsedFallbackRouting(false);
-                  setNoShadeAvailable(false);
-                  setRouteStats(null);
-                }}
-                style={{
-                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
-                  fontSize: "10px", padding: "2px 7px", display: "flex", alignItems: "center",
-                  gap: "4px", background: colors.accentGlow, border: `1.5px solid ${colors.accent}`,
-                  color: colors.subtext, fontWeight: 700, whiteSpace: "nowrap",
-                }}
-              >
-                <FontAwesomeIcon icon={faLocationCrosshairs} /> Use my location
-              </button>
-            )}
+        <div style={{ display: "flex", gap: "6px", alignItems: "stretch" }}>
+          {/* Start → destination rail, mirroring the map's two pins */}
+          <div className="route-rail" aria-hidden="true">
+            <span className="route-rail-start" style={{ borderColor: colors.accent }} />
+            <span className="route-rail-line" style={{ borderColor: colors.accentFaint }} />
+            <span className="route-rail-end" style={{ background: colors.accent }} />
           </div>
-          <div style={{ position: "relative" }}>
-            <Autocomplete
-              onLoad={(a) => { endAutocompleteRef.current = a; if (locationBiasRef.current) a.setBounds(locationBiasRef.current); }}
-              onPlaceChanged={() => handlePlaceSelected("end")}
-            >
-              <input
-                type="text"
-                className="address-input"
-                value={endAddress}
-                onChange={(e) => {
-                  setEndAddress(e.target.value);
-                  setSavedRouteName(null);
-                  setRouteSaved(false);
-                  setError(null);
-                  setUsedFallbackRouting(false);
-                  setNoShadeAvailable(false);
-                  setRouteStats(null);
-                }}
-                placeholder="End address (or click map)"
-                style={
-                  endAddress
-                    ? { paddingRight: "28px" }
-                    : currentLocation && !end
-                    ? { paddingRight: "118px" }
-                    : undefined
-                }
-              />
-            </Autocomplete>
-            {endAddress ? (
-              <button
-                onClick={() => {
-                  setEndAddress("");
-                  setEnd(null);
-                  setCoverageNotice(null);
-                  setNotifyStatus("idle");
-                  clearPolylines(polylinesRef);
-                  clearSideGlow(sideGlowRef);
-                  setSunData(null);
-                  setSavedRouteName(null);
-                  setRouteSaved(false);
-                }}
-                style={{
-                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
-                  background: "none", border: "none", boxShadow: "none", cursor: "pointer",
-                  color: colors.subtext, fontSize: "15px", padding: "2px 4px", lineHeight: 1,
-                }}
-              >
-                ×
-              </button>
-            ) : currentLocation && !end && (
-              <button
-                onClick={async () => {
-                  const geocoder = new window.google.maps.Geocoder();
-                  const result = await geocoder.geocode({ location: currentLocation });
-                  const address = addressFromGeocodeResult(result.results[0]) || "My location";
-                  setEnd(currentLocation);
-                  setEndAddress(address);
-                  clearPolylines(polylinesRef);
-                  clearSideGlow(sideGlowRef);
-                  setSunData(null);
-                  setSavedRouteName(null);
-                  setRouteSaved(false);
-                  setError(null);
-                  setUsedFallbackRouting(false);
-                  setNoShadeAvailable(false);
-                  setRouteStats(null);
-                }}
-                style={{
-                  position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)",
-                  fontSize: "10px", padding: "2px 7px", display: "flex", alignItems: "center",
-                  gap: "4px", background: colors.accentGlow, border: `1.5px solid ${colors.accent}`,
-                  color: colors.subtext, fontWeight: 700, whiteSpace: "nowrap",
-                }}
-              >
-                <FontAwesomeIcon icon={faLocationCrosshairs} /> Use my location
-              </button>
-            )}
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: 0 }}>
+            {["start", "end"].map((type) => {
+              const isStart = type === "start";
+              const otherIsMine = isStart ? endIsMine : startIsMine;
+              return (
+                <LocationField
+                  key={type}
+                  value={isStart ? startAddress : endAddress}
+                  isMyLocation={isStart ? startIsMine : endIsMine}
+                  placeholder={isStart ? "Choose start (or tap map)" : "Choose destination (or tap map)"}
+                  onAutocompleteLoad={(a) => {
+                    if (isStart) startAutocompleteRef.current = a; else endAutocompleteRef.current = a;
+                    if (locationBiasRef.current) a.setBounds(locationBiasRef.current);
+                  }}
+                  onPlaceChanged={() => handlePlaceSelected(type)}
+                  onType={(text) => typeInField(type, text)}
+                  onClear={() => clearField(type)}
+                  myLocationAvailable={!!currentLocation && !otherIsMine}
+                  onPickMyLocation={() => pickMyLocation(type)}
+                  quickSpots={quickSpots}
+                  onPickSpot={(spot) => setEndpoint(type, { lat: spot.lat, lng: spot.lng }, spot.name || spot.address)}
+                  recents={recents.slice(0, 5)}
+                  onPickRecent={(r) => pickRecent(type, r)}
+                  onDeleteRecent={(r) => setRecents(removeRecentSearch(user?.id, r))}
+                  onClearRecents={() => setRecents(clearRecentSearches(user?.id))}
+                />
+              );
+            })}
           </div>
+          <button
+            type="button"
+            className="route-swap"
+            onClick={swapEndpoints}
+            disabled={!(start || end || startAddress || endAddress || startIsMine || endIsMine) || planning}
+            aria-label="Swap start and destination"
+            style={{ color: colors.subtext }}
+          >
+            <FontAwesomeIcon icon={faArrowsUpDown} />
+          </button>
         </div>
         {/* Subtle early heads-up as soon as both addresses are in — the hard
             stop (same 5km check) still runs on submit in planRoute(); this
@@ -2545,6 +2578,7 @@ export default function RouteMap({ regions }) {
                     if (!start) {
                       setStart(coords);
                       setStartAddress(spot.name || spot.address);
+                      setStartIsMine(false);
                       clearPolylines(polylinesRef);
                       clearSideGlow(sideGlowRef);
                       setSunData(null);
@@ -2553,6 +2587,7 @@ export default function RouteMap({ regions }) {
                     } else {
                       setEnd(coords);
                       setEndAddress(spot.name || spot.address);
+                      setEndIsMine(false);
                       setSavedRouteName(null);
                       setRouteSaved(false);
                     }
