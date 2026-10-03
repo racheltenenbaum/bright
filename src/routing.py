@@ -649,20 +649,31 @@ def compute_edge_weights_timed(
         # Edges unreachable from the start are never on the route; any slice works.
         by_slice.setdefault(plan.index(walked.get(u, 0.0)), []).append(data)
 
+    slice_timings = []
     for k, edges in by_slice.items():
         alt, az = suns[k]
         if alt <= 0:
             for data in edges:
                 data["shaded"] = True
             continue
+        precompute_start = time.perf_counter()
         polygons, index = _shadow_polygons_and_index(buildings, alt, az)
+        lookup_start = time.perf_counter()
         shaded_cache: dict[tuple[float, float], bool] = {}
         for data in edges:
             key = (data["mid_lat"], data["mid_lng"])
             if key not in shaded_cache:
                 shaded_cache[key] = is_point_shaded_by_index(key[0], key[1], polygons, index, alt)
             data["shaded"] = shaded_cache[key]
+        slice_timings.append(
+            f"{k}:alt={alt:.0f} edges={len(edges)} precompute={lookup_start - precompute_start:.3f}s "
+            f"lookup={time.perf_counter() - lookup_start:.3f}s"
+        )
     apply_preference_weights(graph, preference, SUN_PENALTY)
+    logger.info(
+        "compute_edge_weights_timed buildings=%d slices=%d slice_s=%.0f %s",
+        len(buildings), plan.count, plan.slice_s, " | ".join(slice_timings),
+    )
 
 
 def _path_length_m(graph: nx.DiGraph, path: list[int]) -> float:
