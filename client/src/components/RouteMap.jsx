@@ -343,6 +343,10 @@ function sideToShow(segments, i, preference) {
   if (!seg) return null;
   if (seg.kind === "crossing" || seg.kind === "sidewalk") return null;
   if (segments[i - 1]?.kind === "crossing") return null;
+  // Only guide where the segment matches what the user asked for: no
+  // "sunny side" on a sun route's shaded stretches (there's no sun to
+  // walk in), and no "shady side" on a shade route's sunny stretches.
+  if (preference === "shade" ? !seg.shaded : seg.shaded) return null;
   return walkSideFor(seg.sunny_side, preference);
 }
 
