@@ -20,6 +20,8 @@ from src.routing import (
     apply_preference_weights,
     find_distance_path,
     find_optimized_path,
+    find_retrace,
+    remove_retraces,
     nodes_to_coords,
     route_bbox_padding_m,
     sample_waypoints,
@@ -1281,6 +1283,9 @@ def test_optimized_route_detour_within_cap(client, auth_headers):
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
         patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        # [1, 3, 2] is a synthetic path that doubles back on itself; these
+        # tests only exercise the detour cap, not retrace removal.
+        patch("src.routers.routing.remove_retraces", side_effect=lambda g, p, w: p),
         patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
         patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
         patch("src.routers.routing._path_length_m", side_effect=[230.0, 200.0]),
@@ -1444,6 +1449,9 @@ def test_optimized_route_shade_gets_larger_detour_allowance(client, auth_headers
         patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
         patch("src.routing.fetch_osm_road_network", return_value=_OSM_DATA),
         patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        # [1, 3, 2] is a synthetic path that doubles back on itself; these
+        # tests only exercise the detour cap, not retrace removal.
+        patch("src.routers.routing.remove_retraces", side_effect=lambda g, p, w: p),
         patch("src.routers.routing.find_optimized_path", return_value=[1, 3, 2]),
         patch("src.routers.routing.find_distance_path", return_value=[1, 2]),
         patch("src.routers.routing._path_length_m", side_effect=[350.0, 200.0]),
@@ -2068,3 +2076,184 @@ def test_optimized_route_returns_segment_kinds(client, auth_headers, preference)
     data = resp.json()
     assert len(data["waypoints"]) == 4
     assert data["segment_kinds"] == ["sidewalk", "crossing", None]
+
+
+# --- Retrace removal -------------------------------------------------------
+# Reproduces a real reported Vienna route (Rainergasse 37 → Heumühlgasse 11):
+# the start sat diagonally from the only mapped crossing of a main street, so
+# the shortest walk went up a side street to the main street, south along its
+# east sidewalk to the crossing, then straight back north up the west sidewalk
+# — walking the same stretch of street twice. A person would instead approach
+# the crossing from the south (a slightly longer walk with no backtracking).
+#
+# Local meters → lat/lng around (40, -74). x = east, y = north.
+def _m(x: float, y: float) -> tuple[float, float]:
+    return 40.0 + y / 111_320, -74.0 + x / (111_320 * 0.766044)
+
+
+def _retrace_osm(extra_nodes=(), extra_ways=(), with_south_approach=True) -> dict:
+    pts = {
+        1: _m(60, 50),    # start, on a side street east of the main street
+        2: _m(20, 60),    # side street meets the main street's east sidewalk
+        3: _m(20, 30),
+        4: _m(20, 0),     # east end of the only crossing
+        5: _m(0, 0),      # west end of the crossing
+        6: _m(0, 30),
+        7: _m(0, 60),
+        8: _m(0, 200),    # end, up the west sidewalk
+        9: _m(20, -30),   # where a second side street meets the east sidewalk
+        13: _m(70, -30),  # that second side street's far corner
+        **dict(extra_nodes),
+    }
+    sidewalk = {"highway": "footway", "footway": "sidewalk"}
+    ways = [
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": sidewalk},
+        {"type": "way", "id": 101, "nodes": [2, 3, 4], "tags": sidewalk},
+        {"type": "way", "id": 102, "nodes": [4, 5], "tags": {"highway": "footway", "footway": "crossing"}},
+        {"type": "way", "id": 103, "nodes": [5, 6, 7, 8], "tags": sidewalk},
+        *extra_ways,
+    ]
+    if with_south_approach:
+        ways.append({"type": "way", "id": 104, "nodes": [1, 13, 9], "tags": sidewalk})
+        ways.append({"type": "way", "id": 105, "nodes": [9, 4], "tags": sidewalk})
+    nodes = [{"type": "node", "id": i, "lat": lat, "lon": lng} for i, (lat, lng) in pts.items()]
+    return {"elements": nodes + ways}
+
+
+def test_retrace_osm_shortest_path_really_does_retrace():
+    """Guards the fixture itself: without retrace removal, plain shortest
+    distance genuinely prefers walking the street twice."""
+    g = build_graph(_retrace_osm())
+    assert find_distance_path(g, 1, 8) == [1, 2, 3, 4, 5, 6, 7, 8]
+
+
+def test_find_retrace_detects_walking_back_up_the_other_sidewalk():
+    g = build_graph(_retrace_osm())
+    retrace = find_retrace(g, [1, 2, 3, 4, 5, 6, 7, 8])
+    assert retrace is not None
+    earlier, later = retrace
+    assert set(earlier) == {(2, 3), (3, 4)}
+    assert set(later) == {(5, 6), (6, 7)}
+
+
+def test_find_retrace_ignores_a_path_without_backtracking():
+    g = build_graph(_retrace_osm())
+    assert find_retrace(g, [1, 13, 9, 4, 5, 6, 7, 8]) is None
+
+
+def test_find_retrace_ignores_short_reversal():
+    """A few meters of doubling back (e.g. OSM noise at a corner) isn't a
+    real retrace."""
+    osm = {"elements": [
+        {"type": "node", "id": 1, "lat": _m(0, 0)[0], "lon": _m(0, 0)[1]},
+        {"type": "node", "id": 2, "lat": _m(0, 100)[0], "lon": _m(0, 100)[1]},
+        {"type": "node", "id": 3, "lat": _m(8, 100)[0], "lon": _m(8, 100)[1]},
+        {"type": "node", "id": 4, "lat": _m(8, 92)[0], "lon": _m(8, 92)[1]},
+        {"type": "node", "id": 5, "lat": _m(100, 92)[0], "lon": _m(100, 92)[1]},
+        {"type": "way", "id": 100, "nodes": [1, 2, 3, 4, 5], "tags": {"highway": "residential"}},
+    ]}
+    g = build_graph(osm)
+    assert find_retrace(g, [1, 2, 3, 4, 5]) is None
+
+
+def test_find_retrace_ignores_turning_a_corner():
+    osm = {"elements": [
+        {"type": "node", "id": 1, "lat": _m(0, 0)[0], "lon": _m(0, 0)[1]},
+        {"type": "node", "id": 2, "lat": _m(0, 100)[0], "lon": _m(0, 100)[1]},
+        {"type": "node", "id": 3, "lat": _m(100, 100)[0], "lon": _m(100, 100)[1]},
+        {"type": "way", "id": 100, "nodes": [1, 2, 3], "tags": {"highway": "residential"}},
+    ]}
+    g = build_graph(osm)
+    assert find_retrace(g, [1, 2, 3]) is None
+
+
+def test_find_retrace_handles_trivial_paths():
+    g = build_graph(_retrace_osm())
+    assert find_retrace(g, []) is None
+    assert find_retrace(g, [1]) is None
+
+
+def test_remove_retraces_takes_the_non_backtracking_approach():
+    g = build_graph(_retrace_osm())
+    assert remove_retraces(g, [1, 2, 3, 4, 5, 6, 7, 8], "distance_m") == [1, 13, 9, 4, 5, 6, 7, 8]
+
+
+def test_remove_retraces_returns_path_unchanged_when_nothing_to_fix():
+    g = build_graph(_retrace_osm())
+    path = [1, 13, 9, 4, 5, 6, 7, 8]
+    assert remove_retraces(g, path, "distance_m") == path
+
+
+def test_remove_retraces_keeps_original_when_no_alternative_exists():
+    """If walking the street twice is genuinely the only way, show it rather
+    than failing the route."""
+    g = build_graph(_retrace_osm(with_south_approach=False))
+    path = [1, 2, 3, 4, 5, 6, 7, 8]
+    assert remove_retraces(g, path, "distance_m") == path
+
+
+def test_remove_retraces_keeps_original_when_alternative_is_far_longer():
+    far = {9: _m(20, -400)}
+    g = build_graph(_retrace_osm(extra_nodes=far))
+    path = [1, 2, 3, 4, 5, 6, 7, 8]
+    assert remove_retraces(g, path, "distance_m") == path
+
+
+def test_remove_retraces_bans_later_leg_when_earlier_leg_is_unavoidable():
+    """Starting at node 2, the east sidewalk south to the crossing is the
+    only way out — so the fix must reroute the walk back north instead (via
+    a parallel path far enough west not to count as the same street)."""
+    g = build_graph(_retrace_osm(
+        with_south_approach=False,
+        extra_nodes={10: _m(-30, 0), 11: _m(-30, 200)},
+        extra_ways=[{"type": "way", "id": 106, "nodes": [5, 10, 11, 8], "tags": {"highway": "residential"}}],
+    ))
+    assert remove_retraces(g, [2, 3, 4, 5, 6, 7, 8], "distance_m") == [2, 3, 4, 5, 10, 11, 8]
+
+
+def test_remove_retraces_stops_after_max_attempts():
+    """Bounded work per request: with one attempt it still applies the first
+    successful reroute, then stops."""
+    g = build_graph(_retrace_osm())
+    with patch.object(routing_module, "RETRACE_MAX_ATTEMPTS", 1):
+        assert remove_retraces(g, [1, 2, 3, 4, 5, 6, 7, 8], "distance_m") == [1, 13, 9, 4, 5, 6, 7, 8]
+
+
+def test_remove_retraces_respects_the_weight_key():
+    """Re-routing must optimize the same cost the original path did (the
+    sun/shade "weight", not just distance). Two non-backtracking approaches
+    exist: via 12 is shorter, via 9 is cheaper by weight."""
+    g = build_graph(_retrace_osm(
+        extra_nodes={12: _m(45, -20)},
+        extra_ways=[{"type": "way", "id": 107, "nodes": [1, 12, 4], "tags": {"highway": "footway"}}],
+    ))
+    for _, _, data in g.edges(data=True):
+        data["weight"] = data["distance_m"]
+    g.edges[1, 12]["weight"] = 1e6
+    g.edges[12, 1]["weight"] = 1e6
+    path = [1, 2, 3, 4, 5, 6, 7, 8]
+    assert remove_retraces(g, path, "distance_m") == [1, 12, 4, 5, 6, 7, 8]
+    assert remove_retraces(g, path, "weight") == [1, 13, 9, 4, 5, 6, 7, 8]
+
+
+@pytest.mark.parametrize("preference", ["sun", "shade"])
+def test_optimized_route_never_walks_the_same_street_twice(client, auth_headers, preference):
+    """End-to-end (real graph, real Dijkstra, real detour cap), for each
+    preference: the route must approach the crossing from the south rather
+    than overshooting up the east sidewalk and walking back up the west one."""
+    start, end = _m(60, 50), _m(0, 200)
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", return_value=_retrace_osm()),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={"start": list(start), "end": list(end),
+                  "datetime": "2026-05-24T14:00:00", "preference": preference},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    waypoints = [tuple(p) for p in resp.json()["waypoints"]]
+    assert not any(p == pytest.approx(_m(20, 60)) for p in waypoints)
+    assert any(p == pytest.approx(_m(20, -30)) for p in waypoints)

@@ -25,6 +25,7 @@ from src.routing import (
     nearest_node_candidates,
     nearest_node_in_set,
     nodes_to_coords,
+    remove_retraces,
     route_bbox_padding_m,
     path_edge_kinds,
     simplify_path_with_kinds,
@@ -262,12 +263,18 @@ def optimized_route(
 
     distance_path_start = time.perf_counter()
     dist_path_nodes = find_distance_path(graph, start_node, end_node)
+    path_weight = "weight"
     if dist_path_nodes:
         sun_len = _path_length_m(graph, path_nodes)
         dist_len = _path_length_m(graph, dist_path_nodes)
         if dist_len > 0 and sun_len > dist_len * (1 + max_detour):
             path_nodes = dist_path_nodes
+            path_weight = "distance_m"
     distance_path_s = time.perf_counter() - distance_path_start
+
+    retrace_start = time.perf_counter()
+    path_nodes = remove_retraces(graph, path_nodes, path_weight)
+    retrace_s = time.perf_counter() - retrace_start
 
     # Geometry-preserving simplification, not the fixed-count downsampling
     # this used to do — thinning to evenly-spaced indices could skip a real
@@ -288,7 +295,7 @@ def optimized_route(
     logger.info(
         "optimized_route timing preference=%s distance_m=%.0f nodes=%d edges=%d retried=%s fell_back=%s "
         "bbox=%.3fs road_graph=%.3fs buildings=%s edge_weights=%.3fs nearest_node=%.3fs "
-        "optimized_path=%.3fs distance_path=%.3fs simplify=%.3fs total=%.3fs",
+        "optimized_path=%.3fs distance_path=%.3fs retrace=%.3fs simplify=%.3fs total=%.3fs",
         body.preference,
         straight_line_m,
         graph.number_of_nodes(),
@@ -302,6 +309,7 @@ def optimized_route(
         nearest_node_s,
         optimized_path_s,
         distance_path_s,
+        retrace_s,
         simplify_s,
         time.perf_counter() - request_start,
     )

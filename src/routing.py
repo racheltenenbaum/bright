@@ -598,6 +598,125 @@ def find_optimized_path(graph: nx.DiGraph, start_node: int, end_node: int) -> li
         return []
 
 
+# A route should never walk the same stretch of street twice. A real reported
+# Vienna route (Rainergasse 37 → Heumühlgasse 11) started diagonally from the
+# only mapped crossing of Wiedner Hauptstraße, so the shortest walk — even by
+# plain distance, not just under shade weighting — went up a side street to
+# the main street, ~35m south down its east sidewalk to the crossing, then
+# straight back north up the west sidewalk. Graph Dijkstra can't see this
+# (the two sidewalks are different edges), so retraces are detected
+# geometrically: a later stretch running the opposite direction alongside an
+# earlier one, within a wide street's sidewalk-to-sidewalk width. Wiedner
+# Hauptstraße's sidewalks (tram + traffic lanes between) are 29m apart, and
+# 30m missed that case — 40m leaves headroom for wide boulevards while still
+# being narrower than a typical city block between parallel streets.
+RETRACE_PARALLEL_M = 40.0
+# Below this much doubled-back length it's OSM noise at a corner, not a retrace.
+RETRACE_MIN_OVERLAP_M = 15.0
+# cos(135°): edges count as running opposite ways if within 45° of anti-parallel.
+_RETRACE_ANTIPARALLEL_DOT = -0.7071
+_RETRACE_SAMPLE_STEP_M = 5.0
+# How much longer a retrace-free reroute may be before it's not worth it.
+# The Vienna case's fix was ~25m longer on a 1.5km route.
+RETRACE_MAX_EXTRA_M = 100.0
+RETRACE_MAX_EXTRA_FRACTION = 0.25
+RETRACE_MAX_ATTEMPTS = 5
+
+
+def find_retrace(graph: nx.DiGraph, path: list) -> tuple[list, list] | None:
+    """Where the path walks back alongside a stretch it already walked, as
+    (earlier_leg_edges, later_leg_edges) — or None if it never doubles back
+    by at least RETRACE_MIN_OVERLAP_M. A later edge overlaps an earlier one
+    where it runs roughly opposite to it and its sample points project
+    perpendicularly onto it within RETRACE_PARALLEL_M (so merely continuing
+    on past where an earlier edge ended doesn't count)."""
+    if len(path) < 2:
+        return None
+    ref_lat = graph.nodes[path[0]]["lat"]
+    xy = [_latlng_to_xy_m(graph.nodes[n]["lat"], graph.nodes[n]["lng"], ref_lat) for n in path]
+    cell = RETRACE_PARALLEL_M
+    grid: dict[tuple[int, int], list[int]] = {}
+    earlier: set = set()
+    later: set = set()
+    overlap_m = 0.0
+
+    for j in range(len(path) - 1):
+        (x1, y1), (x2, y2) = xy[j], xy[j + 1]
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy)
+        if length >= 1.0:
+            ux, uy = dx / length, dy / length
+            samples = max(1, math.ceil(length / _RETRACE_SAMPLE_STEP_M))
+            for s in range(samples):
+                t = (s + 0.5) / samples
+                px, py = x1 + t * dx, y1 + t * dy
+                cx, cy = int(px // cell), int(py // cell)
+                for i in {i for gx in (cx - 1, cx, cx + 1) for gy in (cy - 1, cy, cy + 1)
+                          for i in grid.get((gx, gy), ())}:
+                    (ax, ay), (bx, by) = xy[i], xy[i + 1]
+                    ex, ey = bx - ax, by - ay
+                    elen2 = ex * ex + ey * ey
+                    elen = math.sqrt(elen2)
+                    if (ux * ex + uy * ey) / elen > _RETRACE_ANTIPARALLEL_DOT:
+                        continue
+                    proj = ((px - ax) * ex + (py - ay) * ey) / elen2
+                    if not 0.0 <= proj <= 1.0:
+                        continue
+                    if abs((px - ax) * ey - (py - ay) * ex) / elen > RETRACE_PARALLEL_M:
+                        continue
+                    earlier.add((path[i], path[i + 1]))
+                    later.add((path[j], path[j + 1]))
+                    overlap_m += length / samples
+                    break
+            # Register only after checking, so an edge is only ever compared
+            # against edges walked before it.
+            xs, ys = (x1, x2), (y1, y2)
+            for gx in range(int(min(xs) // cell), int(max(xs) // cell) + 1):
+                for gy in range(int(min(ys) // cell), int(max(ys) // cell) + 1):
+                    grid.setdefault((gx, gy), []).append(j)
+
+    if overlap_m < RETRACE_MIN_OVERLAP_M:
+        return None
+    order = {edge: k for k, edge in enumerate(zip(path, path[1:]))}
+    return sorted(earlier, key=order.get), sorted(later, key=order.get)
+
+
+def remove_retraces(graph: nx.DiGraph, path: list, weight: str) -> list:
+    """Reroute around any stretch the path walks twice, optimizing the same
+    edge cost (`weight`) the path was found with. Bans the earlier leg first
+    — usually the overshoot, walking past where the route then turns back —
+    falling back to banning the later leg if the earlier one is unavoidable.
+    Keeps the original path when no retrace-free alternative exists within
+    RETRACE_MAX_EXTRA_M / RETRACE_MAX_EXTRA_FRACTION, since a doubled-back
+    route still beats no route or an absurd detour."""
+    retrace = find_retrace(graph, path)
+    if retrace is None:
+        return path
+    original_len = _path_length_m(graph, path)
+    max_len = original_len + max(RETRACE_MAX_EXTRA_M, original_len * RETRACE_MAX_EXTRA_FRACTION)
+    banned: set = set()
+    best = path
+    for _ in range(RETRACE_MAX_ATTEMPTS):
+        if retrace is None:
+            return best
+        for leg in retrace:
+            trial = banned | {e for u, v in leg for e in ((u, v), (v, u))}
+            try:
+                candidate = nx.shortest_path(
+                    graph, path[0], path[-1],
+                    weight=lambda u, v, d, trial=trial: None if (u, v) in trial else d[weight],
+                )
+            except nx.NetworkXNoPath:
+                continue
+            if _path_length_m(graph, candidate) <= max_len:
+                best, banned = candidate, trial
+                break
+        else:
+            return best
+        retrace = find_retrace(graph, best)
+    return best
+
+
 def nodes_to_coords(graph: nx.DiGraph, node_ids: list[int]) -> list[tuple[float, float]]:
     return [(graph.nodes[n]["lat"], graph.nodes[n]["lng"]) for n in node_ids]
 
