@@ -204,3 +204,23 @@ data was then re-imported from a freshly re-downloaded extract, since
 already-stored rows had already lost precision at write time. Buildings and
 tree-canopy data were unaffected (footprints are stored as full-precision
 JSON text, not these Float columns).
+
+## osm_roads kind backfill (2026-10-03, all road regions)
+
+Migration `a3d5f7b9c1e2` added a nullable `kind` column (`crossing` /
+`sidewalk` / NULL, see `edge_kind` in `src/routing.py`) via
+`ALGORITHM=INSTANT`, so no table rebuild. Existing rows were then labeled
+in place with `scripts/import_osm_roads.py --backfill-kinds`, matched by
+exact coordinates against freshly re-downloaded extracts (same sources as
+above). No rows were inserted or deleted, and per-region row counts were
+unchanged. A manual volume backup was taken first.
+
+| Region | Rows labeled | Labeled edges in extract |
+|---|---|---|
+| vienna | 101,621 | 102,403 |
+| nyc | 963,505 | 965,252 |
+| la | 487,791 | 593,924 (extract is larger than the region box) |
+| telaviv | 4,267 | 4,472 (`--bbox 32.02,34.74,32.15,34.85`) |
+
+Stuttgart has no `osm_roads` rows (its roads come from live Overpass, which
+already carries the tags). Future imports set `kind` directly.

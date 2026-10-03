@@ -165,28 +165,52 @@ def _flush(db, region: str, edges: list[dict]) -> None:
     db.commit()
 
 
-_BACKFILL_KIND_SQL = text(
-    "UPDATE osm_roads SET kind = :kind WHERE region = :region "
-    "AND min_lat = :min_lat AND max_lat = :max_lat "
-    "AND from_lat = :from_lat AND from_lng = :from_lng "
-    "AND to_lat = :to_lat AND to_lng = :to_lng"
-)
+BACKFILL_BATCH_SIZE = 5_000
+_MATCH_COLS = ("min_lat", "max_lat", "from_lat", "from_lng", "to_lat", "to_lng")
 
 
 def backfill_kinds(db, region: str, edges: list[dict]) -> int:
     """Set kind on already-imported rows, matched by exact endpoint
     coordinates (same extract => same coordinates). Only edges that have a
-    kind are touched; nothing is inserted or deleted. The min_lat/max_lat
-    match lets MySQL use ix_osm_roads_region_lat instead of scanning the
-    region. Returns the number of rows updated."""
-    updated = 0
+    kind are touched; nothing is inserted into or deleted from osm_roads.
+
+    Per-row UPDATEs cost one network round trip each (~240ms to the
+    production DB — hours for a city), so each batch is bulk-inserted into
+    a temporary table and applied with a single joined UPDATE. Matching on
+    region + min_lat/max_lat lets MySQL use ix_osm_roads_region_lat.
+    Returns the number of rows updated."""
     kinded = [e for e in edges if e.get("kind")]
-    for start in range(0, len(kinded), BATCH_SIZE):
-        batch = kinded[start:start + BATCH_SIZE]
-        result = db.execute(_BACKFILL_KIND_SQL, [{**e, "region": region} for e in batch])
-        db.commit()
-        updated += result.rowcount
-        print(f"  backfilled {start + len(batch)}/{len(kinded)} (rows updated so far: {updated})")
+    mysql = db.get_bind().dialect.name == "mysql"
+    cols = ", ".join(f"{c} DOUBLE NOT NULL" for c in _MATCH_COLS)
+    db.execute(text(f"CREATE TEMPORARY TABLE tmp_road_kinds ({cols}, kind VARCHAR(16) NOT NULL)"))
+    match = " AND ".join(f"r.{c} = t.{c}" for c in _MATCH_COLS)
+    if mysql:
+        update_sql = text(
+            f"UPDATE osm_roads r JOIN tmp_road_kinds t ON r.region = :region AND {match} "
+            "SET r.kind = t.kind"
+        )
+    else:
+        update_sql = text(
+            "UPDATE osm_roads AS r SET kind = t.kind FROM tmp_road_kinds AS t "
+            f"WHERE r.region = :region AND {match}"
+        )
+    insert_sql = text(
+        f"INSERT INTO tmp_road_kinds ({', '.join(_MATCH_COLS)}, kind) "
+        f"VALUES ({', '.join(':' + c for c in _MATCH_COLS)}, :kind)"
+    )
+
+    updated = 0
+    try:
+        for start in range(0, len(kinded), BACKFILL_BATCH_SIZE):
+            batch = kinded[start:start + BACKFILL_BATCH_SIZE]
+            db.execute(text("DELETE FROM tmp_road_kinds"))
+            db.execute(insert_sql, [{c: e[c] for c in (*_MATCH_COLS, "kind")} for e in batch])
+            result = db.execute(update_sql, {"region": region})
+            db.commit()
+            updated += result.rowcount
+            print(f"  backfilled {start + len(batch)}/{len(kinded)} (rows updated so far: {updated})")
+    finally:
+        db.execute(text("DROP TEMPORARY TABLE tmp_road_kinds" if mysql else "DROP TABLE temp.tmp_road_kinds"))
     return updated
 
 
