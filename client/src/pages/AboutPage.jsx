@@ -53,7 +53,7 @@ const CREDITS = [
   { label: "© OpenStreetMap contributors", href: "https://www.openstreetmap.org/copyright" },
   { label: "Stadt Wien – data.wien.gv.at", href: "https://data.wien.gv.at" },
   { label: "Tel Aviv-Yafo Municipality GIS", href: "https://gisn.tel-aviv.gov.il" },
-  { label: "© LGL Baden-Württemberg (dl-de/by-2-0)", href: "https://www.lgl-bw.de" },
+  { label: "LGL, www.lgl-bw.de, dl-de/by-2-0", href: "https://www.lgl-bw.de" },
   { label: "Esri World Imagery", href: "https://www.esri.com" },
 ];
 

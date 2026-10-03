@@ -142,6 +142,41 @@ bbox at import time — no pre-clipped city extract was available).
 - Re-imported: 2026-09-08 (production, 117,093 edges) — see the
   "osm_roads precision fix" note below.
 
+## Stuttgart
+
+**Buildings** — source: LGL Baden-Württemberg's official 3D building model
+(LoD2, CityGML), Open GeoData Portal `opengeodata.lgl-bw.de`, licensed
+**dl-de/by-2-0** — required attribution "Datenquelle: LGL, www.lgl-bw.de,
+dl-de/by-2-0" (on the About page). Height = `bldg:measuredHeight` (ground to
+highest roof point, from airborne laser scans, ~1m accuracy); multi-part
+buildings are imported one row per `BuildingPart`, each with its own height.
+OSM's own height coverage here is weak (of 189,332 OSM buildings in the bbox,
+only 1,160 have `height` and 52,407 `building:levels`), hence the official
+dataset — same reasoning as Vienna.
+
+- Tiles: 2km x 2km zips at
+  `https://opengeodata.lgl-bw.de/data/lod2/LoD2_32_<E_km>_<N_km>_2_bw.zip`
+  (odd-km eastings, even-km northings, ETRS89/UTM32). The portal UI caps
+  downloads at 10 tiles, so the import script fetches these URLs directly —
+  132 tiles cover Stuttgart's bbox.
+- Dataset version: 2026 delivery (`INFO_OpenData_LoD2_2026.txt` in each
+  zip) — footprints current to 2025-04-01, extracted 2026-02-04..06. LGL
+  updates this **once a year**; the INFO file's date is the version to check.
+- Spot-checked: Tagblatt-Turm 61.3m (real ~61m), Bahnhofsturm 56.0m (real
+  ~56–58m). Known limitation: slender towers sitting on a larger roof (e.g.
+  the Rathaus clock tower) aren't separate parts, so take the main roof height.
+- Imported: _pending_, via `scripts/import_stuttgart_buildings.py`
+  (chunked `--bbox` runs).
+
+**Roads + tree canopy** — source: OSM via BBBike pre-clipped extract
+(`Stuttgart.osm.pbf`, 111MB), downloaded from `download.bbbike.org`
+**2026-10-03 10:25 (local time)** (extract generated 2026-09-26). The
+extract covers a much wider area (48.46–48.93N, 8.79–9.50E) than the city,
+so always import with `--bbox 48.69,9.03,48.87,9.32`, never `--full`.
+Dry run: 476,517 road edges, 2,685 tree canopy segments.
+
+- Imported: _pending_.
+
 ## osm_roads precision fix (2026-09-08, all regions)
 
 `osm_roads`' coordinate columns (`from_lat`/`from_lng`/`to_lat`/`to_lng`,

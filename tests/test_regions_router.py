@@ -7,7 +7,7 @@ def test_list_regions_returns_all_covered_regions(client):
     response = client.get("/regions")
     data = response.json()
     ids = {region["id"] for region in data["regions"]}
-    assert ids == {"vienna", "nyc", "la", "telaviv"}
+    assert ids == {"vienna", "nyc", "la", "telaviv", "stuttgart"}
 
 
 def test_list_regions_shape(client):
@@ -26,6 +26,7 @@ def test_list_regions_display_names(client):
     assert by_id["nyc"] == "New York City"
     assert by_id["la"] == "Los Angeles"
     assert by_id["telaviv"] == "Tel Aviv"
+    assert by_id["stuttgart"] == "Stuttgart"
 
 
 def test_notify_me_requires_auth(client):

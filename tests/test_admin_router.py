@@ -87,12 +87,14 @@ def test_region_requests_since_filter(client, db, test_user):
 
 def test_region_requests_marks_points_inside_covered_regions(client, db, test_user):
     _add_request(db, test_user, 48.2082, 16.3738, datetime(2026, 9, 30, 7, 0))  # Vienna
-    _add_request(db, test_user, 48.7735, 9.2093, datetime(2026, 9, 30, 8, 0))   # Stuttgart
+    _add_request(db, test_user, 48.1374, 11.5755, datetime(2026, 9, 30, 8, 0))  # Munich
+    _add_request(db, test_user, 48.7735, 9.2093, datetime(2026, 9, 30, 9, 0))   # Stuttgart
 
     rows = client.get("/admin/region-requests", headers=HEADERS).json()["requests"]
 
     assert rows[0]["covered_region"] == "vienna"
     assert rows[1]["covered_region"] is None
+    assert rows[2]["covered_region"] == "stuttgart"
 
 
 # --- POST /admin/email ------------------------------------------------------
