@@ -3394,7 +3394,10 @@ export default function RouteMap({ regions }) {
                   color: mapHeading !== 0 ? colors.accent : colors.subtext,
                   // faCompass's needle is drawn pointing northeast; -45°
                   // makes it point straight up when the map faces north.
-                  transform: `rotate(${-45 - mapHeading}deg)`,
+                  // In Go mode the map keeps turning with the walker, and a
+                  // constantly swinging needle read as crooked — so it stays
+                  // upright there, like on the regular map.
+                  transform: `rotate(${goMode ? -45 : -45 - mapHeading}deg)`,
                   transition: "transform 0.3s, color 0.2s",
                 }}
               />
