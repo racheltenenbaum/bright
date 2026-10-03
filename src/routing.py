@@ -249,7 +249,7 @@ def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) ->
         # _fetch_buildings_from_db).
         rows = db.query(
             OsmRoad.from_lat, OsmRoad.from_lng, OsmRoad.to_lat, OsmRoad.to_lng,
-            OsmRoad.distance_m, OsmRoad.oneway,
+            OsmRoad.distance_m, OsmRoad.oneway, OsmRoad.kind,
         ).with_hint(
             OsmRoad, "FORCE INDEX (ix_osm_roads_region_lat)", "mysql"
         ).filter(
@@ -263,9 +263,9 @@ def _fetch_roads_from_db(region: str, s: float, w: float, n: float, e: float) ->
             {
                 "from_lat": from_lat, "from_lng": from_lng,
                 "to_lat": to_lat, "to_lng": to_lng,
-                "distance_m": distance_m, "oneway": oneway,
+                "distance_m": distance_m, "oneway": oneway, "kind": kind,
             }
-            for from_lat, from_lng, to_lat, to_lng, distance_m, oneway in rows
+            for from_lat, from_lng, to_lat, to_lng, distance_m, oneway, kind in rows
         ]
     finally:
         db.close()
@@ -304,6 +304,21 @@ def fetch_road_graph(s: float, w: float, n: float, e: float) -> nx.DiGraph:
     return build_graph(fetch_osm_road_network(s, w, n, e))
 
 
+def edge_kind(tags: dict) -> str | None:
+    """What kind of pedestrian way an OSM edge is, where it matters for
+    walking directions: "crossing" (a mapped crosswalk — the route itself
+    takes the user across the street), "sidewalk" (a separately-mapped
+    sidewalk — the route already puts the user on one specific side), or
+    None for everything else, including plain street centerlines where
+    the user still has to pick a side themselves."""
+    highway = tags.get("highway")
+    if highway and tags.get(highway) == "crossing":
+        return "crossing"
+    if tags.get("footway") == "sidewalk":
+        return "sidewalk"
+    return None
+
+
 def build_graph_from_edges(edges: list[dict]) -> nx.DiGraph:
     """Build a routing graph directly from bulk-imported road edges, which
     are already split/deduplicated the same way build_graph() splits raw OSM
@@ -322,6 +337,7 @@ def build_graph_from_edges(edges: list[dict]) -> nx.DiGraph:
             "mid_lat": mid_lat,
             "mid_lng": mid_lng,
             "weight": edge["distance_m"],
+            "kind": edge.get("kind"),
         }
         g.add_node(u, lat=u[0], lng=u[1])
         g.add_node(v, lat=v[0], lng=v[1])
@@ -355,6 +371,7 @@ def build_graph(osm_data: dict) -> nx.DiGraph:
 
         node_ids = [nid for nid in el.get("nodes", []) if nid in node_coords]
         is_oneway = tags.get("oneway") == "yes"
+        kind = edge_kind(tags)
 
         for i in range(len(node_ids) - 1):
             u, v = node_ids[i], node_ids[i + 1]
@@ -368,6 +385,7 @@ def build_graph(osm_data: dict) -> nx.DiGraph:
                 "mid_lat": mid_lat,
                 "mid_lng": mid_lng,
                 "weight": dist,
+                "kind": kind,
             }
             g.add_edge(u, v, **edge_data)
             if not is_oneway:
@@ -652,3 +670,32 @@ def simplify_path(coords: list[tuple[float, float]], tolerance_m: float = 8.0) -
 
     kept = rdp(list(range(len(coords))))
     return [coords[i] for i in kept]
+
+
+def path_edge_kinds(graph: nx.DiGraph, node_ids: list) -> list[str | None]:
+    return [(graph.get_edge_data(u, v) or {}).get("kind") for u, v in zip(node_ids, node_ids[1:])]
+
+
+def simplify_path_with_kinds(
+    coords: list[tuple[float, float]], kinds: list[str | None], tolerance_m: float = 8.0,
+) -> tuple[list[tuple[float, float]], list[str | None]]:
+    """simplify_path, but never across a change in edge kind: each run of
+    same-kind edges is simplified on its own, so a crosswalk that continues
+    in a straight line from the sidewalk (the common case — walking along a
+    street and crossing a side street) survives as its own segment instead
+    of being merged away. Returns the simplified coords plus one kind per
+    resulting segment (len(coords) - 1)."""
+    if len(coords) < 2:
+        return coords, []
+
+    out_coords = [coords[0]]
+    out_kinds: list[str | None] = []
+    run_start = 0
+    for i in range(1, len(kinds) + 1):
+        if i < len(kinds) and kinds[i] == kinds[run_start]:
+            continue
+        run = simplify_path(coords[run_start:i + 1], tolerance_m)
+        out_coords.extend(run[1:])
+        out_kinds.extend([kinds[run_start]] * (len(run) - 1))
+        run_start = i
+    return out_coords, out_kinds

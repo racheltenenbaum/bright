@@ -32,9 +32,11 @@ import osmium
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from sqlalchemy import text
+
 from src.database import SessionLocal
 from src.models import OsmRoad
-from src.routing import EXCLUDED_SERVICE_SUBTYPES
+from src.routing import EXCLUDED_SERVICE_SUBTYPES, edge_kind
 
 # Must match build_graph's filtering in src/routing.py.
 ALLOWED_HIGHWAY_TYPES = {
@@ -95,7 +97,7 @@ class RoadHandler(osmium.SimpleHandler):
         self.edges: list[dict] = []
         self.skipped_invalid_location = 0
 
-    def _add_edges(self, node_coords: list[tuple[float, float]], oneway: bool) -> None:
+    def _add_edges(self, node_coords: list[tuple[float, float]], oneway: bool, kind: str | None = None) -> None:
         for i in range(len(node_coords) - 1):
             lat1, lng1 = node_coords[i]
             lat2, lng2 = node_coords[i + 1]
@@ -112,6 +114,7 @@ class RoadHandler(osmium.SimpleHandler):
                 "to_lat": lat2, "to_lng": lng2,
                 "distance_m": _haversine_m(lat1, lng1, lat2, lng2),
                 "oneway": oneway,
+                "kind": kind,
             })
 
     def way(self, w):
@@ -130,7 +133,7 @@ class RoadHandler(osmium.SimpleHandler):
                 coords = None
                 break
         if coords:
-            self._add_edges(coords, oneway)
+            self._add_edges(coords, oneway, edge_kind(dict(w.tags)))
 
     def area(self, a):
         """Plazas mapped as type=multipolygon relations, not plain ways —
@@ -162,21 +165,57 @@ def _flush(db, region: str, edges: list[dict]) -> None:
     db.commit()
 
 
+_BACKFILL_KIND_SQL = text(
+    "UPDATE osm_roads SET kind = :kind WHERE region = :region "
+    "AND min_lat = :min_lat AND max_lat = :max_lat "
+    "AND from_lat = :from_lat AND from_lng = :from_lng "
+    "AND to_lat = :to_lat AND to_lng = :to_lng"
+)
+
+
+def backfill_kinds(db, region: str, edges: list[dict]) -> int:
+    """Set kind on already-imported rows, matched by exact endpoint
+    coordinates (same extract => same coordinates). Only edges that have a
+    kind are touched; nothing is inserted or deleted. The min_lat/max_lat
+    match lets MySQL use ix_osm_roads_region_lat instead of scanning the
+    region. Returns the number of rows updated."""
+    updated = 0
+    kinded = [e for e in edges if e.get("kind")]
+    for start in range(0, len(kinded), BATCH_SIZE):
+        batch = kinded[start:start + BATCH_SIZE]
+        result = db.execute(_BACKFILL_KIND_SQL, [{**e, "region": region} for e in batch])
+        db.commit()
+        updated += result.rowcount
+        print(f"  backfilled {start + len(batch)}/{len(kinded)} (rows updated so far: {updated})")
+    return updated
+
+
 def run_import(
     pbf_path: str,
     region: str,
     bbox: tuple[float, float, float, float] | None,
     dry_run: bool,
     areas_only: bool = False,
+    backfill_kinds_only: bool = False,
 ) -> int:
     handler = RoadHandler(bbox, areas_only=areas_only)
     handler.apply_file(pbf_path, locations=True)
 
-    print(f"parsed {len(handler.edges)} edges "
+    kinded = sum(1 for e in handler.edges if e["kind"])
+    print(f"parsed {len(handler.edges)} edges, {kinded} crossing/sidewalk "
           f"({handler.skipped_invalid_location} skipped for missing node location)")
 
     if dry_run:
         return len(handler.edges)
+
+    if backfill_kinds_only:
+        db = SessionLocal()
+        try:
+            updated = backfill_kinds(db, region, handler.edges)
+        finally:
+            db.close()
+        print(f"\nTOTAL rows updated: {updated} of {kinded} crossing/sidewalk edges parsed")
+        return updated
 
     db = SessionLocal()
     total = 0
@@ -212,10 +251,16 @@ if __name__ == "__main__":
              "region, so only newly-handled multipolygon-relation edges get written, with no "
              "risk of duplicating way edges the region already has",
     )
+    parser.add_argument(
+        "--backfill-kinds", action="store_true",
+        help="don't insert anything — set osm_roads.kind (crossing/sidewalk) on rows already "
+             "imported from this same extract, matched by exact coordinates",
+    )
     args = parser.parse_args()
 
     if not args.bbox and not args.full:
         parser.error("specify --bbox s,w,n,e for a test area, or --full for the whole extract")
 
     bbox = tuple(map(float, args.bbox.split(","))) if args.bbox else None
-    run_import(args.pbf_path, args.region, bbox, args.dry_run, areas_only=args.areas_only)
+    run_import(args.pbf_path, args.region, bbox, args.dry_run, areas_only=args.areas_only,
+               backfill_kinds_only=args.backfill_kinds)

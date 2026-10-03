@@ -207,7 +207,7 @@ const TURN_HINT_MIN_ANGLE_DEG = 20;
 // voice guidance. activeTargetRef tracks which waypoint index the currently
 // -shown hint (if any) targets, purely so the hysteresis above has memory
 // of "was this already showing" across calls — the caller owns the ref.
-function getUpcomingTurn(routeCoords, segmentIdx, currentLocation, activeTargetRef) {
+function getUpcomingTurn(routeCoords, routeSegments, segmentIdx, currentLocation, activeTargetRef) {
   if (!routeCoords || !currentLocation || routeCoords.length < 2) return null;
   const lastIdx = routeCoords.length - 1;
 
@@ -248,14 +248,19 @@ function getUpcomingTurn(routeCoords, segmentIdx, currentLocation, activeTargetR
   // Signed turn angle: positive = clockwise = right, negative = left.
   const angle = (((bearingOut - bearingIn + 540) % 360) - 180);
   const absAngle = Math.abs(angle);
+  const distanceText = distanceM < 10 ? "now" : `in ${Math.round(distanceM)}m`;
+  // The segment starting at this waypoint is a mapped crosswalk: say so,
+  // even when it continues straight ahead (no turn to announce otherwise).
+  const crossesNext = routeSegments?.[segmentIdx + 1]?.kind === "crossing";
   if (absAngle < TURN_HINT_MIN_ANGLE_DEG) {
+    if (crossesNext) return { text: `Cross the street ${distanceText}` };
     activeTargetRef.current = null;
     return null;
   }
 
-  const distanceText = distanceM < 10 ? "now" : `in ${Math.round(distanceM)}m`;
   const side = angle > 0 ? "right" : "left";
   const magnitude = absAngle > 135 ? "Sharp" : absAngle > 45 ? "Turn" : "Slight";
+  if (crossesNext) return { text: `${magnitude} ${side} ${distanceText}, then cross` };
   return { text: `${magnitude} ${side} ${distanceText}` };
 }
 
@@ -268,8 +273,8 @@ function getUpcomingTurn(routeCoords, segmentIdx, currentLocation, activeTargetR
 // and never regresses, so "walking it backward" isn't a supported case).
 function getSideHint(routeSegments, segmentIdx, preference) {
   if (!routeSegments || !routeSegments.length) return null;
-  const seg = routeSegments[segmentIdx] ?? routeSegments[routeSegments.length - 1];
-  const side = walkSideFor(seg?.sunny_side, preference);
+  const idx = Math.min(segmentIdx, routeSegments.length - 1);
+  const side = sideToShow(routeSegments, idx, preference);
   if (!side) return null;
   return { text: `Walk on your ${side}` };
 }
@@ -290,8 +295,8 @@ function clearPolylines(ref) {
   ref.current = [];
 }
 
-function clearSideMarkers(ref) {
-  ref.current.forEach((m) => m.setMap(null));
+function clearSideGlow(ref) {
+  ref.current.forEach((item) => item.setMap(null));
   ref.current = [];
 }
 
@@ -328,61 +333,104 @@ function walkSideFor(sunnySide, preference) {
   return sunnySide;
 }
 
-const SIDE_MARKER_MIN_SPACING_M = 15;
-
-// Chevron pointing "up" (toward the top of the un-rotated SVG), rotated
-// in-markup to point toward the recommended side — google.maps.Icon (an
-// image URL, as opposed to a vector Symbol) has no rotation property of its
-// own, so the rotation has to be baked into the SVG itself, same approach
-// as headingDotSvg above.
-function sideIndicatorSvg(color, rotationDeg) {
-  return encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">' +
-      `<g transform="rotate(${rotationDeg} 8 8)">` +
-      `<path d="M8 1 L14 8 L10 8 L10 15 L6 15 L6 8 L2 8 Z" fill="${color}" stroke="white" stroke-width="1" stroke-linejoin="round"/>` +
-      "</g>" +
-      "</svg>",
-  );
+// Side of the street to show for segment i, or null when there's nothing
+// for the user to choose: the route itself already puts them on a specific
+// side when it follows a mapped sidewalk or crosswalk, and the stretch
+// right after a crosswalk is the side that crossing just led them to.
+// segment.kind comes from /sun/optimized-route's segment_kinds.
+function sideToShow(segments, i, preference) {
+  const seg = segments[i];
+  if (!seg) return null;
+  if (seg.kind === "crossing" || seg.kind === "sidewalk") return null;
+  if (segments[i - 1]?.kind === "crossing") return null;
+  return walkSideFor(seg.sunny_side, preference);
 }
 
-function drawSideIndicators(mapInstance, sideMarkersRef, coords, segments, sunAltitude, preference) {
-  clearSideMarkers(sideMarkersRef);
+// Screen-pixel distance from the route's centerline to the glow's center:
+// half the 5px route line, a small gap, then half the glow halo — so the
+// glow always sits just beside the line at every zoom level rather than
+// hiding underneath it zoomed out or drifting far away zoomed in.
+const SIDE_GLOW_OFFSET_PX = 8;
+
+function metersPerPixel(lat, zoom) {
+  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom;
+}
+
+// Runs of consecutive segments that share the same side to show, so each
+// run draws as one continuous line instead of a broken dash per segment.
+function sideGlowRuns(coords, segments, preference) {
+  const runs = [];
+  let current = null;
+  coords.slice(0, -1).forEach((point, i) => {
+    const side = sideToShow(segments, i, preference);
+    if (!side) {
+      current = null;
+      return;
+    }
+    if (current && current.side === side && current.end === i) {
+      current.points.push(coords[i + 1]);
+      current.end = i + 1;
+      return;
+    }
+    current = { side, points: [point, coords[i + 1]], end: i + 1 };
+    runs.push(current);
+  });
+  return runs;
+}
+
+// Each vertex is pushed sideways along the average of its neighboring
+// segments' normals, so corners inside a run stay joined.
+function offsetRunPath(points, side, distanceM) {
+  const sign = side === "left" ? -1 : 1;
+  const normals = points.slice(0, -1).map(([lat1, lng1], i) => {
+    const [lat2, lng2] = points[i + 1];
+    const b = ((computeBearing(lat1, lng1, lat2, lng2) + sign * 90) * Math.PI) / 180;
+    return [Math.cos(b), Math.sin(b)];
+  });
+  return points.map(([lat, lng], i) => {
+    const a = normals[Math.max(0, i - 1)];
+    const b = normals[Math.min(normals.length - 1, i)];
+    const bearing = (Math.atan2(a[1] + b[1], a[0] + b[0]) * 180) / Math.PI;
+    const [oLat, oLng] = offsetLatLng(lat, lng, bearing, distanceM);
+    return { lat: oLat, lng: oLng };
+  });
+}
+
+// A thin colored line running alongside the route on the side to walk on —
+// a soft wide halo under a thin solid core. Redrawn on zoom since its
+// offset is fixed in screen pixels, not meters.
+function drawSideGlow(mapInstance, sideGlowRef, coords, segments, sunAltitude, preference) {
+  clearSideGlow(sideGlowRef);
   if (!mapInstance || !coords || !segments || sunAltitude <= 0) return;
 
-  let lastMarkerLatLng = null;
-  coords.slice(0, -1).forEach((point, i) => {
-    const seg = segments[i] ?? segments[segments.length - 1];
-    const side = walkSideFor(seg.sunny_side, preference);
-    if (!side) return;
+  const runs = sideGlowRuns(coords, segments, preference);
+  if (!runs.length) return;
 
-    const [lat1, lng1] = point;
-    const [lat2, lng2] = coords[i + 1];
-    const midLat = (lat1 + lat2) / 2;
-    const midLng = (lng1 + lng2) / 2;
+  const color = preference === "shade" ? "#5E8FAD" : "#FFB300";
+  const lines = runs.map(() => [
+    new window.google.maps.Polyline({
+      strokeColor: color, strokeOpacity: 0.3, strokeWeight: 7,
+      clickable: false, zIndex: 0, map: mapInstance,
+    }),
+    new window.google.maps.Polyline({
+      strokeColor: color, strokeOpacity: 0.95, strokeWeight: 2.5,
+      clickable: false, zIndex: 0, map: mapInstance,
+    }),
+  ]);
 
-    if (lastMarkerLatLng) {
-      const gapM = haversineKm(lastMarkerLatLng[0], lastMarkerLatLng[1], midLat, midLng) * 1000;
-      if (gapM < SIDE_MARKER_MIN_SPACING_M) return;
-    }
-
-    const bearing = computeBearing(lat1, lng1, lat2, lng2);
-    const sideBearing = (bearing + (side === "left" ? -90 : 90) + 360) % 360;
-    const [markerLat, markerLng] = offsetLatLng(midLat, midLng, sideBearing, 5);
-
-    const color = preference === "shade" ? "#5E8FAD" : "#FFD700";
-    const marker = new window.google.maps.Marker({
-      position: { lat: markerLat, lng: markerLng },
-      map: mapInstance,
-      icon: {
-        url: `data:image/svg+xml,${sideIndicatorSvg(color, sideBearing)}`,
-        anchor: new window.google.maps.Point(8, 8),
-      },
-      clickable: false,
-      zIndex: 1,
+  function updatePaths() {
+    const zoom = mapInstance.getZoom();
+    if (zoom == null) return;
+    runs.forEach((run, i) => {
+      const offsetM = SIDE_GLOW_OFFSET_PX * metersPerPixel(run.points[0][0], zoom);
+      const path = offsetRunPath(run.points, run.side, offsetM);
+      lines[i].forEach((line) => line.setPath(path));
     });
-    sideMarkersRef.current.push(marker);
-    lastMarkerLatLng = [midLat, midLng];
-  });
+  }
+  updatePaths();
+  const zoomListener = mapInstance.addListener("zoom_changed", updatePaths);
+
+  sideGlowRef.current.push(...lines.flat(), { setMap: () => zoomListener.remove() });
 }
 
 // A location dot with a directional cone, rotated to the given compass
@@ -450,7 +498,7 @@ export default function RouteMap({ regions }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const polylinesRef = useRef([]);
-  const sideMarkersRef = useRef([]);
+  const sideGlowRef = useRef([]);
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
   const currentLocationMarkerRef = useRef(null);
@@ -864,7 +912,7 @@ export default function RouteMap({ regions }) {
     if (!pendingRestoreDrawRef.current || !mapRef.current || !routeCoords || !routeSegments || !sunData) return;
     pendingRestoreDrawRef.current = false;
     drawRoute(mapRef.current, polylinesRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
-    drawSideIndicators(mapRef.current, sideMarkersRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
+    drawSideGlow(mapRef.current, sideGlowRef, routeCoords, routeSegments, sunData.sun_altitude, preference);
     const bounds = new window.google.maps.LatLngBounds();
     routeCoords.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
     requestAnimationFrame(() => {
@@ -1054,7 +1102,7 @@ export default function RouteMap({ regions }) {
       TextToSpeech.stop().catch(() => {});
       return;
     }
-    const turn = getUpcomingTurn(routeCoords, goSegmentIdx, currentLocation, activeTurnTargetRef);
+    const turn = getUpcomingTurn(routeCoords, routeSegments, goSegmentIdx, currentLocation, activeTurnTargetRef);
     setTurnHint(turn);
     if (turn && activeTurnTargetRef.current !== spokenTurnTargetRef.current) {
       spokenTurnTargetRef.current = activeTurnTargetRef.current;
@@ -1198,7 +1246,7 @@ export default function RouteMap({ regions }) {
         setEndAddress(address);
         setPlacesSunAltitude(computeSunAltitude(coords.lat, coords.lng));
         clearPolylines(polylinesRef);
-        clearSideMarkers(sideMarkersRef);
+        clearSideGlow(sideGlowRef);
         setSunData(null);
         setSavedRouteName(null);
         setRouteSaved(false);
@@ -1270,7 +1318,7 @@ export default function RouteMap({ regions }) {
       return next;
     });
     clearPolylines(polylinesRef);
-    clearSideMarkers(sideMarkersRef);
+    clearSideGlow(sideGlowRef);
     setSunData(null);
   }
 
@@ -1380,7 +1428,7 @@ export default function RouteMap({ regions }) {
       setStart(coords);
       setStartAddress(address);
       clearPolylines(polylinesRef);
-      clearSideMarkers(sideMarkersRef);
+      clearSideGlow(sideGlowRef);
       setSunData(null);
       setSavedRouteName(null);
       setRouteSaved(false);
@@ -1389,7 +1437,7 @@ export default function RouteMap({ regions }) {
       setEnd(coords);
       setEndAddress(address);
       clearPolylines(polylinesRef);
-      clearSideMarkers(sideMarkersRef);
+      clearSideGlow(sideGlowRef);
       setSunData(null);
       setSavedRouteName(null);
       setRouteSaved(false);
@@ -1452,7 +1500,7 @@ export default function RouteMap({ regions }) {
     setRouteCoords(waypoints);
     setRouteSegments(segments);
     drawRoute(mapRef.current, polylinesRef, waypoints, segments, sunAltitude, pref);
-    drawSideIndicators(mapRef.current, sideMarkersRef, waypoints, segments, sunAltitude, pref);
+    drawSideGlow(mapRef.current, sideGlowRef, waypoints, segments, sunAltitude, pref);
 
     const bounds = new window.google.maps.LatLngBounds();
     waypoints.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
@@ -1499,7 +1547,7 @@ export default function RouteMap({ regions }) {
 
     setPlanning(true);
     clearPolylines(polylinesRef);
-    clearSideMarkers(sideMarkersRef);
+    clearSideGlow(sideGlowRef);
     try {
       const token = localStorage.getItem("token");
       const midLat = (start.lat + end.lat) / 2;
@@ -1533,6 +1581,7 @@ export default function RouteMap({ regions }) {
       );
 
       let waypoints;
+      let segmentKinds = null;
       let fallbackRoutingUsed = false;
       try {
         let routeRes;
@@ -1551,6 +1600,7 @@ export default function RouteMap({ regions }) {
           routeRes = await requestOptimizedRoute();
         }
         waypoints = routeRes.data.waypoints;
+        segmentKinds = routeRes.data.segment_kinds ?? null;
       } catch (optimizedRouteErr) {
         // Logged so an intermittent failure here (seen recurring with no
         // obvious cause) can actually be diagnosed next time instead of
@@ -1596,6 +1646,9 @@ export default function RouteMap({ regions }) {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const { sun_altitude, sun_azimuth, date, segments, shadow_available } = shadowRes.data;
+      // Crosswalk/sidewalk kinds ride along on the segments themselves, so
+      // the session cache and every consumer of routeSegments get them too.
+      if (segmentKinds) segments.forEach((seg, i) => { seg.kind = segmentKinds[i] ?? null; });
 
       applyRouteResult(waypoints, segments, sun_altitude, sun_azimuth, date, shadow_available, preference);
       track("Planned Route", {
@@ -1892,7 +1945,7 @@ export default function RouteMap({ regions }) {
     setError(null);
     setMode("route");
     clearPolylines(polylinesRef);
-    clearSideMarkers(sideMarkersRef);
+    clearSideGlow(sideGlowRef);
     setSunData(null);
     setEnd({ lat: place.lat, lng: place.lng });
     setEndAddress(place.name || place.address || "");
@@ -1912,7 +1965,7 @@ export default function RouteMap({ regions }) {
     if (newMode === mode) return;
     if (newMode === "places") {
       clearPolylines(polylinesRef);
-      clearSideMarkers(sideMarkersRef);
+      clearSideGlow(sideGlowRef);
       setStart(null); setEnd(null);
       setStartAddress(""); setEndAddress("");
       setSunData(null); setRouteStats(null);
@@ -1935,7 +1988,7 @@ export default function RouteMap({ regions }) {
 
   function loadSavedRoute(route) {
     clearPolylines(polylinesRef);
-    clearSideMarkers(sideMarkersRef);
+    clearSideGlow(sideGlowRef);
     setSunData(null);
     setSaveForm(null);
     setSaveError(null);
@@ -1973,7 +2026,7 @@ export default function RouteMap({ regions }) {
     setShowReplanBanner(false);
     exitGoMode();
     clearPolylines(polylinesRef);
-    clearSideMarkers(sideMarkersRef);
+    clearSideGlow(sideGlowRef);
     clearPlaceMarkers();
     setSelectedPlace(null);
     setPlaceDetails(null);
@@ -2199,7 +2252,7 @@ export default function RouteMap({ regions }) {
                   setStartAddress(e.target.value);
                   setStart(null);
                   clearPolylines(polylinesRef);
-                  clearSideMarkers(sideMarkersRef);
+                  clearSideGlow(sideGlowRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2226,7 +2279,7 @@ export default function RouteMap({ regions }) {
                   setCoverageNotice(null);
                   setNotifyStatus("idle");
                   clearPolylines(polylinesRef);
-                  clearSideMarkers(sideMarkersRef);
+                  clearSideGlow(sideGlowRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2248,7 +2301,7 @@ export default function RouteMap({ regions }) {
                   setStart(currentLocation);
                   setStartAddress(address);
                   clearPolylines(polylinesRef);
-                  clearSideMarkers(sideMarkersRef);
+                  clearSideGlow(sideGlowRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2304,7 +2357,7 @@ export default function RouteMap({ regions }) {
                   setCoverageNotice(null);
                   setNotifyStatus("idle");
                   clearPolylines(polylinesRef);
-                  clearSideMarkers(sideMarkersRef);
+                  clearSideGlow(sideGlowRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2326,7 +2379,7 @@ export default function RouteMap({ regions }) {
                   setEnd(currentLocation);
                   setEndAddress(address);
                   clearPolylines(polylinesRef);
-                  clearSideMarkers(sideMarkersRef);
+                  clearSideGlow(sideGlowRef);
                   setSunData(null);
                   setSavedRouteName(null);
                   setRouteSaved(false);
@@ -2411,7 +2464,7 @@ export default function RouteMap({ regions }) {
                       setStart(coords);
                       setStartAddress(spot.name || spot.address);
                       clearPolylines(polylinesRef);
-                      clearSideMarkers(sideMarkersRef);
+                      clearSideGlow(sideGlowRef);
                       setSunData(null);
                       setSavedRouteName(null);
                       setRouteSaved(false);
@@ -2855,14 +2908,15 @@ export default function RouteMap({ regions }) {
                 >
                   <span
                     style={{
-                      width: 10,
-                      height: 10,
-                      background: preference === "shade" ? "#5E8FAD" : "#FFD700",
+                      width: 14,
+                      height: 3,
+                      borderRadius: 2,
+                      background: preference === "shade" ? "#5E8FAD" : "#FFB300",
+                      boxShadow: `0 0 0 2px ${preference === "shade" ? "rgba(94,143,173,0.3)" : "rgba(255,179,0,0.3)"}`,
                       display: "inline-block",
-                      clipPath: "polygon(50% 0%, 100% 50%, 62.5% 50%, 62.5% 100%, 37.5% 100%, 37.5% 50%, 0% 50%)",
                     }}
                   />
-                  Walk here
+                  Walk this side
                 </span>
               </div>
             </div>

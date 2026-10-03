@@ -26,7 +26,8 @@ from src.routing import (
     nearest_node_in_set,
     nodes_to_coords,
     route_bbox_padding_m,
-    simplify_path,
+    path_edge_kinds,
+    simplify_path_with_kinds,
 )
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
 from src.utils.astronomy import get_sun_position
@@ -87,6 +88,9 @@ class OptimizedRouteRequest(BaseModel):
 
 class OptimizedRouteResponse(BaseModel):
     waypoints: list[list[float]]
+    # One per waypoint-to-waypoint segment: "crossing", "sidewalk", or None
+    # (plain street) — see src.routing.edge_kind.
+    segment_kinds: list[str | None] = []
     sun_altitude: float
     sun_azimuth: float
     date: str
@@ -276,7 +280,9 @@ def optimized_route(
     # internal sampling for the shading computation, then nearest-neighbor
     # fill for every index).
     simplify_start = time.perf_counter()
-    waypoints = simplify_path(nodes_to_coords(graph, path_nodes))
+    waypoints, segment_kinds = simplify_path_with_kinds(
+        nodes_to_coords(graph, path_nodes), path_edge_kinds(graph, path_nodes),
+    )
     simplify_s = time.perf_counter() - simplify_start
 
     logger.info(
@@ -302,6 +308,7 @@ def optimized_route(
 
     return OptimizedRouteResponse(
         waypoints=[list(c) for c in waypoints],
+        segment_kinds=segment_kinds,
         sun_altitude=sun_altitude,
         sun_azimuth=sun_azimuth,
         date=date_str,

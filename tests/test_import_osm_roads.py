@@ -122,3 +122,54 @@ def test_multipolygon_without_allowed_highway_tag_is_skipped(tmp_path):
     handler.apply_file(str(path), locations=True)
 
     assert handler.edges == []
+
+
+def _write_crossing_osm(tmp_path) -> str:
+    osm_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6">
+  <node id="1" lat="48.2050" lon="16.3640"/>
+  <node id="2" lat="48.2051" lon="16.3640"/>
+  <node id="3" lat="48.2060" lon="16.3640"/>
+  <way id="100">
+    <nd ref="1"/>
+    <nd ref="2"/>
+    <tag k="highway" v="footway"/>
+    <tag k="footway" v="crossing"/>
+  </way>
+  <way id="200">
+    <nd ref="2"/>
+    <nd ref="3"/>
+    <tag k="highway" v="residential"/>
+  </way>
+</osm>
+"""
+    path = tmp_path / "crossing.osm"
+    path.write_text(osm_xml)
+    return str(path)
+
+
+def test_way_edges_carry_kind(tmp_path):
+    handler = RoadHandler(bbox=None)
+    handler.apply_file(_write_crossing_osm(tmp_path), locations=True)
+    kinds = {(e["from_lat"], e["to_lat"]): e["kind"] for e in handler.edges}
+    assert kinds[(48.2050, 48.2051)] == "crossing"
+    assert kinds[(48.2051, 48.2060)] is None
+
+
+def test_backfill_kinds_updates_matching_rows_only(tmp_path, db):
+    from scripts.import_osm_roads import backfill_kinds
+    from src.models import OsmRoad
+
+    handler = RoadHandler(bbox=None)
+    handler.apply_file(_write_crossing_osm(tmp_path), locations=True)
+    # Simulate a pre-existing import that predates the kind column.
+    for e in handler.edges:
+        db.add(OsmRoad(region="vienna", **{**e, "kind": None}))
+    db.commit()
+
+    updated = backfill_kinds(db, "vienna", handler.edges)
+
+    assert updated == 1
+    rows = {(r.from_lat, r.to_lat): r.kind for r in db.query(OsmRoad).all()}
+    assert rows == {(48.2050, 48.2051): "crossing", (48.2051, 48.2060): None}
+    assert db.query(OsmRoad).count() == 2

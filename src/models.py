@@ -136,6 +136,9 @@ class OsmRoad(Base):
     to_lng = Column(Double, nullable=False)
     distance_m = Column(Float, nullable=False)
     oneway = Column(Boolean, nullable=False, default=False)
+    # "crossing", "sidewalk", or NULL (plain street) — see
+    # src.routing.edge_kind. NULL for rows imported before this existed.
+    kind = Column(String(16), nullable=True)
 
     # Same reasoning as OsmBuilding above — confirmed via EXPLAIN scanning
     # ~2.7M rows for an LA bbox lookup without this, forced explicitly in

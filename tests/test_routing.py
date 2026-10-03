@@ -24,6 +24,8 @@ from src.routing import (
     route_bbox_padding_m,
     sample_waypoints,
     simplify_path,
+    simplify_path_with_kinds,
+    edge_kind,
     fetch_osm_road_network,
     OVERPASS_URLS,
 )
@@ -292,7 +294,7 @@ def test_fetch_roads_from_db_includes_matching_rows(db):
     assert result == [{
         "from_lat": 34.000, "from_lng": -118.300,
         "to_lat": 34.001, "to_lng": -118.299,
-        "distance_m": 120.0, "oneway": True,
+        "distance_m": 120.0, "oneway": True, "kind": None,
     }]
 
 
@@ -1950,3 +1952,119 @@ def test_optimized_route_endpoint_no_road_network(client, auth_headers):
             headers=auth_headers,
         )
     assert resp.status_code == 400
+
+
+# ── Crossings / sidewalks (segment kinds) ───────────────────────────────────
+
+def test_edge_kind_crossing():
+    assert edge_kind({"highway": "footway", "footway": "crossing"}) == "crossing"
+
+
+def test_edge_kind_cycleway_crossing():
+    assert edge_kind({"highway": "cycleway", "cycleway": "crossing"}) == "crossing"
+
+
+def test_edge_kind_sidewalk():
+    assert edge_kind({"highway": "footway", "footway": "sidewalk"}) == "sidewalk"
+
+
+def test_edge_kind_plain_street_is_none():
+    assert edge_kind({"highway": "residential"}) is None
+    assert edge_kind({"highway": "footway"}) is None
+
+
+def test_build_graph_stores_edge_kind():
+    osm = {
+        "elements": [
+            {"type": "node", "id": 1, "lat": 40.000, "lon": -74.000},
+            {"type": "node", "id": 2, "lat": 40.0001, "lon": -74.000},
+            {"type": "node", "id": 3, "lat": 40.0010, "lon": -74.000},
+            {"type": "way", "id": 100, "nodes": [1, 2],
+             "tags": {"highway": "footway", "footway": "crossing"}},
+            {"type": "way", "id": 101, "nodes": [2, 3], "tags": {"highway": "residential"}},
+        ]
+    }
+    g = build_graph(osm)
+    assert g.edges[1, 2]["kind"] == "crossing"
+    assert g.edges[2, 1]["kind"] == "crossing"
+    assert g.edges[2, 3]["kind"] is None
+
+
+def test_build_graph_from_edges_stores_kind():
+    edges = [{**_simple_edges()[0], "kind": "sidewalk"}]
+    g = build_graph_from_edges(edges)
+    assert g.edges[(40.000, -74.000), (40.001, -74.000)]["kind"] == "sidewalk"
+
+
+def test_build_graph_from_edges_kind_defaults_to_none():
+    g = build_graph_from_edges(_simple_edges())
+    assert g.edges[(40.000, -74.000), (40.001, -74.000)]["kind"] is None
+
+
+def test_fetch_roads_from_db_returns_kind(db):
+    from src.models import OsmRoad
+    db.add(OsmRoad(
+        region="la", min_lat=34.000, max_lat=34.001, min_lng=-118.300, max_lng=-118.299,
+        from_lat=34.000, from_lng=-118.300, to_lat=34.001, to_lng=-118.299,
+        distance_m=120.0, oneway=False, kind="crossing",
+    ))
+    db.commit()
+    result = routing_module._fetch_roads_from_db("la", 33.999, -118.301, 34.002, -118.298)
+    assert result[0]["kind"] == "crossing"
+
+
+def test_simplify_path_with_kinds_keeps_collinear_crossing_as_own_segment():
+    # Straight line north: street, crossing, street. Plain simplification
+    # would collapse it to one segment and lose the crossing entirely.
+    coords = [(40.000, -74.0), (40.001, -74.0), (40.0011, -74.0), (40.002, -74.0)]
+    kinds = [None, "crossing", None]
+    out_coords, out_kinds = simplify_path_with_kinds(coords, kinds)
+    assert out_coords == coords
+    assert out_kinds == [None, "crossing", None]
+
+
+def test_simplify_path_with_kinds_still_simplifies_within_a_run():
+    coords = [(40.000, -74.0), (40.0005, -74.0), (40.001, -74.0), (40.0011, -74.0)]
+    kinds = [None, None, "crossing"]
+    out_coords, out_kinds = simplify_path_with_kinds(coords, kinds)
+    assert out_coords == [(40.000, -74.0), (40.001, -74.0), (40.0011, -74.0)]
+    assert out_kinds == [None, "crossing"]
+
+
+def test_simplify_path_with_kinds_short_path():
+    assert simplify_path_with_kinds([(40.0, -74.0)], []) == ([(40.0, -74.0)], [])
+
+
+_CROSSING_OSM = {
+    "elements": [
+        {"type": "node", "id": 1, "lat": 40.0000, "lon": -74.000},
+        {"type": "node", "id": 2, "lat": 40.0008, "lon": -74.000},
+        {"type": "node", "id": 3, "lat": 40.0009, "lon": -74.000},
+        {"type": "node", "id": 4, "lat": 40.0018, "lon": -74.000},
+        {"type": "way", "id": 100, "nodes": [1, 2], "tags": {"highway": "footway", "footway": "sidewalk"}},
+        {"type": "way", "id": 101, "nodes": [2, 3], "tags": {"highway": "footway", "footway": "crossing"}},
+        {"type": "way", "id": 102, "nodes": [3, 4], "tags": {"highway": "residential"}},
+    ]
+}
+
+
+@pytest.mark.parametrize("preference", ["sun", "shade"])
+def test_optimized_route_returns_segment_kinds(client, auth_headers, preference):
+    """End-to-end (real graph, real Dijkstra, real simplification): the
+    straight route's crossing must survive simplification as its own
+    segment for both preferences, so Go mode can say "cross the street"."""
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", return_value=_CROSSING_OSM),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={"start": [40.0000, -74.000], "end": [40.0018, -74.000],
+                  "datetime": "2026-05-24T14:00:00", "preference": preference},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["waypoints"]) == 4
+    assert data["segment_kinds"] == ["sidewalk", "crossing", None]
