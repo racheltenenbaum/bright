@@ -27,6 +27,11 @@ SQLITE_URL = "sqlite:///./test_bright.db"
 engine = create_engine(SQLITE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# Rebuild from scratch every run: create_all() alone never adds columns to a
+# table that already exists, so a stale test_bright.db (it's committed to the
+# repo) silently kept the old osm_roads schema after `kind` was added and
+# failed CI on every push.
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 

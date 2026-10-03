@@ -182,7 +182,11 @@ def backfill_kinds(db, region: str, edges: list[dict]) -> int:
     kinded = [e for e in edges if e.get("kind")]
     mysql = db.get_bind().dialect.name == "mysql"
     cols = ", ".join(f"{c} DOUBLE NOT NULL" for c in _MATCH_COLS)
-    db.execute(text(f"CREATE TEMPORARY TABLE tmp_road_kinds ({cols}, kind VARCHAR(16) NOT NULL)"))
+    # A temporary table only exists on the connection that created it, and a
+    # Session may hand back a different pooled connection after each commit
+    # — so run the whole backfill on one explicitly held connection.
+    conn = db.get_bind().connect()
+    conn.execute(text(f"CREATE TEMPORARY TABLE tmp_road_kinds ({cols}, kind VARCHAR(16) NOT NULL)"))
     match = " AND ".join(f"r.{c} = t.{c}" for c in _MATCH_COLS)
     if mysql:
         update_sql = text(
@@ -203,14 +207,16 @@ def backfill_kinds(db, region: str, edges: list[dict]) -> int:
     try:
         for start in range(0, len(kinded), BACKFILL_BATCH_SIZE):
             batch = kinded[start:start + BACKFILL_BATCH_SIZE]
-            db.execute(text("DELETE FROM tmp_road_kinds"))
-            db.execute(insert_sql, [{c: e[c] for c in (*_MATCH_COLS, "kind")} for e in batch])
-            result = db.execute(update_sql, {"region": region})
-            db.commit()
+            conn.execute(text("DELETE FROM tmp_road_kinds"))
+            conn.execute(insert_sql, [{c: e[c] for c in (*_MATCH_COLS, "kind")} for e in batch])
+            result = conn.execute(update_sql, {"region": region})
+            conn.commit()
             updated += result.rowcount
             print(f"  backfilled {start + len(batch)}/{len(kinded)} (rows updated so far: {updated})")
     finally:
-        db.execute(text("DROP TEMPORARY TABLE tmp_road_kinds" if mysql else "DROP TABLE temp.tmp_road_kinds"))
+        conn.execute(text("DROP TEMPORARY TABLE tmp_road_kinds" if mysql else "DROP TABLE temp.tmp_road_kinds"))
+        conn.commit()
+        conn.close()
     return updated
 
 
