@@ -333,6 +333,72 @@ body.night-mode .auth-card {
   transition: box-shadow 0.3s;
 }
 
+/* Log in / register modal */
+.auth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: var(--color-overlay);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: auth-modal-fade 0.2s ease-out;
+}
+.auth-modal-card {
+  position: relative;
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: auth-modal-rise 0.22s ease-out;
+}
+.auth-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--color-subtext);
+  font-size: 1.15em;
+}
+.auth-modal-close:hover {
+  background: var(--color-accent-hover);
+  color: var(--color-text);
+}
+button.auth-switch {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  font-weight: 700;
+  color: var(--color-link);
+}
+button.auth-switch:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+@keyframes auth-modal-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes auth-modal-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-modal-backdrop, .auth-modal-card { animation: none; }
+}
+
 .field {
   margin-bottom: 14px;
 }

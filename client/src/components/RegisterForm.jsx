@@ -1,13 +1,28 @@
 import { useState } from "react";
+import PropTypes from "prop-types";
+import { Link } from "react-router-dom";
 import api from "../api";
+import { useAuth } from "../context/AuthContext";
+import { track } from "../analytics";
+import SocialAuthButtons from "./SocialAuthButtons";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function RegisterForm() {
+function passwordErrors(pw) {
+  const errs = [];
+  if (pw.length < 8) errs.push("at least 8 characters");
+  if (!/\d/.test(pw)) errs.push("at least one number");
+  return errs;
+}
+
+export default function RegisterForm({ onSuccess, onSwitch, onLeave }) {
+  const { login } = useAuth();
   const [form, setForm] = useState({ first_name: "", email: "", password: "" });
   const [emailError, setEmailError] = useState(null);
+  const [pwTouched, setPwTouched] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+
+  const pwErrs = passwordErrors(form.password);
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -22,52 +37,100 @@ export default function RegisterForm() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setPwTouched(true);
     if (!EMAIL_REGEX.test(form.email)) {
       setEmailError("Please enter a valid email address");
       return;
     }
+    if (pwErrs.length > 0) return;
     setError(null);
     try {
-      await api.post("/users/register", form);
-      setSuccess(true);
+      const res = await api.post("/users/register", form);
+      login(res.data.user, res.data.access_token);
+      track("Signed Up");
+      onSuccess();
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(Array.isArray(detail) ? detail.map(e => e.msg).join(". ") : (detail || "Something went wrong"));
     }
   }
 
-  if (success) return <p>Account created! Welcome, {form.first_name}.</p>;
+  const showPwHints = pwTouched || form.password.length > 0;
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h2>Create an account</h2>
-
-      <div>
-        <label>First name</label>
-        <input name="first_name" value={form.first_name} onChange={handleChange} required />
-      </div>
-
-      <div>
-        <label>Email</label>
-        <input
-          name="email"
-          type="email"
-          value={form.email}
-          onChange={handleChange}
-          onBlur={handleEmailBlur}
-          required
-        />
-        {emailError && <p style={{ color: "red" }}>{emailError}</p>}
-      </div>
-
-      <div>
-        <label>Password</label>
-        <input name="password" type="password" value={form.password} onChange={handleChange} required />
-      </div>
-
-      {error && <p style={{ color: "red" }}>{error}</p>}
-
-      <button type="submit">Register</button>
-    </form>
+    <>
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
+          <img src="/logo.gif" alt="bright" style={{ height: "60px", marginBottom: "8px" }} />
+          <h2 id="auth-modal-title" style={{ margin: 0, fontSize: "1.5em" }}>Create an account</h2>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="field">
+            <label>First name</label>
+            <input type="text" name="first_name" value={form.first_name} onChange={handleChange} required />
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input
+              name="email"
+              type="email"
+              value={form.email}
+              onChange={handleChange}
+              onBlur={handleEmailBlur}
+              required
+            />
+            {emailError && <p style={{ color: "#C0392B", margin: "4px 0 0", fontSize: "0.82em" }}>{emailError}</p>}
+          </div>
+          <div className="field">
+            <label>Password</label>
+            <input
+              name="password"
+              type="password"
+              value={form.password}
+              onChange={handleChange}
+              onBlur={() => setPwTouched(true)}
+              required
+            />
+            {showPwHints && (
+              <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                {[
+                  { label: "At least 8 characters", ok: form.password.length >= 8 },
+                  { label: "At least one number", ok: /\d/.test(form.password) },
+                ].map(({ label, ok }) => (
+                  <p key={label} style={{
+                    margin: 0, fontSize: "0.78em",
+                    color: ok ? "#5A8F5A" : (pwTouched && pwErrs.length > 0 ? "#C0392B" : "var(--color-subtext)"),
+                    fontWeight: 600,
+                  }}>
+                    {ok ? "✓" : "·"} {label}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+          {error && <p style={{ color: "#C0392B", margin: "0 0 12px", fontSize: "0.85em" }}>{error}</p>}
+          <button type="submit" style={{ width: "100%", padding: "0.65em", fontSize: "0.95em", marginTop: "6px" }}>
+            Register
+          </button>
+        </form>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", margin: "20px 0" }}>
+          <div style={{ flex: 1, height: "1px", background: "var(--color-divider)" }} />
+          <span style={{ fontSize: "0.78em", color: "var(--color-subtext)", fontWeight: 600 }}>or</span>
+          <div style={{ flex: 1, height: "1px", background: "var(--color-divider)" }} />
+        </div>
+        <SocialAuthButtons onError={setError} onSuccess={onSuccess} />
+        <p style={{ margin: "14px 0 0", textAlign: "center", fontSize: "0.78em", color: "var(--color-subtext)" }}>
+          By creating an account, you agree to our <Link to="/privacy" onClick={onLeave}>Privacy Policy</Link>.
+        </p>
+        <p style={{ margin: "10px 0 0", textAlign: "center", fontSize: "0.88em", color: "var(--color-subtext)" }}>
+          Already have an account?{" "}
+          <button type="button" className="auth-switch" onClick={onSwitch}>Log in</button>
+        </p>
+    </>
   );
 }
+
+RegisterForm.propTypes = {
+  onSuccess: PropTypes.func.isRequired,
+  onSwitch: PropTypes.func.isRequired,
+  onLeave: PropTypes.func.isRequired,
+};

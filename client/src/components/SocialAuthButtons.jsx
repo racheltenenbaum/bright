@@ -1,6 +1,5 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGoogle, faApple } from "@fortawesome/free-brands-svg-icons";
 import * as Sentry from "@sentry/capacitor";
@@ -8,8 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { track } from "../analytics";
 import { signInWithGoogle, signInWithApple, isAppleSignInSupported } from "../utils/socialAuth";
 
-export default function SocialAuthButtons({ onError }) {
-  const navigate = useNavigate();
+export default function SocialAuthButtons({ onError, onSuccess }) {
   const { login } = useAuth();
   const [pending, setPending] = useState(null); // null | "google" | "apple"
 
@@ -21,7 +19,7 @@ export default function SocialAuthButtons({ onError }) {
       if (!data) return; // user cancelled
       login(data.user, data.access_token);
       track(`Signed In With ${provider === "google" ? "Google" : "Apple"}`);
-      navigate("/plan");
+      onSuccess();
     } catch (err) {
       // This was previously a bare `catch {}` — silently discarding the
       // real error, which is why a real reported Google sign-in failure
@@ -64,4 +62,5 @@ export default function SocialAuthButtons({ onError }) {
 
 SocialAuthButtons.propTypes = {
   onError: PropTypes.func.isRequired,
+  onSuccess: PropTypes.func.isRequired,
 };

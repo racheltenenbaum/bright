@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { useAuth } from "../context/AuthContext";
 import { registerPlugin } from "@capacitor/core";
 import { TextToSpeech } from "@capacitor-community/text-to-speech";
-import { useLocation, useNavigate, Link } from "react-router-dom";
+import { useLocation, Link } from "react-router-dom";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -29,6 +29,7 @@ import { addressFromGeocodeResult } from "../utils/address";
 import { isCovered } from "../utils/coverage";
 import { track } from "../analytics";
 import { watchPosition } from "../utils/geolocation";
+import { useAuthModal } from "../context/AuthModalContext";
 
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
 
@@ -490,8 +491,8 @@ function drawRoute(mapInstance, polylinesRef, coords, segments, sunAltitude, pre
 }
 
 export default function RouteMap({ regions }) {
+  const { openAuth } = useAuthModal();
   const { user, updateUser } = useAuth();
-  const navigate = useNavigate();
   const { isLoaded } = useLoadScript({
     googleMapsApiKey: API_KEY,
     libraries: LIBRARIES,
@@ -3281,9 +3282,8 @@ export default function RouteMap({ regions }) {
       {/* Prompt to log in / register — shown instead of silently redirecting
           when a logged-out user tries to save a route/spot or set up a
           region notification, so they aren't yanked off the page they were
-          just looking at without warning. The in-progress plan itself
-          survives either way (see the session-cache effects above), so
-          "Log in" / "Register" can freely navigate away. */}
+          just looking at without warning. "Log in" / "Register" open the
+          auth modal over this page, so the plan stays right where it is. */}
       {authPromptOpen && (
         <div
           onClick={(e) => { if (e.target === e.currentTarget) setAuthPromptOpen(false); }}
@@ -3306,13 +3306,13 @@ export default function RouteMap({ regions }) {
               Log in or create a free account to save routes and spots.
             </p>
             <button
-              onClick={() => navigate("/login")}
+              onClick={() => { setAuthPromptOpen(false); openAuth("login"); }}
               style={{ fontSize: "0.9em", padding: "0.55em 1.2em", fontWeight: 800 }}
             >
               Log in
             </button>
             <button
-              onClick={() => navigate("/register")}
+              onClick={() => { setAuthPromptOpen(false); openAuth("register"); }}
               className="btn-outline"
               style={{ fontSize: "0.9em", padding: "0.55em 1.2em", fontWeight: 800 }}
             >

@@ -3,13 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import PropTypes from "prop-types";
 import { App as CapacitorApp } from "@capacitor/app";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuthModalProvider, useAuthModal } from "./context/AuthModalContext";
 import Navbar from "./components/Navbar";
 import { track } from "./analytics";
 import { getCurrentPosition } from "./utils/geolocation";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
-const LoginPage = lazy(() => import("./pages/LoginPage"));
-const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
 const PlanRoutePage = lazy(() => import("./pages/PlanRoutePage"));
@@ -23,11 +22,31 @@ const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  const location = useLocation();
+  return isAuthenticated
+    ? children
+    : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 }
 
 ProtectedRoute.propTypes = {
   children: PropTypes.node.isRequired,
+};
+
+// /login and /register still work as URLs (password-reset flow, expired
+// sessions, old links) but just open the auth modal over the home page.
+// Success lands on the protected page the user was sent here from, or /plan.
+function AuthRoute({ mode }) {
+  const { openAuth } = useAuthModal();
+  const location = useLocation();
+  const redirectTo = location.state?.from || "/plan";
+  useEffect(() => {
+    openAuth(mode, { redirectTo });
+  }, [mode, redirectTo, openAuth]);
+  return <Navigate to="/" replace />;
+}
+
+AuthRoute.propTypes = {
+  mode: PropTypes.oneOf(["login", "register"]).isRequired,
 };
 
 function sunAltitude(lat, lng) {
@@ -98,8 +117,8 @@ function Layout() {
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/share/spot/:token" element={<SharedSpotPage />} />
             <Route path="/share/:token" element={<SharedRoutePage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/login" element={<AuthRoute mode="login" />} />
+            <Route path="/register" element={<AuthRoute mode="register" />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             {/* Plan Route works anonymously — an account is only needed to
@@ -140,7 +159,9 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Layout />
+        <AuthModalProvider>
+          <Layout />
+        </AuthModalProvider>
       </BrowserRouter>
     </AuthProvider>
   );

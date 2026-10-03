@@ -6,6 +6,7 @@ import {
   faLocationDot, faBookmark, faShareNodes,
   faPersonWalking, faSliders,
 } from "@fortawesome/free-solid-svg-icons";
+import { useAuthModal } from "../context/AuthModalContext";
 
 const STEPS = [
   { icon: faLocationDot,   label: "Tap a start and end point - and select your sun / shade preference" },
@@ -58,6 +59,7 @@ const CREDITS = [
 ];
 
 export default function AboutPage() {
+  const { openAuth } = useAuthModal();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
 
@@ -154,7 +156,7 @@ export default function AboutPage() {
                   </button>
                 ) : (
                   <>
-                    <Link to="/register" className="about-cta-link" style={{
+                    <button type="button" onClick={() => openAuth("register", { redirectTo: "/plan" })} className="about-cta-link" style={{
                       background: "none", border: "none", boxShadow: "none", borderRadius: 0,
                       padding: "4px 0", borderBottom: "2.5px solid var(--color-accent)",
                       fontSize: "1.2em", fontWeight: 800,
@@ -162,9 +164,10 @@ export default function AboutPage() {
                       textDecoration: "none",
                     }}>
                       Start your sun expedition → <FontAwesomeIcon icon={faSun} style={{ fontSize: "0.85em" }} />
-                    </Link>
+                    </button>
                     <p style={{ margin: "12px 0 0", fontSize: "0.85em", color: "var(--color-subtext)", textAlign: "center" }}>
-                      Already have an account? <Link to="/login">Log in</Link>
+                      Already have an account?{" "}
+                      <button type="button" className="auth-switch" onClick={() => openAuth("login", { redirectTo: "/plan" })}>Log in</button>
                     </p>
                   </>
                 )}

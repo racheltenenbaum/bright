@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowRight, faSun, faCloudSun } from "@fortawesome/free-solid-svg-icons";
+import { useAuthModal } from "../context/AuthModalContext";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -34,6 +35,7 @@ function staticMapUrl(route) {
 }
 
 export default function SharedRoutePage() {
+  const { openAuth } = useAuthModal();
   const { token } = useParams();
   const [route, setRoute] = useState(null);
   const [error, setError] = useState(null);
@@ -123,13 +125,15 @@ export default function SharedRoutePage() {
         <p style={{ margin: 0, fontSize: "0.85em", color: "var(--color-subtext)" }}>
           Find the sunniest or shadiest route between any two points.
         </p>
-        <Link to="/register">
-          <button style={{ marginTop: "4px", fontSize: "0.95em", padding: "0.55em 1.8em" }}>
-            Sign up free
-          </button>
-        </Link>
+        <button
+          onClick={() => openAuth("register")}
+          style={{ marginTop: "4px", fontSize: "0.95em", padding: "0.55em 1.8em" }}
+        >
+          Sign up free
+        </button>
         <p style={{ margin: 0, fontSize: "0.82em", color: "var(--color-subtext)" }}>
-          Already have an account? <Link to="/login">Log in</Link>
+          Already have an account?{" "}
+          <button type="button" className="auth-switch" onClick={() => openAuth("login")}>Log in</button>
         </p>
       </div>
     </div>

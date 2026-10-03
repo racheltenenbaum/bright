@@ -4,8 +4,10 @@ import { useAuth } from "../context/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faHand, faEllipsisVertical } from "@fortawesome/free-solid-svg-icons";
 import api from "../api";
+import { useAuthModal } from "../context/AuthModalContext";
 
 export default function Navbar() {
+  const { openAuth } = useAuthModal();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -49,7 +51,7 @@ export default function Navbar() {
             {user.first_name === "there" ? "Hi there!" : `Hi, ${user.first_name}!`} <FontAwesomeIcon icon={faHand} />
           </span>
         ) : (
-          <button onClick={() => navigate("/login")} style={{ fontSize: "0.85em", padding: "0.45em 1.2em" }}>
+          <button onClick={() => openAuth("login")} style={{ fontSize: "0.85em", padding: "0.45em 1.2em" }}>
             Log in
           </button>
         )}

@@ -4,6 +4,7 @@ import api from "../api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMapPin, faLocationDot } from "@fortawesome/free-solid-svg-icons";
 import { spotIcon } from "./MySpotsPage";
+import { useAuthModal } from "../context/AuthModalContext";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -21,6 +22,7 @@ function googleMapsUrl(spot) {
 }
 
 export default function SharedSpotPage() {
+  const { openAuth } = useAuthModal();
   const { token } = useParams();
   const [spot, setSpot] = useState(null);
   const [error, setError] = useState(null);
@@ -111,13 +113,15 @@ export default function SharedSpotPage() {
         <p style={{ margin: 0, fontSize: "0.85em", color: "var(--color-subtext)" }}>
           Find the sunniest or shadiest route to any of them.
         </p>
-        <Link to="/register">
-          <button style={{ marginTop: "4px", fontSize: "0.95em", padding: "0.55em 1.8em" }}>
-            Sign up free
-          </button>
-        </Link>
+        <button
+          onClick={() => openAuth("register")}
+          style={{ marginTop: "4px", fontSize: "0.95em", padding: "0.55em 1.8em" }}
+        >
+          Sign up free
+        </button>
         <p style={{ margin: 0, fontSize: "0.82em", color: "var(--color-subtext)" }}>
-          Already have an account? <Link to="/login">Log in</Link>
+          Already have an account?{" "}
+          <button type="button" className="auth-switch" onClick={() => openAuth("login")}>Log in</button>
         </p>
       </div>
     </div>
