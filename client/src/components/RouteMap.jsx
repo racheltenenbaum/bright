@@ -3267,7 +3267,9 @@ export default function RouteMap({ regions }) {
                 style={{
                   fontSize: "18px",
                   color: mapHeading !== 0 ? colors.accent : colors.subtext,
-                  transform: `rotate(${-mapHeading}deg)`,
+                  // faCompass's needle is drawn pointing northeast; -45°
+                  // makes it point straight up when the map faces north.
+                  transform: `rotate(${-45 - mapHeading}deg)`,
                   transition: "transform 0.3s, color 0.2s",
                 }}
               />
