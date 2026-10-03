@@ -2199,7 +2199,7 @@ export default function RouteMap({ regions }) {
           </div>
         )}
         {mode === "route" && (start && !planning) && (
-          <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em" }}>Reset</button>
+          <button onClick={reset} style={{ fontSize: "0.75em", padding: "0.35em 0.9em", marginLeft: "auto" }}>Reset</button>
         )}
       </div>
 
