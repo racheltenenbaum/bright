@@ -521,6 +521,7 @@ export default function RouteMap({ regions }) {
   // Refs for use inside map click listener (avoids stale closures)
   const startRef = useRef(null);
   const endRef = useRef(null);
+  const planningRef = useRef(false);
   const sunDataRef = useRef(null);
   const modeRef = useRef("route");
   const placeMarkersRef = useRef([]);
@@ -627,6 +628,7 @@ export default function RouteMap({ regions }) {
   startRef.current = start;
   endRef.current = end;
   sunDataRef.current = sunData;
+  planningRef.current = planning;
   // placesSunAltitude tracks wherever the device physically is (it's
   // continuously overwritten by the geolocation watcher), which is correct
   // for the Find Places tab but wrong for a route planned somewhere else —
@@ -1227,11 +1229,13 @@ export default function RouteMap({ regions }) {
         setSelectedPlace(null);
         return;
       }
-      // Once both endpoints are set, a plain map tap shouldn't touch the
-      // planned route at all — only clearing an address field (or Reset)
-      // should. Without this, tapping anywhere on the map after planning a
-      // route silently replaced the end point and wiped it.
-      if (startRef.current && endRef.current) return;
+      // Once a route is planned (or being planned), a plain map tap
+      // shouldn't touch it at all — only clearing an address field (or
+      // Reset) should. Without this, tapping anywhere on the map after
+      // planning a route silently replaced the end point and wiped it.
+      // Before that, with both pins down but Plan Route not yet hit, a tap
+      // moves the destination pin (handled below).
+      if (startRef.current && endRef.current && (sunDataRef.current || planningRef.current)) return;
 
       setError(null);
       setUsedFallbackRouting(false);
