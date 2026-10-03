@@ -29,6 +29,7 @@ import { addressFromGeocodeResult } from "../utils/address";
 import { isCovered } from "../utils/coverage";
 import { track } from "../analytics";
 import { watchPosition } from "../utils/geolocation";
+import { createOffRouteDetector } from "../utils/offRoute";
 import { useAuthModal } from "../context/AuthModalContext";
 
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
@@ -579,6 +580,16 @@ export default function RouteMap({ regions }) {
   // moved one level down. Clamping to non-decreasing eliminates it: a real
   // walker essentially always progresses forward along the route.
   const maxGoSegmentIdxRef = useRef(0);
+  // Off-route re-planning in Go mode (see utils/offRoute.js for when a walker
+  // counts as off the route). lastFixRef holds the latest GPS fix with its
+  // accuracy; offRouteHoldUntilRef pauses detection after Go starts (GPS
+  // settling) and after each re-plan, so one detour never triggers a burst.
+  const offRouteDetectorRef = useRef(createOffRouteDetector());
+  const lastFixRef = useRef(null);
+  const lastFedFixTimeRef = useRef(0);
+  const offRouteHoldUntilRef = useRef(0);
+  const reroutingRef = useRef(false);
+  const [rerouteNotice, setRerouteNotice] = useState(null);
   // Which waypoint index the currently-shown turn hint targets, if any —
   // see getUpcomingTurn's hysteresis for why this needs to persist across
   // calls rather than being recomputed fresh each time.
@@ -954,8 +965,9 @@ export default function RouteMap({ regions }) {
   // Go-mode background watcher (further down) — just the "move the dot"
   // part, not the one-time pan/autocomplete-bias setup that only makes
   // sense before a route exists.
-  function updateLocationMarker(lat, lng) {
+  function updateLocationMarker(lat, lng, accuracy) {
     if (!mapRef.current) return;
+    lastFixRef.current = { lat, lng, accuracy, time: Date.now() };
     setCurrentLocation({ lat, lng });
     localStorage.setItem("bright_lat", lat);
     localStorage.setItem("bright_lng", lng);
@@ -983,9 +995,9 @@ export default function RouteMap({ regions }) {
     let initialPanDone = false;
     let cancelled = false;
 
-    function handlePosition(lat, lng) {
+    function handlePosition(lat, lng, accuracy) {
       if (cancelled || !mapRef.current) return;
-      updateLocationMarker(lat, lng);
+      updateLocationMarker(lat, lng, accuracy);
       if (!initialPanDone && !startRef.current) {
         if (!skipInitialPanRef.current) {
           mapRef.current.panTo({ lat, lng });
@@ -1042,7 +1054,7 @@ export default function RouteMap({ regions }) {
       },
       (location, error) => {
         if (cancelled || error || !location) return;
-        updateLocationMarker(location.latitude, location.longitude);
+        updateLocationMarker(location.latitude, location.longitude, location.accuracy);
       },
     ).then((id) => {
       if (!cancelled) watcherId = id;
@@ -1093,6 +1105,46 @@ export default function RouteMap({ regions }) {
       setMapHeading(bearing);
     }
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-plan from where the walker actually is once they've clearly left the
+  // route. Both location watchers run in Go mode, so near-simultaneous
+  // duplicate fixes are skipped rather than counted twice as evidence.
+  useEffect(() => {
+    if (!goMode || !routeCoords || !end || reroutingRef.current) return;
+    const fix = lastFixRef.current;
+    if (!fix || fix.time - lastFedFixTimeRef.current < 2000) return;
+    lastFedFixTimeRef.current = fix.time;
+    if (fix.time < offRouteHoldUntilRef.current || haversineKm(fix.lat, fix.lng, end.lat, end.lng) < 0.05) {
+      offRouteDetectorRef.current.reset();
+      return;
+    }
+    if (offRouteDetectorRef.current.update(fix, routeCoords)) rerouteFrom(fix);
+  }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function rerouteFrom(fix) {
+    reroutingRef.current = true;
+    setRerouteNotice("Off route — finding a new way…");
+    if (voiceEnabled) {
+      TextToSpeech.speak({ text: "You've left the route. Finding a new way.", lang: "en-US", category: "playback" })
+        .catch(() => {});
+    }
+    const ok = await planRoute({ origin: { lat: fix.lat, lng: fix.lng }, rerouting: true });
+    reroutingRef.current = false;
+    offRouteDetectorRef.current.reset();
+    if (ok && goModeRef.current) {
+      maxGoSegmentIdxRef.current = 0;
+      setGoSegmentIdx(0);
+      activeTurnTargetRef.current = null;
+      spokenTurnTargetRef.current = null;
+      offRouteHoldUntilRef.current = Date.now() + 20_000;
+      setRerouteNotice(null);
+    } else {
+      offRouteHoldUntilRef.current = Date.now() + 60_000;
+      setRerouteNotice("Couldn't find a new route — keep following the original");
+      setTimeout(() => setRerouteNotice(null), 6000);
+    }
+    track("Go Mode Rerouted", { success: !!ok, preference });
+  }
 
   // Compute the turn hint for the banner, and speak brand-new instructions
   // exactly once. getUpcomingTurn mutates activeTurnTargetRef as its own
@@ -1479,7 +1531,7 @@ export default function RouteMap({ regions }) {
   // from the session cache (see the restore effect below) — both end up
   // drawing the same waypoints/segments onto the map the same way, so this
   // is the single place that logic lives.
-  function applyRouteResult(waypoints, segments, sunAltitude, sunAzimuth, date, shadowAvailable, pref) {
+  function applyRouteResult(waypoints, segments, sunAltitude, sunAzimuth, date, shadowAvailable, pref, { fitBounds = true } = {}) {
     // Tell the user when "shade" couldn't do anything — e.g. no shaded
     // street reachable near this route at the sun's current position —
     // rather than silently handing back what looks like an ordinary sun
@@ -1511,6 +1563,8 @@ export default function RouteMap({ regions }) {
     drawRoute(mapRef.current, polylinesRef, waypoints, segments, sunAltitude, pref);
     drawSideGlow(mapRef.current, sideGlowRef, waypoints, segments, sunAltitude, pref);
 
+    // Go mode's re-plan keeps the map following the walker instead.
+    if (!fitBounds) return;
     const bounds = new window.google.maps.LatLngBounds();
     waypoints.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
     // setRouteStats/setSunData above make a stats panel appear as a flex
@@ -1533,14 +1587,24 @@ export default function RouteMap({ regions }) {
     });
   }
 
-  async function planRoute() {
-    setError(null);
-    setSunData(null);
-    setUsedFallbackRouting(false);
-    setNoShadeAvailable(false);
-    setShowReplanBanner(false);
-
-    if (!checkCoverage(start, end)) return;
+  // `origin` overrides the start pin — Go mode re-plans from the walker's
+  // current position when they leave the route. `rerouting` keeps that quiet:
+  // the current route, stats panel, Go/Stop button and map position all stay
+  // put until the new route is ready, and failures don't raise the error
+  // panel (the caller tells the user instead). Returns whether it succeeded.
+  async function planRoute({ origin = start, rerouting = false } = {}) {
+    if (!rerouting) {
+      setError(null);
+      setSunData(null);
+      setUsedFallbackRouting(false);
+      setNoShadeAvailable(false);
+      setShowReplanBanner(false);
+      if (!checkCoverage(origin, end)) return false;
+    }
+    const fail = (message) => {
+      if (!rerouting) setError(message);
+      return false;
+    };
 
     // Fail fast on an obviously-too-far route before hitting the backend at
     // all — the real walking distance can only be >= this straight-line
@@ -1548,19 +1612,20 @@ export default function RouteMap({ regions }) {
     // waiting on optimized-route (which can itself fail to find a path
     // within its search area for a long/barrier-crossing route, triggering
     // a confusing "sun/shade unavailable" fallback) or Google Directions.
-    const straightLineKm = haversineKm(start.lat, start.lng, end.lat, end.lng);
+    const straightLineKm = haversineKm(origin.lat, origin.lng, end.lat, end.lng);
     if (straightLineKm > 5) {
-      setError("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
-      return;
+      return fail("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
     }
 
-    setPlanning(true);
-    clearPolylines(polylinesRef);
-    clearSideGlow(sideGlowRef);
+    if (!rerouting) {
+      setPlanning(true);
+      clearPolylines(polylinesRef);
+      clearSideGlow(sideGlowRef);
+    }
     try {
       const token = localStorage.getItem("token");
-      const midLat = (start.lat + end.lat) / 2;
-      const midLng = (start.lng + end.lng) / 2;
+      const midLat = (origin.lat + end.lat) / 2;
+      const midLng = (origin.lng + end.lng) / 2;
 
       // Resolve local time at the route's location, not the user's device timezone
       const tzRes = await api.get(
@@ -1588,7 +1653,7 @@ export default function RouteMap({ regions }) {
       const requestOptimizedRoute = () => api.post(
         "/sun/optimized-route",
         {
-          start: [start.lat, start.lng], end: [end.lat, end.lng], datetime, preference,
+          start: [origin.lat, origin.lng], end: [end.lat, end.lng], datetime, preference,
           max_detour: detourOverride,
         },
         { headers: { Authorization: `Bearer ${token}` }, timeout: 35000 },
@@ -1631,14 +1696,13 @@ export default function RouteMap({ regions }) {
         fallbackRoutingUsed = true;
         const directionsService = new window.google.maps.DirectionsService();
         const result = await directionsService.route({
-          origin: start,
+          origin,
           destination: end,
           travelMode: window.google.maps.TravelMode.WALKING,
         });
         if (!result.routes?.length) throw new Error("No route found");
         if (result.routes[0].legs[0].distance.value > 5000) {
-          setError("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
-          return;
+          return fail("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
         }
         waypoints = result.routes[0].overview_path.map((p) => [p.lat(), p.lng()]);
       }
@@ -1649,8 +1713,7 @@ export default function RouteMap({ regions }) {
         return sum + haversineKm(waypoints[i - 1][0], waypoints[i - 1][1], pt[0], pt[1]);
       }, 0);
       if (distKm > 5) {
-        setError("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
-        return;
+        return fail("This route is over 5 km long — choose a shorter walk for accurate sun/shade routing");
       }
 
       // Shadow-analyze the path — sun_altitude/azimuth come from this response
@@ -1664,8 +1727,12 @@ export default function RouteMap({ regions }) {
       // the session cache and every consumer of routeSegments get them too.
       if (segmentKinds) segments.forEach((seg, i) => { seg.kind = segmentKinds[i] ?? null; });
 
-      applyRouteResult(waypoints, segments, sun_altitude, sun_azimuth, date, shadow_available, preference);
+      applyRouteResult(
+        waypoints, segments, sun_altitude, sun_azimuth, date, shadow_available, preference,
+        { fitBounds: !rerouting },
+      );
       track("Planned Route", {
+        rerouted: rerouting,
         preference,
         distance_km: Math.round(distKm * 10) / 10,
         used_fallback_routing: fallbackRoutingUsed,
@@ -1678,9 +1745,10 @@ export default function RouteMap({ regions }) {
       ) {
         fetchWeather(midLat, midLng);
       }
+      return true;
     } catch (err) {
       console.error("planRoute error:", err);
-      setError("Could not fetch route. Please try again.");
+      return fail("Could not fetch route. Please try again.");
     } finally {
       setPlanning(false);
     }
@@ -2432,7 +2500,7 @@ export default function RouteMap({ regions }) {
               {!planning && start && end && !sunData && (
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button
-                    onClick={planRoute}
+                    onClick={() => planRoute()}
                     disabled={tooFar}
                     style={{
                       fontSize: "0.85em",
@@ -2735,8 +2803,10 @@ export default function RouteMap({ regions }) {
         <div className="map-wrapper" style={{ height: "100%", flex: "none", position: "relative" }}>
           <div ref={containerRef} style={{ height: "100%", width: "100%" }} />
           {goMode && (() => {
-            const turn = turnHint;
-            const sideHint = getSideHint(routeSegments, goSegmentIdx, preference);
+            // While re-planning (or just after it failed), the old route's
+            // instructions no longer apply — say what's happening instead.
+            const turn = rerouteNotice ? { text: rerouteNotice } : turnHint;
+            const sideHint = rerouteNotice ? null : getSideHint(routeSegments, goSegmentIdx, preference);
             if (!turn && !sideHint) return null;
             const pillStyle = {
               position: "absolute", left: "10px", zIndex: 6,
@@ -2950,6 +3020,8 @@ export default function RouteMap({ regions }) {
                   setGoSegmentIdx(0);
                   maxGoSegmentIdxRef.current = 0;
                   activeTurnTargetRef.current = null;
+                  offRouteDetectorRef.current.reset();
+                  offRouteHoldUntilRef.current = Date.now() + 10_000;
                 }
               }}
               style={{

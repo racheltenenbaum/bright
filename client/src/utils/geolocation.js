@@ -25,7 +25,7 @@ export async function getCurrentPosition(options = {}) {
   return browserGetCurrentPosition(options);
 }
 
-// Returns a function that stops watching.
+// Calls onPosition(lat, lng, accuracyMeters). Returns a function that stops watching.
 export function watchPosition(options, onPosition) {
   if (isNative) {
     let id = null;
@@ -34,7 +34,7 @@ export function watchPosition(options, onPosition) {
       .then(() =>
         Geolocation.watchPosition(options, (pos, err) => {
           if (err || !pos) return;
-          onPosition(pos.coords.latitude, pos.coords.longitude);
+          onPosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
         }),
       )
       .then((watchId) => {
@@ -50,7 +50,7 @@ export function watchPosition(options, onPosition) {
 
   if (!navigator.geolocation) return () => {};
   const id = navigator.geolocation.watchPosition(
-    ({ coords }) => onPosition(coords.latitude, coords.longitude),
+    ({ coords }) => onPosition(coords.latitude, coords.longitude, coords.accuracy),
     null,
     options,
   );
