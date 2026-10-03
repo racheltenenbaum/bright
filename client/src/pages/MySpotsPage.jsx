@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Geolocation } from "@capacitor/geolocation";
 import { Share } from "@capacitor/share";
 import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -15,6 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import api from "../api";
 import { addressFromGeocodeResult } from "../utils/address";
+import { getCurrentPosition } from "../utils/geolocation";
 
 const MAP_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const LIBRARIES = ["places"];
@@ -152,19 +152,8 @@ export default function MySpotsPage() {
         '</svg>'
       );
       try {
-        let lat, lng;
-        try {
-          await Geolocation.requestPermissions();
-          const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
-          lat = pos.coords.latitude;
-          lng = pos.coords.longitude;
-        } catch {
-          const pos = await new Promise((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true })
-          );
-          lat = pos.coords.latitude;
-          lng = pos.coords.longitude;
-        }
+        const pos = await getCurrentPosition({ enableHighAccuracy: true });
+        const { latitude: lat, longitude: lng } = pos.coords;
         if (!formMapRef.current) return;
         locationDotRef.current = new window.google.maps.Marker({
           position: { lat, lng },
@@ -283,19 +272,8 @@ export default function MySpotsPage() {
   async function useCurrentLocation() {
     setLocating(true);
     try {
-      let lat, lng;
-      try {
-        await Geolocation.requestPermissions();
-        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-      } catch {
-        const pos = await new Promise((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true })
-        );
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-      }
+      const pos = await getCurrentPosition({ enableHighAccuracy: true });
+      const { latitude: lat, longitude: lng } = pos.coords;
       const { address, city } = await reverseGeocode(lat, lng);
       setForm((prev) => ({ ...prev, lat, lng, address: address || "", city: city || prev.city }));
       const bias = new window.google.maps.LatLngBounds(

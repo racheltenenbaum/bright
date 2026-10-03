@@ -5,6 +5,7 @@ import { App as CapacitorApp } from "@capacitor/app";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
 import { track } from "./analytics";
+import { getCurrentPosition } from "./utils/geolocation";
 
 const HomePage = lazy(() => import("./pages/HomePage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
@@ -81,13 +82,9 @@ function Layout() {
     const lng = parseFloat(localStorage.getItem("bright_lng") || "-0.09");
     applyTheme(lat, lng);
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        ({ coords }) => applyTheme(coords.latitude, coords.longitude),
-        null,
-        { timeout: 5000 },
-      );
-    }
+    getCurrentPosition({ timeout: 5000 })
+      .then(({ coords }) => applyTheme(coords.latitude, coords.longitude))
+      .catch(() => {});
   }, []);
 
   return (

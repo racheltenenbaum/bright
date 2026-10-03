@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Geolocation } from "@capacitor/geolocation";
+import { getCurrentPosition } from "./geolocation";
 import api from "../api";
 import { isCovered } from "./coverage";
 
@@ -22,18 +22,10 @@ export function useServiceArea() {
         setStatus(isCovered(lat, lng, data.regions) ? "supported" : "unsupported");
       }
 
-      Geolocation.getCurrentPosition({ timeout: 5000 })
+      getCurrentPosition({ timeout: 5000 })
         .then((pos) => handlePosition(pos.coords.latitude, pos.coords.longitude))
         .catch(() => {
-          if (!navigator.geolocation) {
-            setStatus("unknown");
-            return;
-          }
-          navigator.geolocation.getCurrentPosition(
-            ({ coords }) => handlePosition(coords.latitude, coords.longitude),
-            () => setStatus("unknown"),
-            { timeout: 5000 },
-          );
+          if (!cancelled) setStatus("unknown");
         });
     }).catch(() => {
       if (!cancelled) setStatus("unknown");

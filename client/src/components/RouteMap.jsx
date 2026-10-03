@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import { useAuth } from "../context/AuthContext";
-import { Geolocation } from "@capacitor/geolocation";
 import { registerPlugin } from "@capacitor/core";
 import { TextToSpeech } from "@capacitor-community/text-to-speech";
 import { useLocation, useNavigate, Link } from "react-router-dom";
@@ -29,6 +28,7 @@ import { spotIcon, SPOT_ICONS } from "../pages/MySpotsPage";
 import { addressFromGeocodeResult } from "../utils/address";
 import { isCovered } from "../utils/coverage";
 import { track } from "../analytics";
+import { watchPosition } from "../utils/geolocation";
 
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
 
@@ -454,7 +454,6 @@ export default function RouteMap({ regions }) {
   const startMarkerRef = useRef(null);
   const endMarkerRef = useRef(null);
   const currentLocationMarkerRef = useRef(null);
-  const watchIdRef = useRef(null);
   const sunCheckedRef = useRef(false);
   const weatherLocationRef = useRef(null);
   const startAutocompleteRef = useRef(null);
@@ -538,7 +537,7 @@ export default function RouteMap({ regions }) {
   const spokenTurnTargetRef = useRef(null);
   const [voiceEnabled, setVoiceEnabled] = useState(() => {
     try {
-      return localStorage.getItem("goModeVoiceEnabled") === "true";
+      return localStorage.getItem("goModeVoiceOn") === "true";
     } catch (_) {
       return false;
     }
@@ -953,31 +952,14 @@ export default function RouteMap({ regions }) {
       }
     }
 
-    Geolocation.requestPermissions().then(() => {
-      Geolocation.watchPosition(
-        { enableHighAccuracy: true, maximumAge: 10000 },
-        (pos, err) => {
-          if (err || !pos) return;
-          handlePosition(pos.coords.latitude, pos.coords.longitude);
-        },
-      ).then((id) => { watchIdRef.current = id; });
-    }).catch(() => {
-      // fall back to browser geolocation on web
-      if (!navigator.geolocation) return;
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        ({ coords: { latitude: lat, longitude: lng } }) => handlePosition(lat, lng),
-        null,
-        { enableHighAccuracy: true, maximumAge: 10000 },
-      );
-    });
+    const stopWatching = watchPosition(
+      { enableHighAccuracy: true, maximumAge: 10000 },
+      handlePosition,
+    );
 
     return () => {
       cancelled = true;
-      if (watchIdRef.current !== null) {
-        Geolocation.clearWatch({ id: watchIdRef.current }).catch(() => {
-          navigator.geolocation?.clearWatch(watchIdRef.current);
-        });
-      }
+      stopWatching();
       if (currentLocationMarkerRef.current) {
         currentLocationMarkerRef.current.setMap(null);
         currentLocationMarkerRef.current = null;
@@ -2921,13 +2903,14 @@ export default function RouteMap({ regions }) {
                 setVoiceEnabled((prev) => {
                   const next = !prev;
                   try {
-                    localStorage.setItem("goModeVoiceEnabled", String(next));
+                    localStorage.setItem("goModeVoiceOn", String(next));
                   } catch (_) { /* ignore */ }
                   if (!next) TextToSpeech.stop().catch(() => {});
                   return next;
                 });
               }}
               title={voiceEnabled ? "Mute voice directions" : "Unmute voice directions"}
+              className={voiceEnabled ? undefined : "voice-toggle-hint"}
               style={{
                 position: "absolute", top: "122px", right: "10px", zIndex: 10,
                 width: "40px", height: "40px", borderRadius: "50%",
