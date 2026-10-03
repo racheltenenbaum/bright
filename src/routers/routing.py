@@ -15,7 +15,8 @@ from src.routing import (
     SHADE_DETOUR_MULTIPLIER,
     _haversine_m,
     _path_length_m,
-    compute_edge_weights,
+    WALKING_SPEED_MPS,
+    compute_edge_weights_timed,
     connected_components_by_size,
     describe_no_path_found,
     fetch_road_graph,
@@ -29,11 +30,15 @@ from src.routing import (
     route_bbox_padding_m,
     path_edge_kinds,
     simplify_path_with_kinds,
+    sun_slice_count,
+    sun_slice_offset,
 )
 from src.routers.shadow_analyze import _fetch_buildings_for_bbox, _route_bbox
-from src.utils.astronomy import get_sun_position
+from src.utils.astronomy import get_sun_position, resolve_departure
 
 logger = logging.getLogger(__name__)
+
+ROUTE_CIRCUITY = 1.4
 
 router = APIRouter(prefix="/sun", tags=["sun"])
 
@@ -62,6 +67,16 @@ class OptimizedRouteRequest(BaseModel):
     # account or saving to one. Falls back to the account's stored
     # pref_max_detour (or DEFAULT_MAX_DETOUR if anonymous) when omitted.
     max_detour: int | None = None
+    # Measured pace (e.g. from Go mode's GPS), for estimating when each part
+    # of the route is reached; WALKING_SPEED_MPS when omitted.
+    walking_speed_mps: float | None = None
+
+    @field_validator("walking_speed_mps")
+    @classmethod
+    def valid_walking_speed(cls, v):
+        if v is not None and not (0.5 <= v <= 3.0):
+            raise ValueError("walking_speed_mps must be between 0.5 and 3.0")
+        return v
 
     @field_validator("max_detour")
     @classmethod
@@ -97,7 +112,7 @@ class OptimizedRouteResponse(BaseModel):
     date: str
 
 
-def _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth):
+def _attempt_route(s, w, n, e, body, suns, speed_mps):
     """One fetch-graph-and-pathfind attempt for a given bbox. Split out from
     optimized_route so it can be retried with a wider bbox when start/end
     land in disconnected chunks of the first, narrower fetch (see the
@@ -114,7 +129,7 @@ def _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth):
         road_future = pool.submit(_timed, fetch_road_graph, s, w, n, e)
         bldg_future = pool.submit(_timed, _fetch_buildings_for_bbox, s, w, n, e)
         graph, timings["road_graph_s"] = road_future.result()
-        if sun_altitude > 0:
+        if any(alt > 0 for alt, _ in suns):
             bldg_result, timings["buildings_s"] = bldg_future.result()
         else:
             bldg_result, timings["buildings_s"] = [], None
@@ -124,15 +139,15 @@ def _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth):
         return {"graph": graph, "buildings": buildings, "path_nodes": None,
                 "start_node": None, "end_node": None, "timings": timings, "empty_graph": True}
 
-    edge_weights_start = time.perf_counter()
-    compute_edge_weights(graph, buildings, sun_altitude, sun_azimuth, body.preference)
-    timings["edge_weights_s"] = time.perf_counter() - edge_weights_start
-
     nearest_node_start = time.perf_counter()
     candidates = nearest_node_candidates(graph)
     start_node = nearest_node(graph, body.start[0], body.start[1], candidates=candidates)
     end_node = nearest_node(graph, body.end[0], body.end[1], candidates=candidates)
     timings["nearest_node_s"] = time.perf_counter() - nearest_node_start
+
+    edge_weights_start = time.perf_counter()
+    compute_edge_weights_timed(graph, buildings, suns, body.preference, start_node, speed_mps)
+    timings["edge_weights_s"] = time.perf_counter() - edge_weights_start
 
     optimized_path_start = time.perf_counter()
     path_nodes = find_optimized_path(graph, start_node, end_node)
@@ -153,10 +168,12 @@ def optimized_route(
 
     dt = datetime.fromisoformat(body.datetime)  # already validated by Pydantic
     date_str = dt.strftime("%Y-%m-%d")
+    departure = resolve_departure(body.datetime)
+    speed_mps = body.walking_speed_mps or WALKING_SPEED_MPS
 
     mid_lat = (body.start[0] + body.end[0]) / 2
     mid_lng = (body.start[1] + body.end[1]) / 2
-    sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng)
+    sun_altitude, sun_azimuth = get_sun_position(mid_lat, mid_lng, departure)
 
     # Routing works without an account — a logged-out user just gets the
     # same default detour tolerance a new account would start with
@@ -177,11 +194,20 @@ def optimized_route(
     bbox_start = time.perf_counter()
     all_coords = [body.start, body.end]
     straight_line_m = _haversine_m(body.start[0], body.start[1], body.end[0], body.end[1])
+
+    # Sun per time slice of the walk (see SUN_TIME_SLICE_MIN): long enough to
+    # cover the longest route the detour cap allows, with real streets being
+    # ~1.4x the straight line.
+    max_walk_m = straight_line_m * ROUTE_CIRCUITY * (1 + max_detour)
+    suns = [
+        get_sun_position(mid_lat, mid_lng, departure + sun_slice_offset(k))
+        for k in range(sun_slice_count(max_walk_m, speed_mps))
+    ]
     padding_m = route_bbox_padding_m(straight_line_m, max_detour)
     s, w, n, e = _route_bbox(all_coords, padding_m=padding_m)
     bbox_s = time.perf_counter() - bbox_start
 
-    attempt = _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth)
+    attempt = _attempt_route(s, w, n, e, body, suns, speed_mps)
     retried = False
 
     if attempt["empty_graph"]:
@@ -199,7 +225,7 @@ def optimized_route(
             body.preference, body.start, body.end, padding_m,
         )
         s, w, n, e = _route_bbox(all_coords, padding_m=ROUTE_BBOX_MAX_PADDING_M)
-        attempt = _attempt_route(s, w, n, e, body, sun_altitude, sun_azimuth)
+        attempt = _attempt_route(s, w, n, e, body, suns, speed_mps)
         retried = True
 
         if attempt["empty_graph"]:

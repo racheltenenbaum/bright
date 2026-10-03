@@ -40,3 +40,14 @@ def get_sun_position(lat: float, lng: float, dt: datetime | None = None) -> tupl
     ) % 360
 
     return altitude, azimuth
+
+
+def resolve_departure(iso: str) -> datetime:
+    """The moment a route request means. Only trusted when it carries a UTC
+    offset: older app builds send the route location's local wall-clock time
+    with no offset, and reading that as UTC would put the sun hours off — so
+    a naive time means "now", which is what those builds always meant."""
+    dt = datetime.fromisoformat(iso)
+    if dt.tzinfo is None:
+        return datetime.now(timezone.utc)
+    return dt.astimezone(timezone.utc)

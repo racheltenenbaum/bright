@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
 
 import networkx as nx
 import requests
@@ -575,6 +576,83 @@ def compute_edge_weights(
             data["weight"] = data["distance_m"]
         return
     compute_edge_shading(graph, buildings, sun_altitude, sun_azimuth)
+    apply_preference_weights(graph, preference, SUN_PENALTY)
+
+
+# The sun keeps moving during a walk (~15°/hour of azimuth on average, faster
+# around midday), so each edge is shaded by the sun at the time the walker
+# reaches it, not at departure. Walk time is split into slices, each shaded
+# with the sun at that slice's midpoint. 15 minutes (~4° of sun movement)
+# because every distinct slice costs a full shadow-polygon precompute —
+# ~0.4s for a central Vienna bbox (14.5k buildings) on a cache miss — so a
+# typical 1-2km route needs only one or two.
+SUN_TIME_SLICE_MIN = 15
+# ~4.7 km/h, a typical city walking pace. Go mode can send a measured pace.
+WALKING_SPEED_MPS = 1.3
+# Caps precompute cost on long walks; anything past the last slice uses it.
+MAX_SUN_SLICES = 6
+
+
+def _slice_m(speed_mps: float) -> float:
+    return SUN_TIME_SLICE_MIN * 60 * speed_mps
+
+
+def sun_slice_count(max_walk_m: float, speed_mps: float = WALKING_SPEED_MPS) -> int:
+    """How many time slices a walk of up to max_walk_m spans."""
+    return min(MAX_SUN_SLICES, int(max_walk_m // _slice_m(speed_mps)) + 1)
+
+
+def sun_slice_index(walked_m: float, n_slices: int, speed_mps: float = WALKING_SPEED_MPS) -> int:
+    """Which slice the walker is in after walking walked_m."""
+    return min(n_slices - 1, int(walked_m // _slice_m(speed_mps)))
+
+
+def sun_slice_offset(k: int) -> timedelta:
+    """Time after departure whose sun position stands in for slice k."""
+    return timedelta(minutes=SUN_TIME_SLICE_MIN * (k + 0.5))
+
+
+def compute_edge_weights_timed(
+    graph: nx.DiGraph,
+    buildings: list,
+    suns: list[tuple[float, float]],
+    preference: str,
+    start_node,
+    speed_mps: float = WALKING_SPEED_MPS,
+) -> None:
+    """compute_edge_weights, but with suns[k] = (altitude, azimuth) for time
+    slice k: each edge is shaded by the sun of the slice the walker reaches
+    it in, estimated from its start node's shortest walking distance from
+    start_node (the real route can only be as long or longer, so this errs
+    slightly early, never late). Slices after sunset count as shaded."""
+    if len(suns) == 1:
+        compute_edge_weights(graph, buildings, suns[0][0], suns[0][1], preference)
+        return
+    if all(alt <= 0 for alt, _ in suns):
+        for _, _, data in graph.edges(data=True):
+            data["weight"] = data["distance_m"]
+        return
+
+    walked = nx.single_source_dijkstra_path_length(graph, start_node, weight="distance_m")
+    by_slice: dict[int, list[dict]] = {}
+    for u, _, data in graph.edges(data=True):
+        # Edges unreachable from the start are never on the route; any slice works.
+        k = sun_slice_index(walked.get(u, 0.0), len(suns), speed_mps)
+        by_slice.setdefault(k, []).append(data)
+
+    for k, edges in by_slice.items():
+        alt, az = suns[k]
+        if alt <= 0:
+            for data in edges:
+                data["shaded"] = True
+            continue
+        polygons, index = _shadow_polygons_and_index(buildings, alt, az)
+        shaded_cache: dict[tuple[float, float], bool] = {}
+        for data in edges:
+            key = (data["mid_lat"], data["mid_lng"])
+            if key not in shaded_cache:
+                shaded_cache[key] = is_point_shaded_by_index(key[0], key[1], polygons, index, alt)
+            data["shaded"] = shaded_cache[key]
     apply_preference_weights(graph, preference, SUN_PENALTY)
 
 

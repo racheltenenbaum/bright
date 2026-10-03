@@ -10,14 +10,14 @@ from datetime import datetime
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.auth import get_current_user_optional
 from src.database import SessionLocal
 from src.limiter import limiter, RATE_LIMIT_SHADOW
 from src.models import OsmBuilding, User
 from src.regions import REGION_BOUNDS, region_for_bbox as _region_for_bbox
-from src.routing import _haversine_m
+from src.routing import WALKING_SPEED_MPS, _haversine_m, sun_slice_count, sun_slice_index, sun_slice_offset
 from src.shadow import (
     build_shadow_polygon_index,
     extract_buildings_from_overpass,
@@ -26,7 +26,7 @@ from src.shadow import (
     which_side_sunny,
     _offset_point,
 )
-from src.utils.astronomy import get_sun_position
+from src.utils.astronomy import get_sun_position, resolve_departure
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,10 @@ class SegmentResult(BaseModel):
 
 class ShadowAnalyzeRequest(BaseModel):
     coordinates: list[list[float]]  # [[lat, lng], ...]
-    datetime: str                   # ISO string e.g. "2026-05-14T15:30:00"
+    datetime: str                   # ISO string e.g. "2026-05-14T15:30:00+02:00"
+    # Measured pace for estimating when each point is reached; see
+    # OptimizedRouteRequest.walking_speed_mps.
+    walking_speed_mps: float | None = Field(default=None, ge=0.5, le=3.0)
 
 
 class ShadowAnalyzeResponse(BaseModel):
@@ -354,13 +357,24 @@ def shadow_analyze(
     mid = body.coordinates[len(body.coordinates) // 2]
     dt = datetime.fromisoformat(body.datetime)
     date_str = dt.strftime("%Y-%m-%d")
-    time_str = dt.strftime("%H:%M:%S")
+    departure = resolve_departure(body.datetime)
+    speed_mps = body.walking_speed_mps or WALKING_SPEED_MPS
 
-    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1])
+    sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1], departure)
 
     n = len(body.coordinates)
 
-    if sun_altitude <= 0:
+    # Each point is shaded by the sun when the walker reaches it (matching
+    # how /sun/optimized-route chose the path — see SUN_TIME_SLICE_MIN).
+    walked = [0.0]
+    for (lat1, lng1), (lat2, lng2) in zip(body.coordinates, body.coordinates[1:]):
+        walked.append(walked[-1] + _haversine_m(lat1, lng1, lat2, lng2))
+    suns = [
+        get_sun_position(mid[0], mid[1], departure + sun_slice_offset(k))
+        for k in range(sun_slice_count(walked[-1], speed_mps))
+    ]
+
+    if all(alt <= 0 for alt, _ in suns):
         return ShadowAnalyzeResponse(
             sun_altitude=sun_altitude,
             sun_azimuth=sun_azimuth,
@@ -375,22 +389,31 @@ def shadow_analyze(
 
     samples = _sample_coords(body.coordinates, target=25)
 
-    # Precomputed once for all 25 samples rather than rescanning every
-    # building per point (is_point_shaded) — that linear scan against a
-    # few thousand buildings was the dominant cost of this endpoint,
-    # sometimes 5s+ on its own. Matches the indexed approach routing's
-    # compute_edge_shading already uses, including ignoring per-point
-    # elevation (point_elevation=0.0) for the same reason.
-    shadow_polygons = precompute_shadow_polygons(buildings, sun_altitude, sun_azimuth)
-    shadow_index = build_shadow_polygon_index(shadow_polygons)
+    # Precomputed once per time slice for all 25 samples rather than
+    # rescanning every building per point (is_point_shaded) — that linear
+    # scan against a few thousand buildings was the dominant cost of this
+    # endpoint, sometimes 5s+ on its own. Matches the indexed approach
+    # routing's compute_edge_shading already uses, including ignoring
+    # per-point elevation (point_elevation=0.0) for the same reason.
+    shadows_by_slice: dict[int, tuple] = {}
 
     shaded_map: dict[int, bool] = {}
-    side_map: dict[int, str] = {}
+    side_map: dict[int, str | None] = {}
     for idx, lat, lng in samples:
-        shaded_map[idx] = is_point_shaded_by_index(lat, lng, shadow_polygons, shadow_index, sun_altitude)
+        k = sun_slice_index(walked[idx], len(suns), speed_mps)
+        alt, az = suns[k]
+        if alt <= 0:
+            shaded_map[idx] = True
+            side_map[idx] = None
+            continue
+        if k not in shadows_by_slice:
+            polygons = precompute_shadow_polygons(buildings, alt, az)
+            shadows_by_slice[k] = (polygons, build_shadow_polygon_index(polygons))
+        shadow_polygons, shadow_index = shadows_by_slice[k]
+        shaded_map[idx] = is_point_shaded_by_index(lat, lng, shadow_polygons, shadow_index, alt)
         next_idx = min(idx + 1, n - 1)
         lat2, lng2 = body.coordinates[next_idx][0], body.coordinates[next_idx][1]
-        side_map[idx] = which_side_sunny(lat, lng, lat2, lng2, shadow_polygons, shadow_index, sun_altitude)
+        side_map[idx] = which_side_sunny(lat, lng, lat2, lng2, shadow_polygons, shadow_index, alt)
 
     segments = [
         SegmentResult(

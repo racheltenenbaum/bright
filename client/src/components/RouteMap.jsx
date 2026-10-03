@@ -1574,10 +1574,15 @@ export default function RouteMap({ regions }) {
         },
       );
       const timeZoneId = tzRes.data.timeZoneId || "UTC";
-      // sv-SE gives "YYYY-MM-DD HH:MM:SS" — replace space with T for ISO format
+      // sv-SE gives "YYYY-MM-DD HH:MM:SS" — replace space with T for ISO
+      // format, plus the location's UTC offset so the backend can place the
+      // sun at the actual moment (it treats an offset-less time as "now").
+      const offsetMin = Math.round(((tzRes.data.rawOffset ?? 0) + (tzRes.data.dstOffset ?? 0)) / 60);
+      const pad = (n) => String(n).padStart(2, "0");
       const datetime = new Date()
         .toLocaleString("sv-SE", { timeZone: timeZoneId })
-        .replace(" ", "T");
+        .replace(" ", "T")
+        + `${offsetMin < 0 ? "-" : "+"}${pad(Math.floor(Math.abs(offsetMin) / 60))}:${pad(Math.abs(offsetMin) % 60)}`;
 
       // Try OSM-optimized routing; fall back to Google Directions if unavailable
       const requestOptimizedRoute = () => api.post(
