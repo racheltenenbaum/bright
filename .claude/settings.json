@@ -36,5 +36,19 @@
     "additionalDirectories": [
       "/Users/racheltenenbaum/Desktop"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ci-status.sh 2>/dev/null || true",
+            "timeout": 15,
+            "statusMessage": "Checking CI status…"
+          }
+        ]
+      }
+    ]
   }
 }
