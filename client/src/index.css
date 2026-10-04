@@ -1088,6 +1088,23 @@ body.night-mode .address-input--mine { color: #6ab4dc !important; }
   font-size: 15px;
   padding: 2px 4px !important;
   line-height: 1;
+  touch-action: manipulation;
+}
+/* The glyph is tiny; give it a finger-sized invisible hit area that fills
+   the field's full height and runs to its right edge. */
+.location-field-clear::after {
+  content: "";
+  position: absolute;
+  top: -14px;
+  bottom: -14px;
+  left: -12px;
+  right: -6px;
+}
+/* The global button hover/press nudge would drop translateY(-50%) and make
+   the X jump out from under the finger mid-tap. */
+.location-field-clear:hover,
+.location-field-clear:active {
+  transform: translateY(-50%);
 }
 
 /* Mirrors .pac-container so our quick picks and Google's suggestions read
