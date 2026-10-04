@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from datetime import datetime
 
 
@@ -41,8 +41,23 @@ class UserResponse(BaseModel):
     pref_mode: str = "sun"
     pref_map_controls: bool = False
     pref_map_type: str = "roadmap"
+    usual_walking_speed_mps: float | None = None
 
     model_config = {"from_attributes": True}
+
+
+class WalkPaceRequest(BaseModel):
+    """One finished Go-mode walk: distance progressed along the route and
+    the time spent actually moving (stops excluded). Only walks long enough
+    to be representative, at a plausible walking pace, are accepted."""
+    distance_m: float = Field(ge=300)
+    moving_s: float = Field(ge=300)
+
+    @model_validator(mode="after")
+    def plausible_pace(self):
+        if not (0.3 <= self.distance_m / self.moving_s <= 3.0):
+            raise ValueError("pace must be between 0.3 and 3.0 m/s")
+        return self
 
 
 class LoginRequest(BaseModel):

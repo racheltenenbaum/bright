@@ -466,3 +466,47 @@ def test_very_long_walk_gets_four_slices():
     assert plan_sun_slices(3000 * ROUTE_LENGTH_SLACK, speed_mps=0.5).count == 4
     # A normal-pace 3km walk is unaffected.
     assert plan_sun_slices(3000 * ROUTE_LENGTH_SLACK).count == 3
+
+
+# --- the account's usual pace ----------------------------------------------
+
+def _route_with_usual_pace(client, auth_headers, db, test_user, usual, sent=None):
+    test_user.usual_walking_speed_mps = usual
+    db.commit()
+    body = {"start": list(_m(0, 0)), "end": list(_m(0, 2000)),
+            "datetime": "2026-05-24T14:00:00+02:00", "preference": "shade"}
+    if sent is not None:
+        body["walking_speed_mps"] = sent
+    with (
+        patch("src.routers.routing.get_sun_position", side_effect=_sun_by_time),
+        patch("src.routing.fetch_osm_road_network", return_value=_branch_osm()),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+        patch("src.routing._shadow_polygons_and_index", side_effect=_fake_polygons),
+        patch("src.routing.is_point_shaded_by_index", side_effect=_shaded_by_sun_side),
+    ):
+        resp = client.post("/sun/optimized-route", json=body, headers=auth_headers)
+    assert resp.status_code == 200
+    return min(p[1] for p in resp.json()["waypoints"]) < -74.0005  # went west
+
+
+def test_optimized_route_uses_accounts_usual_pace(client, auth_headers, db, test_user):
+    """A fast usual walker reaches the branches inside the first slice, so
+    the departure sun applies and shade goes west — without the app sending
+    a pace at all."""
+    assert _route_with_usual_pace(client, auth_headers, db, test_user, WALKING_SPEED_MPS * 2) is True
+
+
+def test_optimized_route_sent_pace_overrides_usual_pace(client, auth_headers, db, test_user):
+    assert _route_with_usual_pace(client, auth_headers, db, test_user, WALKING_SPEED_MPS * 2,
+                                  sent=WALKING_SPEED_MPS) is False
+
+
+def test_optimized_route_without_usual_pace_uses_default(client, auth_headers, db, test_user):
+    assert _route_with_usual_pace(client, auth_headers, db, test_user, None) is False
+
+
+def test_shadow_analyze_uses_accounts_usual_pace(client, auth_headers, db, test_user):
+    test_user.usual_walking_speed_mps = WALKING_SPEED_MPS * 2
+    db.commit()
+    segs = _analyze(client, auth_headers, _line_coords(TARGET_M * 1.5), _sun_by_time).json()["segments"]
+    assert not any(s["shaded"] for s in segs)

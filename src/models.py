@@ -18,6 +18,9 @@ class User(Base):
     pref_mode = Column(String(10), nullable=False, default="sun", server_default="sun")
     pref_map_controls = Column(Boolean, nullable=False, default=False, server_default="0")
     pref_map_type = Column(String(20), nullable=False, default="roadmap", server_default="roadmap")
+    # Learned from Go-mode walks (POST /users/me/walk-pace); used to time the
+    # sun along a route when the app doesn't send a measured pace.
+    usual_walking_speed_mps = Column(Float, nullable=True)
 
     routes = relationship("Route", back_populates="user")
     spots = relationship("Spot", back_populates="user")

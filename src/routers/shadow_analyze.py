@@ -358,7 +358,11 @@ def shadow_analyze(
     dt = datetime.fromisoformat(body.datetime)
     date_str = dt.strftime("%Y-%m-%d")
     departure = resolve_departure(body.datetime)
-    speed_mps = body.walking_speed_mps or WALKING_SPEED_MPS
+    speed_mps = (
+        body.walking_speed_mps
+        or (current_user.usual_walking_speed_mps if current_user else None)
+        or WALKING_SPEED_MPS
+    )
 
     sun_altitude, sun_azimuth = get_sun_position(mid[0], mid[1], departure)
 

@@ -12,6 +12,7 @@ from src.models import User, Route, Spot
 from src.schemas import (
     UserCreate, UserResponse, LoginRequest, TokenResponse, UpdateUserRequest,
     GoogleAuthRequest, AppleAuthRequest, ForgotPasswordRequest, ResetPasswordRequest,
+    WalkPaceRequest,
 )
 from src.auth import create_access_token, get_current_user, create_password_reset_token, verify_password_reset_token
 from src.oauth import verify_google_token, verify_apple_token
@@ -181,6 +182,28 @@ def update_me(
         current_user.pref_map_controls = body.pref_map_controls
     if body.pref_map_type is not None:
         current_user.pref_map_type = body.pref_map_type
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+# How much one walk moves the learned pace: enough to adapt within a few
+# walks, without one unusual walk (a stroll with a toddler, a dash for a
+# train) replacing it.
+WALK_PACE_WEIGHT = 0.3
+
+
+@router.post("/me/walk-pace", response_model=UserResponse)
+def record_walk_pace(
+    body: WalkPaceRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    pace = body.distance_m / body.moving_s
+    usual = current_user.usual_walking_speed_mps
+    current_user.usual_walking_speed_mps = (
+        pace if usual is None else usual * (1 - WALK_PACE_WEIGHT) + pace * WALK_PACE_WEIGHT
+    )
     db.commit()
     db.refresh(current_user)
     return current_user

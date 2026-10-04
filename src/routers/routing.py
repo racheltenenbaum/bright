@@ -167,7 +167,11 @@ def optimized_route(
     dt = datetime.fromisoformat(body.datetime)  # already validated by Pydantic
     date_str = dt.strftime("%Y-%m-%d")
     departure = resolve_departure(body.datetime)
-    speed_mps = body.walking_speed_mps or WALKING_SPEED_MPS
+    speed_mps = (
+        body.walking_speed_mps
+        or (current_user.usual_walking_speed_mps if current_user else None)
+        or WALKING_SPEED_MPS
+    )
 
     mid_lat = (body.start[0] + body.end[0]) / 2
     mid_lng = (body.start[1] + body.end[1]) / 2

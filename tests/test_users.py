@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import patch, MagicMock
 
 import src.email_client as email_client_module
@@ -479,3 +480,42 @@ def test_access_token_cannot_be_used_as_reset_token(client, auth_headers):
     access_token = auth_headers["Authorization"].split(" ")[1]
     response = client.post("/users/reset-password", json={"token": access_token, "new_password": "newpass123"})
     assert response.status_code == 400
+
+
+# --- usual walking pace ----------------------------------------------------
+
+def test_new_user_has_no_usual_walking_pace(client):
+    response = client.post("/users/register", json={
+        "first_name": "Alice", "email": "alice@example.com", "password": "secret123"
+    })
+    assert response.json()["user"]["usual_walking_speed_mps"] is None
+
+
+def test_first_walk_sets_usual_pace(client, auth_headers):
+    response = client.post("/users/me/walk-pace", json={"distance_m": 900, "moving_s": 900}, headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["usual_walking_speed_mps"] == pytest.approx(1.0)
+
+
+def test_later_walks_blend_into_usual_pace(client, auth_headers):
+    client.post("/users/me/walk-pace", json={"distance_m": 900, "moving_s": 900}, headers=auth_headers)
+    response = client.post("/users/me/walk-pace", json={"distance_m": 1200, "moving_s": 600}, headers=auth_headers)
+    # 70% of the old 1.0 m/s + 30% of this walk's 2.0 m/s: one unusual walk
+    # nudges the estimate rather than replacing it.
+    assert response.json()["usual_walking_speed_mps"] == pytest.approx(1.3)
+
+
+@pytest.mark.parametrize("body", [
+    {"distance_m": 250, "moving_s": 600},    # too short to say much
+    {"distance_m": 900, "moving_s": 240},    # too brief
+    {"distance_m": 300, "moving_s": 1200},   # 0.25 m/s: not really walking
+    {"distance_m": 3000, "moving_s": 600},   # 5 m/s: not walking either
+])
+def test_walk_pace_rejects_unrepresentative_walks(client, auth_headers, body):
+    response = client.post("/users/me/walk-pace", json=body, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_walk_pace_requires_login(client):
+    response = client.post("/users/me/walk-pace", json={"distance_m": 900, "moving_s": 900})
+    assert response.status_code == 401
