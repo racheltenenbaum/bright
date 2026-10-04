@@ -1551,7 +1551,28 @@ export default function RouteMap({ regions }) {
     }
   }, [end, isLoaded, preference, isNighttime]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Teach the account its usual pace from this walk (see
+  // POST /users/me/walk-pace), so its next plan is timed for it. Only for
+  // walks long enough to be representative, at a plausible walking pace.
+  function reportWalkPace() {
+    const token = localStorage.getItem("token");
+    const distanceM = progressOffsetRef.current + lastAlongRef.current;
+    const movingS = paceTrackerRef.current.movingMs() / 1000;
+    if (!user || !token || distanceM < 300 || movingS < 300) return;
+    const pace = distanceM / movingS;
+    if (pace < RECHECK.minSpeedMps || pace > RECHECK.maxSpeedMps) return;
+    api.post(
+      "/users/me/walk-pace",
+      { distance_m: distanceM, moving_s: movingS },
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+      .then((res) => updateUser({ usual_walking_speed_mps: res.data.usual_walking_speed_mps }))
+      .catch(() => {});
+    track("Recorded Walk Pace", { pace_mps: Math.round(pace * 100) / 100, distance_m: Math.round(distanceM) });
+  }
+
   function exitGoMode() {
+    reportWalkPace();
     setGoMode(false);
     const map = mapRef.current;
     if (map) {
@@ -2016,7 +2037,7 @@ export default function RouteMap({ regions }) {
         return "declined";
       }
       routePlannedAtRef.current = Date.now();
-      routePlannedSpeedRef.current = walkingSpeed ?? RECHECK.defaultSpeedMps;
+      routePlannedSpeedRef.current = walkingSpeed ?? user?.usual_walking_speed_mps ?? RECHECK.defaultSpeedMps;
       lastAppliedRouteRef.current = waypoints;
 
       applyRouteResult(

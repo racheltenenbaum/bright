@@ -201,3 +201,31 @@ test("switch only when clearly better", () => {
   assert.equal(isClearlyBetter(0.66, 0.5), true);
   assert.equal(isClearlyBetter(0.4, 0.5), false);
 });
+
+// --- moving time (for learning the account's usual pace) -------------------
+
+test("moving time counts walking but not standing still", () => {
+  const t = createPaceTracker();
+  walk(t, 1.3, 0, 300);                                 // 5 min walking
+  const stopAt = 300 * 1.3;
+  for (let s = 310; s <= 900; s += 10) t.add(s * 1000, stopAt, ...at(0, stopAt)); // 10 min stopped
+  walk(t, 1.3, 910, 1210, stopAt);                      // 5 more min walking
+  const minutes = t.movingMs() / 60_000;
+  // ~10 minutes of walking; the 2-minute window before a stop is recognised
+  // still counts as moving, so allow that much slack.
+  assert.ok(minutes >= 10 && minutes <= 12.5, `got ${minutes}`);
+});
+
+test("moving time ignores long gaps between fixes", () => {
+  const t = createPaceTracker();
+  t.add(0, 0, ...at(0, 0));
+  t.add(10 * 60_000, 600, ...at(0, 600)); // GPS silent for 10 minutes
+  assert.ok(t.movingMs() <= RECHECK.maxFixGapMs);
+});
+
+test("reset clears moving time", () => {
+  const t = createPaceTracker();
+  walk(t, 1.3, 0, 300);
+  t.reset();
+  assert.equal(t.movingMs(), 0);
+});

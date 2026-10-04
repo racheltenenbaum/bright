@@ -21,6 +21,7 @@ export const RECHECK = {
   defaultSpeedMps: 1.3,
   minSpeedMps: 0.3,             // the backend's accepted range
   maxSpeedMps: 3.0,
+  maxFixGapMs: 30_000,          // longer GPS silences don't count as moving time
 };
 
 const M_PER_DEG = 111_320;
@@ -78,9 +79,13 @@ export function remainingCoords(lat, lng, coords) {
 
 export function createPaceTracker(cfg = RECHECK) {
   let samples = [];
-  return {
+  let movingMs = 0;
+  let lastTime = null;
+  const tracker = {
     add(time, alongM, lat, lng) {
       samples.push({ time, alongM, pos: [lat, lng] });
+      if (lastTime != null && !tracker.paused(time)) movingMs += Math.min(time - lastTime, cfg.maxFixGapMs);
+      lastTime = time;
       const keep = Math.max(cfg.paceWindowMs, cfg.pausedWindowMs) * 2;
       samples = samples.filter((s) => s.time >= time - keep);
     },
@@ -103,10 +108,18 @@ export function createPaceTracker(cfg = RECHECK) {
       const last = recent[recent.length - 1].pos;
       return recent.every((s) => metersBetween(s.pos, last) <= cfg.pausedRadiusM);
     },
+    // Time spent walking (stops excluded), for learning the account's
+    // usual pace from a finished walk.
+    movingMs() {
+      return movingMs;
+    },
     reset() {
       samples = [];
+      movingMs = 0;
+      lastTime = null;
     },
   };
+  return tracker;
 }
 
 // Why to recheck now ("stale" | "drift" | "interval"), or null not to.
