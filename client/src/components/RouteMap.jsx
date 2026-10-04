@@ -1609,6 +1609,15 @@ export default function RouteMap({ regions }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [detourPopoverOpen]);
 
+  // The detour control hides after sunset, so don't leave its popover open
+  // underneath to pop back up when the route moves somewhere in daylight.
+  useEffect(() => {
+    if (isNighttime) {
+      setDetourPopoverOpen(false);
+      setDetourInfoOpen(false);
+    }
+  }, [isNighttime]);
+
   async function selectDetourPreset(value) {
     setDetourPopoverOpen(false);
     setDetourInfoOpen(false);
@@ -2509,7 +2518,10 @@ export default function RouteMap({ regions }) {
         {isNighttime && (
           <span style={{ fontSize: "0.85em", fontWeight: 700, color: colors.text, marginLeft: "2px", whiteSpace: "nowrap", flexShrink: 0 }}>🌙 After sunset</span>
         )}
-        {mode === "route" && (
+        {/* After sunset routing is just the shortest path — there's no sun or
+            shade to detour for, so the priority control is hidden until the
+            route's location is in daylight again. */}
+        {mode === "route" && !isNighttime && (
           <div
             ref={detourPopoverRef}
             style={{ position: "relative", marginLeft: planRequested && !planning ? 0 : "auto" }}
@@ -2611,7 +2623,7 @@ export default function RouteMap({ regions }) {
       {/* Detour setting changed while a route is already on screen — the
           displayed route was calculated under the old setting, so surface
           an explicit re-plan action rather than silently leaving it stale. */}
-      {showReplanBanner && start && end && !planning && (
+      {showReplanBanner && start && end && !planning && !isNighttime && (
         <div style={{
           marginBottom: "6px", display: "flex", alignItems: "center", gap: "8px",
           padding: "8px 10px", borderRadius: "10px",
