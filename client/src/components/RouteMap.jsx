@@ -30,7 +30,10 @@ import { addressFromGeocodeResult } from "../utils/address";
 import { isCovered } from "../utils/coverage";
 import { track } from "../analytics";
 import { watchPosition } from "../utils/geolocation";
-import { createOffRouteDetector } from "../utils/offRoute";
+import { OFF_ROUTE, createOffRouteDetector, distanceToRouteM } from "../utils/offRoute";
+import {
+  RECHECK, createPaceTracker, decideRecheck, isClearlyBetter, preferredFraction, remainingCoords, routeProgress,
+} from "../utils/recheck";
 import { useAuthModal } from "../context/AuthModalContext";
 import LocationField from "./LocationField";
 import {
@@ -604,6 +607,19 @@ export default function RouteMap({ regions }) {
   const offRouteHoldUntilRef = useRef(0);
   const reroutingRef = useRef(false);
   const [rerouteNotice, setRerouteNotice] = useState(null);
+  // Go mode's background recheck (see utils/recheck.js). Pace is progress
+  // along the route over time, carried across route switches via
+  // progressOffsetRef so a switch doesn't throw away the measured pace.
+  // scheduleRef holds the arrival the current plan implies and when the
+  // route was last rechecked; routePlanned*Refs describe the shown route.
+  const paceTrackerRef = useRef(createPaceTracker());
+  const progressOffsetRef = useRef(0);
+  const lastAlongRef = useRef(0);
+  const lastSwitchAtRef = useRef(0);
+  const scheduleRef = useRef({ expectedArrivalAt: 0, lastCheckAt: 0, alongAtCheck: 0, stalePlan: false });
+  const routePlannedAtRef = useRef(0);
+  const routePlannedSpeedRef = useRef(RECHECK.defaultSpeedMps);
+  const lastAppliedRouteRef = useRef(null);
   // Which waypoint index the currently-shown turn hint targets, if any —
   // see getUpcomingTurn's hysteresis for why this needs to persist across
   // calls rather than being recomputed fresh each time.
@@ -1170,20 +1186,79 @@ export default function RouteMap({ regions }) {
     }
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-plan from where the walker actually is once they've clearly left the
-  // route. Both location watchers run in Go mode, so near-simultaneous
-  // duplicate fixes are skipped rather than counted twice as evidence.
+  // Every Go-mode GPS fix: update the walker's pace, re-plan from where they
+  // are if they've clearly left the route, and otherwise recheck the rest of
+  // the route when it's due (pace drifting from plan, or periodically). Both
+  // location watchers run in Go mode, so near-simultaneous duplicate fixes
+  // are skipped rather than counted twice.
   useEffect(() => {
     if (!goMode || !routeCoords || !end || reroutingRef.current) return;
     const fix = lastFixRef.current;
     if (!fix || fix.time - lastFedFixTimeRef.current < 2000) return;
     lastFedFixTimeRef.current = fix.time;
+
+    const trusted = fix.accuracy > 0 && fix.accuracy <= OFF_ROUTE.maxAccuracyM;
+    const onRoute = trusted && distanceToRouteM(fix.lat, fix.lng, routeCoords) <= OFF_ROUTE.thresholdM;
+    const progress = onRoute ? routeProgress(fix.lat, fix.lng, routeCoords) : null;
+    if (progress) {
+      lastAlongRef.current = progress.alongM;
+      paceTrackerRef.current.add(fix.time, progressOffsetRef.current + progress.alongM, fix.lat, fix.lng);
+    }
+
     if (fix.time < offRouteHoldUntilRef.current || haversineKm(fix.lat, fix.lng, end.lat, end.lng) < 0.05) {
       offRouteDetectorRef.current.reset();
       return;
     }
-    if (offRouteDetectorRef.current.update(fix, routeCoords)) rerouteFrom(fix);
+    if (offRouteDetectorRef.current.update(fix, routeCoords)) {
+      rerouteFrom(fix);
+      return;
+    }
+
+    if (!progress) return;
+    const schedule = scheduleRef.current;
+    const reason = decideRecheck({
+      now: fix.time,
+      lastCheckAt: schedule.lastCheckAt,
+      walkedSinceCheckM: progress.alongM - schedule.alongAtCheck,
+      remainingM: progress.totalM - progress.alongM,
+      paceMps: paceTrackerRef.current.pace(fix.time),
+      expectedArrivalAt: schedule.expectedArrivalAt,
+      paused: paceTrackerRef.current.paused(fix.time),
+      toNextTurnM: progress.toNextVertexM,
+      sunUp: computeSunAltitude(fix.lat, fix.lng) > 0,
+      busy: reroutingRef.current,
+      stalePlan: schedule.stalePlan,
+    });
+    if (reason) recheckFrom(fix, progress, reason);
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A route length in meters, for schedule estimates.
+  function routeLengthM(coords) {
+    return coords?.length >= 2 ? routeProgress(coords[0][0], coords[0][1], coords).totalM : 0;
+  }
+
+  // Start (or restart, after a route switch) the plan's schedule: when the
+  // walker should arrive at `speed` along `totalM`, starting now.
+  function startSchedule(totalM, speed, { stalePlan = false } = {}) {
+    const now = Date.now();
+    scheduleRef.current = {
+      expectedArrivalAt: now + (totalM / speed) * 1000, lastCheckAt: now, alongAtCheck: 0, stalePlan,
+    };
+  }
+
+  // The new route (re-plan or recheck switch) starts where the walker is.
+  function afterGoRouteSwitch(newCoords, speed) {
+    progressOffsetRef.current += lastAlongRef.current;
+    lastAlongRef.current = 0;
+    lastSwitchAtRef.current = Date.now();
+    maxGoSegmentIdxRef.current = 0;
+    setGoSegmentIdx(0);
+    activeTurnTargetRef.current = null;
+    spokenTurnTargetRef.current = null;
+    offRouteDetectorRef.current.reset();
+    offRouteHoldUntilRef.current = Date.now() + 20_000;
+    startSchedule(routeLengthM(newCoords), speed);
+  }
 
   async function rerouteFrom(fix) {
     reroutingRef.current = true;
@@ -1192,22 +1267,70 @@ export default function RouteMap({ regions }) {
       TextToSpeech.speak({ text: "You've left the route. Finding a new way.", lang: "en-US", category: "playback" })
         .catch(() => {});
     }
-    const ok = await planRoute({ origin: { lat: fix.lat, lng: fix.lng }, rerouting: true });
+    const speed = paceTrackerRef.current.pace(Date.now()) ?? routePlannedSpeedRef.current;
+    const ok = await planRoute({ origin: { lat: fix.lat, lng: fix.lng }, rerouting: true, walkingSpeed: speed });
     reroutingRef.current = false;
     offRouteDetectorRef.current.reset();
     if (ok && goModeRef.current) {
-      maxGoSegmentIdxRef.current = 0;
-      setGoSegmentIdx(0);
-      activeTurnTargetRef.current = null;
-      spokenTurnTargetRef.current = null;
-      offRouteHoldUntilRef.current = Date.now() + 20_000;
+      afterGoRouteSwitch(lastAppliedRouteRef.current, speed);
       setRerouteNotice(null);
     } else {
       offRouteHoldUntilRef.current = Date.now() + 60_000;
       setRerouteNotice("Couldn't find a new route — keep following the original");
       setTimeout(() => setRerouteNotice(null), 6000);
     }
-    track("Go Mode Rerouted", { success: !!ok, preference });
+    track("Go Mode Rerouted", { success: !!ok, preference, pace_mps: speed });
+  }
+
+  // Re-plan the rest of the walk with the walker's real pace in the
+  // background, and switch only if the new route is clearly better for the
+  // rest of the walk than staying on this one (both judged under the same
+  // sun timing). No announcement unless it switches.
+  async function recheckFrom(fix, progress, reason) {
+    reroutingRef.current = true;
+    const now = Date.now();
+    const schedule = scheduleRef.current;
+    schedule.lastCheckAt = now;
+    schedule.alongAtCheck = progress.alongM;
+    schedule.stalePlan = false;
+    const pace = paceTrackerRef.current.pace(now);
+    const speed = pace ?? routePlannedSpeedRef.current;
+    const rest = remainingCoords(fix.lat, fix.lng, routeCoords);
+    let currentFraction = null;
+    let newFraction = null;
+    let newCoords = null;
+    const result = await planRoute({
+      origin: { lat: fix.lat, lng: fix.lng }, rerouting: true, walkingSpeed: speed,
+      accept: async (candidate) => {
+        if (!candidate.shadowAvailable || !goModeRef.current) return false;
+        const restSegments = await candidate.analyzeSegments(rest);
+        currentFraction = preferredFraction(rest, restSegments, preference);
+        newFraction = preferredFraction(candidate.waypoints, candidate.segments, preference);
+        newCoords = candidate.waypoints;
+        return Date.now() - lastSwitchAtRef.current >= RECHECK.intervalMs
+          && isClearlyBetter(newFraction, currentFraction);
+      },
+    }).catch(() => false);
+    reroutingRef.current = false;
+    const switched = result === true && goModeRef.current;
+    if (switched) {
+      afterGoRouteSwitch(newCoords, speed);
+      const message = preference === "shade" ? "Found a shadier way" : "Found a sunnier way";
+      setRerouteNotice(message);
+      setTimeout(() => setRerouteNotice(null), 5000);
+      if (voiceEnabled) {
+        TextToSpeech.speak({ text: `${message}.`, lang: "en-US", category: "playback" }).catch(() => {});
+      }
+    } else {
+      // Kept the current route: its arrival estimate now reflects the real
+      // pace, so drift is measured from here rather than re-triggering.
+      const remainingM = progress.totalM - progress.alongM;
+      schedule.expectedArrivalAt = Date.now() + (remainingM / speed) * 1000;
+    }
+    track("Go Mode Rechecked", {
+      reason, switched, preference, pace_mps: pace,
+      current_fraction: currentFraction, new_fraction: newFraction,
+    });
   }
 
   // Compute the turn hint for the banner, and speak brand-new instructions
@@ -1738,8 +1861,13 @@ export default function RouteMap({ regions }) {
   // current position when they leave the route. `rerouting` keeps that quiet:
   // the current route, stats panel, Go/Stop button and map position all stay
   // put until the new route is ready, and failures don't raise the error
-  // panel (the caller tells the user instead). Returns whether it succeeded.
-  async function planRoute({ origin = start, rerouting = false } = {}) {
+  // panel (the caller tells the user instead). `walkingSpeed` (m/s) is the
+  // walker's measured pace, for timing the sun along the route. `accept`,
+  // for Go mode's background recheck, sees the candidate before it's shown
+  // and can decline it; rechecks never fall back to Google Directions, whose
+  // routes carry no sun/shade to compare. Returns true when a route was
+  // applied, "declined" when `accept` turned it down, false on failure.
+  async function planRoute({ origin = start, rerouting = false, walkingSpeed = null, accept = null } = {}) {
     if (!rerouting) {
       setPlanRequested(true);
       setError(null);
@@ -1803,6 +1931,7 @@ export default function RouteMap({ regions }) {
         {
           start: [origin.lat, origin.lng], end: [end.lat, end.lng], datetime, preference,
           max_detour: detourOverride,
+          ...(walkingSpeed ? { walking_speed_mps: walkingSpeed } : {}),
         },
         { headers: { Authorization: `Bearer ${token}` }, timeout: 35000 },
       );
@@ -1829,6 +1958,7 @@ export default function RouteMap({ regions }) {
         waypoints = routeRes.data.waypoints;
         segmentKinds = routeRes.data.segment_kinds ?? null;
       } catch (optimizedRouteErr) {
+        if (accept) return false;
         // Logged so an intermittent failure here (seen recurring with no
         // obvious cause) can actually be diagnosed next time instead of
         // being silently swallowed by the fallback below.
@@ -1865,15 +1995,26 @@ export default function RouteMap({ regions }) {
       }
 
       // Shadow-analyze the path — sun_altitude/azimuth come from this response
-      const shadowRes = await api.post(
+      const analyze = (coordinates) => api.post(
         "/sun/shadow-analyze",
-        { coordinates: waypoints, datetime },
+        { coordinates, datetime, ...(walkingSpeed ? { walking_speed_mps: walkingSpeed } : {}) },
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      const shadowRes = await analyze(waypoints);
       const { sun_altitude, sun_azimuth, date, segments, shadow_available } = shadowRes.data;
       // Crosswalk/sidewalk kinds ride along on the segments themselves, so
       // the session cache and every consumer of routeSegments get them too.
       if (segmentKinds) segments.forEach((seg, i) => { seg.kind = segmentKinds[i] ?? null; });
+
+      if (accept && !(await accept({
+        waypoints, segments, shadowAvailable: shadow_available,
+        analyzeSegments: async (coords) => (await analyze(coords)).data.segments,
+      }))) {
+        return "declined";
+      }
+      routePlannedAtRef.current = Date.now();
+      routePlannedSpeedRef.current = walkingSpeed ?? RECHECK.defaultSpeedMps;
+      lastAppliedRouteRef.current = waypoints;
 
       applyRouteResult(
         waypoints, segments, sun_altitude, sun_azimuth, date, shadow_available, preference,
@@ -3065,6 +3206,15 @@ export default function RouteMap({ regions }) {
                   activeTurnTargetRef.current = null;
                   offRouteDetectorRef.current.reset();
                   offRouteHoldUntilRef.current = Date.now() + 10_000;
+                  paceTrackerRef.current.reset();
+                  progressOffsetRef.current = 0;
+                  lastAlongRef.current = 0;
+                  lastSwitchAtRef.current = 0;
+                  // A route planned well before Go (or restored from an
+                  // earlier visit) was timed for a sun that's since moved.
+                  startSchedule(routeLengthM(routeCoords), routePlannedSpeedRef.current, {
+                    stalePlan: Date.now() - routePlannedAtRef.current > 10 * 60_000,
+                  });
                 }
               }}
               style={{
