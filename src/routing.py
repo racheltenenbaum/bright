@@ -587,9 +587,10 @@ def compute_edge_weights(
 # shadow-polygon precompute (~0.4s for 14.5k central-Vienna buildings, ~1.5s
 # for a long shade route's wider bbox, on a cache miss) — a first version
 # with fixed 15-minute slices sized to the worst-case detour took long shade
-# routes from ~3s to 9-15s — so slices aim for ~20 minutes, capped at 3.
+# routes from ~3s to 9-15s — so slices aim for ~20 minutes, capped at 4
+# (only walks over an hour get a 4th: e.g. a slow walker's 3km at 0.5 m/s).
 SUN_SLICE_TARGET_MIN = 20
-MAX_SUN_SLICES = 3
+MAX_SUN_SLICES = 4
 # ~4.7 km/h, a typical city walking pace. Go mode can send a measured pace.
 WALKING_SPEED_MPS = 1.3
 # The chosen route is usually a bit longer than the shortest one; edges

@@ -72,8 +72,8 @@ class OptimizedRouteRequest(BaseModel):
     @field_validator("walking_speed_mps")
     @classmethod
     def valid_walking_speed(cls, v):
-        if v is not None and not (0.5 <= v <= 3.0):
-            raise ValueError("walking_speed_mps must be between 0.5 and 3.0")
+        if v is not None and not (0.3 <= v <= 3.0):
+            raise ValueError("walking_speed_mps must be between 0.3 and 3.0")
         return v
 
     @field_validator("max_detour")

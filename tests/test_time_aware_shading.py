@@ -7,6 +7,7 @@ import pytest
 
 from src.routing import (
     MAX_SUN_SLICES,
+    ROUTE_LENGTH_SLACK,
     SUN_SLICE_TARGET_MIN,
     WALKING_SPEED_MPS,
     build_graph,
@@ -427,3 +428,41 @@ def test_optimized_route_fetches_buildings_when_sun_rises_mid_walk(client, auth_
         )
     assert resp.status_code == 200
     assert shadows.call_args.args[0] == [building]
+
+
+def test_optimized_route_accepts_very_slow_walking_speed(client, auth_headers):
+    """Go mode sends the walker's measured pace; very slow walkers (300m in
+    10 minutes is 0.5 m/s) must still be accepted, down to 0.3 m/s."""
+    start, end = _m(0, 0), _m(0, 500)
+    with (
+        patch("src.routers.routing.get_sun_position", return_value=(45.0, 180.0)),
+        patch("src.routing.fetch_osm_road_network", return_value=_line_osm(500)),
+        patch("src.routers.routing._fetch_buildings_for_bbox", return_value=[]),
+    ):
+        resp = client.post(
+            "/sun/optimized-route",
+            json={"start": list(start), "end": list(end),
+                  "datetime": "2026-05-24T14:00:00+02:00", "preference": "sun",
+                  "walking_speed_mps": 0.3},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+
+
+def test_shadow_analyze_accepts_very_slow_walking_speed(client, auth_headers):
+    resp = _analyze(client, auth_headers, _line_coords(500), _sun_by_time, walking_speed_mps=0.3)
+    assert resp.status_code == 200
+
+
+def test_shadow_analyze_rejects_implausible_walking_speed(client, auth_headers):
+    resp = _analyze(client, auth_headers, _line_coords(500), _sun_by_time, walking_speed_mps=0.2)
+    assert resp.status_code == 422
+
+
+def test_very_long_walk_gets_four_slices():
+    """A slow walker's 3km is ~100 minutes; three slices would each span
+    ~33 minutes of sun movement."""
+    assert MAX_SUN_SLICES == 4
+    assert plan_sun_slices(3000 * ROUTE_LENGTH_SLACK, speed_mps=0.5).count == 4
+    # A normal-pace 3km walk is unaffected.
+    assert plan_sun_slices(3000 * ROUTE_LENGTH_SLACK).count == 3

@@ -206,7 +206,7 @@ class ShadowAnalyzeRequest(BaseModel):
     datetime: str                   # ISO string e.g. "2026-05-14T15:30:00+02:00"
     # Measured pace for estimating when each point is reached; see
     # OptimizedRouteRequest.walking_speed_mps.
-    walking_speed_mps: float | None = Field(default=None, ge=0.5, le=3.0)
+    walking_speed_mps: float | None = Field(default=None, ge=0.3, le=3.0)
 
 
 class ShadowAnalyzeResponse(BaseModel):
