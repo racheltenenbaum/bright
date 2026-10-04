@@ -1182,7 +1182,10 @@ export default function RouteMap({ regions }) {
       const [lat2, lng2] = routeCoords[segIdx + 1];
       const bearing = computeBearing(lat1, lng1, lat2, lng2);
       map.setHeading(bearing);
-      setMapHeading(bearing);
+      // Read back what the map actually did rather than assuming the
+      // requested bearing took effect — if the map can't rotate it stays
+      // north-up, and the compass must then stay pointing up with it.
+      setMapHeading(map.getHeading() || 0);
     }
   }, [goMode, currentLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3544,10 +3547,7 @@ export default function RouteMap({ regions }) {
                   color: mapHeading !== 0 ? colors.accent : colors.subtext,
                   // faCompass's needle is drawn pointing northeast; -45°
                   // makes it point straight up when the map faces north.
-                  // In Go mode the map keeps turning with the walker, and a
-                  // constantly swinging needle read as crooked — so it stays
-                  // upright there, like on the regular map.
-                  transform: `rotate(${goMode ? -45 : -45 - mapHeading}deg)`,
+                  transform: `rotate(${-45 - mapHeading}deg)`,
                   transition: "transform 0.3s, color 0.2s",
                 }}
               />
