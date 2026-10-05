@@ -20,7 +20,8 @@
             </intent-filter>
             <!-- App Links: verified against public/.well-known/assetlinks.json
                  on the frontend domain — opens the app instead of a browser
-                 for password-reset email links. -->
+                 for password-reset email links and the "open bright" link
+                 in region-live emails (/plan). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -29,6 +30,10 @@
                     android:scheme="https"
                     android:host="brightfe-production.up.railway.app"
                     android:pathPrefix="/reset-password" />
+                <data
+                    android:scheme="https"
+                    android:host="brightfe-production.up.railway.app"
+                    android:pathPrefix="/plan" />
             </intent-filter>
         </activity>
 
