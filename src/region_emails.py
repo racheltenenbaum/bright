@@ -1,4 +1,4 @@
-"""The "bright now covers your city" email sent to people who asked to be
+"""The "bright covers your city" email sent to people who asked to be
 notified about a region (see POST /admin/region-requests/notify-covered)."""
 import html
 import os
@@ -47,9 +47,6 @@ def build_region_live_email(
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border:1px solid {_BORDER};border-radius:16px;">
 <tr><td align="center" style="padding:32px 32px 8px;">
 <img src="{logo_url}" width="180" alt="bright" style="display:block;width:180px;height:auto;border:0;">
-</td></tr>
-<tr><td style="padding:16px 32px 0;font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:1.3;color:{_BROWN};">
-bright now covers {safe_region}
 </td></tr>
 <tr><td style="padding:16px 32px 0;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;color:#3d3420;">
 <p style="margin:0 0 12px;">{safe_greeting}</p>

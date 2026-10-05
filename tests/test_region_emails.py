@@ -41,3 +41,8 @@ def test_links_open_the_app_and_both_stores_and_shows_logo():
 def test_subject_wording():
     subject, _, _ = build_region_live_email("Dana", "Stuttgart", app_url="https://app.example")
     assert subject == "bright covers Stuttgart"
+
+
+def test_html_has_no_separate_headline():
+    _, _, html = build_region_live_email("Dana", "Stuttgart", app_url="https://app.example")
+    assert "covers Stuttgart" not in html
