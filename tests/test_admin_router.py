@@ -253,7 +253,7 @@ def test_notify_covered_send_failure_leaves_that_user_pending(client, db, test_u
     _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
     _add_request(db, other, *STUTTGART, datetime(2026, 9, 30, 2))
 
-    def fail_for_test_user(to, subject, text, html=None):
+    def fail_for_test_user(to, subject, text, html=None, bcc=None):
         if to == "test@example.com":
             raise RuntimeError("sendgrid down")
 
@@ -306,3 +306,19 @@ def test_notify_covered_rerun_with_nothing_new_sends_nothing(client, db, test_us
     mock_send.assert_not_called()
     assert body["notifications"] == []
     assert body["sent"] == 0
+
+
+def test_notify_covered_bccs_admin_on_every_real_send(client, db, test_user):
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    with patch("src.routers.admin.send_email") as mock_send:
+        client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS)
+    assert mock_send.call_args.kwargs["bcc"] == "admin@example.com"
+
+
+def test_notify_covered_sends_without_bcc_when_admin_email_unset(client, db, test_user, monkeypatch):
+    monkeypatch.delenv("ADMIN_EMAIL")
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    with patch("src.routers.admin.send_email") as mock_send:
+        body = client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS).json()
+    assert body["sent"] == 1
+    assert mock_send.call_args.kwargs["bcc"] is None

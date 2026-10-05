@@ -185,6 +185,9 @@ def notify_covered_region_requests(body: NotifyCoveredRequest, db: Session = Dep
         response.previewed = len(previewed_regions)
         return response
 
+    # Rachel is BCC'd on every real region-live email so she sees exactly
+    # what each requester received.
+    bcc = os.getenv("ADMIN_EMAIL") or None
     for user_id, region, rows in pending:
         user = db.get(User, user_id)
         to = user.email if user else rows[-1].email
@@ -192,7 +195,7 @@ def notify_covered_region_requests(body: NotifyCoveredRequest, db: Session = Dep
             user.first_name if user else None, REGION_DISPLAY_NAMES[region],
         )
         try:
-            send_email(to, subject, text, html=html)
+            send_email(to, subject, text, html=html, bcc=bcc)
         except Exception:
             logger.exception("Failed to send region-live email (user %s, %s)", user_id, region)
             response.failed.append(FailedNotification(user_id=user_id, region=region))

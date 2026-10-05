@@ -15,7 +15,9 @@ _SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 _SENDGRID_FROM = os.getenv("SENDGRID_FROM_EMAIL")
 
 
-def send_email(to: str, subject: str, text: str, html: str | None = None) -> None:
+def send_email(
+    to: str, subject: str, text: str, html: str | None = None, bcc: str | None = None,
+) -> None:
     if not _SENDGRID_API_KEY or not _SENDGRID_FROM:
         logger.warning(
             "Email skipped: missing SendGrid credentials (api_key=%s from=%s)",
@@ -27,11 +29,15 @@ def send_email(to: str, subject: str, text: str, html: str | None = None) -> Non
     content = [{"type": "text/plain", "value": text}]
     if html is not None:
         content.append({"type": "text/html", "value": html})
+    personalization = {"to": [{"email": to}]}
+    # SendGrid rejects a message whose bcc repeats an address from "to".
+    if bcc and bcc.lower() != to.lower():
+        personalization["bcc"] = [{"email": bcc}]
     resp = requests.post(
         "https://api.sendgrid.com/v3/mail/send",
         headers={"Authorization": f"Bearer {_SENDGRID_API_KEY}"},
         json={
-            "personalizations": [{"to": [{"email": to}]}],
+            "personalizations": [personalization],
             "from": {"email": _SENDGRID_FROM},
             "subject": subject,
             "content": content,

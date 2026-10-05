@@ -75,3 +75,28 @@ def test_send_email_with_html_sends_plain_text_first_then_html():
         {"type": "text/plain", "value": "Body text"},
         {"type": "text/html", "value": "<p>Body</p>"},
     ]
+
+
+def test_send_email_with_bcc_adds_bcc_to_personalization():
+    mock_resp = _mock_resp_ok()
+    with patch.object(email_client, "_SENDGRID_API_KEY", "SG_test_key"), \
+         patch.object(email_client, "_SENDGRID_FROM", "sender@example.com"), \
+         patch("requests.post", return_value=mock_resp) as mock_post:
+        email_client.send_email("someone@example.com", "S", "B", bcc="admin@example.com")
+
+    assert mock_post.call_args.kwargs["json"]["personalizations"] == [
+        {"to": [{"email": "someone@example.com"}], "bcc": [{"email": "admin@example.com"}]},
+    ]
+
+
+def test_send_email_skips_bcc_matching_recipient():
+    # SendGrid rejects a message whose bcc repeats an address from "to".
+    mock_resp = _mock_resp_ok()
+    with patch.object(email_client, "_SENDGRID_API_KEY", "SG_test_key"), \
+         patch.object(email_client, "_SENDGRID_FROM", "sender@example.com"), \
+         patch("requests.post", return_value=mock_resp) as mock_post:
+        email_client.send_email("Admin@Example.com", "S", "B", bcc="admin@example.com")
+
+    assert mock_post.call_args.kwargs["json"]["personalizations"] == [
+        {"to": [{"email": "Admin@Example.com"}]},
+    ]
