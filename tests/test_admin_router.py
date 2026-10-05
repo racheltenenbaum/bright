@@ -136,3 +136,173 @@ def test_admin_email_502_when_send_fails(client):
     with patch("src.routers.admin.send_email", side_effect=RuntimeError("sendgrid down")):
         response = client.post("/admin/email", json={"subject": "s", "text": "t"}, headers=HEADERS)
     assert response.status_code == 502
+
+
+# --- POST /admin/region-requests/notify-covered -----------------------------
+
+from src.models import User
+
+STUTTGART = (48.7735, 9.2093)
+STUTTGART_2 = (48.7800, 9.1800)
+VIENNA = (48.2082, 16.3738)
+MUNICH = (48.1374, 11.5755)  # not covered
+NOTIFY_URL = "/admin/region-requests/notify-covered"
+
+
+def _user(db, first_name, email):
+    user = User(first_name=first_name, email=email, hashed_password=None)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def _rows(db):
+    db.expire_all()
+    return db.query(RegionNotifyRequest).order_by(RegionNotifyRequest.id).all()
+
+
+def test_notify_covered_requires_token(client):
+    assert client.post(NOTIFY_URL, json={}).status_code == 401
+
+
+def test_notify_covered_defaults_to_dry_run(client, db, test_user):
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30))
+    with patch("src.routers.admin.send_email") as mock_send:
+        response = client.post(NOTIFY_URL, json={}, headers=HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["dry_run"] is True
+    assert body["notifications"] == [
+        {"user_id": test_user.id, "region": "stuttgart", "request_count": 1},
+    ]
+    assert body["sent"] == 0
+    mock_send.assert_not_called()
+    assert _rows(db)[0].notified is False
+
+
+def test_notify_covered_groups_repeat_requests_in_one_city(client, db, test_user):
+    for i, (lat, lng) in enumerate([STUTTGART, STUTTGART_2, STUTTGART]):
+        _add_request(db, test_user, lat, lng, datetime(2026, 9, 30, i))
+
+    body = client.post(NOTIFY_URL, json={"dry_run": True}, headers=HEADERS).json()
+
+    assert body["notifications"] == [
+        {"user_id": test_user.id, "region": "stuttgart", "request_count": 3},
+    ]
+
+
+def test_notify_covered_sends_one_email_per_user_per_city(client, db, test_user):
+    other = _user(db, "Dana", "dana@example.com")
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    _add_request(db, test_user, *STUTTGART_2, datetime(2026, 9, 30, 2))
+    _add_request(db, other, *STUTTGART, datetime(2026, 9, 30, 3))
+
+    with patch("src.routers.admin.send_email") as mock_send:
+        body = client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS).json()
+
+    assert body["sent"] == 2
+    assert sorted(c.args[0] for c in mock_send.call_args_list) == ["dana@example.com", "test@example.com"]
+    dana_call = next(c for c in mock_send.call_args_list if c.args[0] == "dana@example.com")
+    assert dana_call.args[2].startswith("Hi Dana,")
+    assert "Stuttgart" in dana_call.args[1]
+    assert "html" in dana_call.kwargs
+    assert all(r.notified and r.fulfilled for r in _rows(db))
+
+
+def test_notify_covered_never_emails_the_same_user_twice_for_a_city(client, db, test_user):
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    with patch("src.routers.admin.send_email"):
+        client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS)
+
+    # A later request in the same city must not trigger a second email.
+    _add_request(db, test_user, *STUTTGART_2, datetime(2026, 10, 5, 1))
+    with patch("src.routers.admin.send_email") as mock_send:
+        body = client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS).json()
+
+    mock_send.assert_not_called()
+    assert body["notifications"] == []
+    assert all(r.notified for r in _rows(db))
+
+
+def test_notify_covered_emails_separately_for_different_cities(client, db, test_user):
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    _add_request(db, test_user, *VIENNA, datetime(2026, 9, 30, 2))
+
+    with patch("src.routers.admin.send_email") as mock_send:
+        body = client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS).json()
+
+    assert body["sent"] == 2
+    subjects = sorted(c.args[1] for c in mock_send.call_args_list)
+    assert any("Stuttgart" in s for s in subjects) and any("Vienna" in s for s in subjects)
+
+
+def test_notify_covered_ignores_uncovered_requests(client, db, test_user):
+    _add_request(db, test_user, *MUNICH, datetime(2026, 9, 30, 1))
+
+    with patch("src.routers.admin.send_email") as mock_send:
+        body = client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS).json()
+
+    mock_send.assert_not_called()
+    assert body["notifications"] == []
+    assert _rows(db)[0].notified is False
+
+
+def test_notify_covered_send_failure_leaves_that_user_pending(client, db, test_user):
+    other = _user(db, "Dana", "dana@example.com")
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    _add_request(db, other, *STUTTGART, datetime(2026, 9, 30, 2))
+
+    def fail_for_test_user(to, subject, text, html=None):
+        if to == "test@example.com":
+            raise RuntimeError("sendgrid down")
+
+    with patch("src.routers.admin.send_email", side_effect=fail_for_test_user):
+        body = client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS).json()
+
+    assert body["sent"] == 1
+    assert body["failed"] == [{"user_id": test_user.id, "region": "stuttgart"}]
+    rows = {r.user_id: r for r in _rows(db)}
+    assert rows[test_user.id].notified is False
+    assert rows[other.id].notified is True
+
+
+def test_notify_covered_preview_sends_sample_to_admin_only(client, db, test_user):
+    other = _user(db, "Dana", "dana@example.com")
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    _add_request(db, other, *STUTTGART, datetime(2026, 9, 30, 2))
+
+    with patch("src.routers.admin.send_email") as mock_send:
+        body = client.post(
+            NOTIFY_URL, json={"dry_run": False, "preview_to_admin": True}, headers=HEADERS,
+        ).json()
+
+    # One sample per city, to the admin, and nothing marked as notified.
+    assert [c.args[0] for c in mock_send.call_args_list] == ["admin@example.com"]
+    assert body["sent"] == 0
+    assert body["previewed"] == 1
+    assert not any(r.notified for r in _rows(db))
+
+
+def test_notify_covered_preview_503_without_admin_email(client, db, test_user, monkeypatch):
+    monkeypatch.delenv("ADMIN_EMAIL")
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    with patch("src.routers.admin.send_email") as mock_send:
+        response = client.post(
+            NOTIFY_URL, json={"dry_run": False, "preview_to_admin": True}, headers=HEADERS,
+        )
+    assert response.status_code == 503
+    mock_send.assert_not_called()
+
+
+def test_notify_covered_rerun_with_nothing_new_sends_nothing(client, db, test_user):
+    _add_request(db, test_user, *STUTTGART, datetime(2026, 9, 30, 1))
+    with patch("src.routers.admin.send_email"):
+        client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS)
+
+    with patch("src.routers.admin.send_email") as mock_send:
+        body = client.post(NOTIFY_URL, json={"dry_run": False}, headers=HEADERS).json()
+
+    mock_send.assert_not_called()
+    assert body["notifications"] == []
+    assert body["sent"] == 0

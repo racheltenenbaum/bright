@@ -15,13 +15,18 @@ _SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 _SENDGRID_FROM = os.getenv("SENDGRID_FROM_EMAIL")
 
 
-def send_email(to: str, subject: str, text: str) -> None:
+def send_email(to: str, subject: str, text: str, html: str | None = None) -> None:
     if not _SENDGRID_API_KEY or not _SENDGRID_FROM:
         logger.warning(
             "Email skipped: missing SendGrid credentials (api_key=%s from=%s)",
             bool(_SENDGRID_API_KEY), bool(_SENDGRID_FROM),
         )
         return
+    # SendGrid requires text/plain before text/html; clients that can't
+    # render HTML fall back to the plain part.
+    content = [{"type": "text/plain", "value": text}]
+    if html is not None:
+        content.append({"type": "text/html", "value": html})
     resp = requests.post(
         "https://api.sendgrid.com/v3/mail/send",
         headers={"Authorization": f"Bearer {_SENDGRID_API_KEY}"},
@@ -29,7 +34,7 @@ def send_email(to: str, subject: str, text: str) -> None:
             "personalizations": [{"to": [{"email": to}]}],
             "from": {"email": _SENDGRID_FROM},
             "subject": subject,
-            "content": [{"type": "text/plain", "value": text}],
+            "content": content,
             # SendGrid rewrites links to its own click-tracking domain by
             # default, which breaks Universal Links / App Links — the OS
             # only recognizes a tap as opening our app if the tapped link's

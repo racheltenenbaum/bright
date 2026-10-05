@@ -60,3 +60,18 @@ def test_send_email_propagates_http_errors():
             assert False, "expected HTTPError to propagate"
         except requests_module.HTTPError:
             pass
+
+
+def test_send_email_with_html_sends_plain_text_first_then_html():
+    mock_resp = _mock_resp_ok()
+    with patch.object(email_client, "_SENDGRID_API_KEY", "SG_test_key"), \
+         patch.object(email_client, "_SENDGRID_FROM", "sender@example.com"), \
+         patch("requests.post", return_value=mock_resp) as mock_post:
+        email_client.send_email("someone@example.com", "Subject", "Body text", html="<p>Body</p>")
+
+    # SendGrid requires text/plain before text/html; clients without HTML
+    # support fall back to the plain part.
+    assert mock_post.call_args.kwargs["json"]["content"] == [
+        {"type": "text/plain", "value": "Body text"},
+        {"type": "text/html", "value": "<p>Body</p>"},
+    ]
