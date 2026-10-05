@@ -25,7 +25,7 @@ def build_region_live_email(
     name = (first_name or "").strip()
     greeting = f"Hi {name}," if name else "Hi,"
 
-    subject = f"bright now covers {region_name}"
+    subject = f"bright covers {region_name}"
 
     text = (
         f"{greeting}\n\n"

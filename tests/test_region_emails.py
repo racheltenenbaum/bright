@@ -36,3 +36,8 @@ def test_links_open_the_app_and_both_stores_and_shows_logo():
     for url in (APP_STORE_URL, PLAY_STORE_URL):
         assert url in text
         assert f'href="{url}"' in html
+
+
+def test_subject_wording():
+    subject, _, _ = build_region_live_email("Dana", "Stuttgart", app_url="https://app.example")
+    assert subject == "bright covers Stuttgart"
