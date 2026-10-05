@@ -13,6 +13,9 @@ export function initErrorMonitoring() {
       // added after) happen before any JS runs, so this must be initialized
       // as early as possible in main.jsx — not lazily on first navigation.
       tracesSampleRate: 0.2,
+      // Set to "staging" on the staging Railway environment so its errors
+      // don't mix with real users' in Sentry.
+      environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || "production",
     },
     SentryReact.init,
   );
