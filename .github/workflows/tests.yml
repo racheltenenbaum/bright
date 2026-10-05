@@ -2,13 +2,33 @@ name: Tests
 
 on:
   push:
-    branches: [master]
+    branches: [master, staging]
   pull_request:
-    branches: [master]
+    branches: [master, staging]
 
 jobs:
   pytest:
     runs-on: ubuntu-latest
+
+    # Same MySQL version as production, so tests/test_migrations.py can check
+    # that `alembic upgrade head` builds a working database from empty (which
+    # is exactly what a fresh staging environment does on its first deploy).
+    services:
+      mysql:
+        image: mysql:9.7.2
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      MIGRATION_TEST_MYSQL_URL: mysql://root@127.0.0.1:3306
+
     steps:
       - uses: actions/checkout@v4
 
