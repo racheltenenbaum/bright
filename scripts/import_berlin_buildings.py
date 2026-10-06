@@ -31,6 +31,7 @@ Usage:
 import argparse
 import re
 import sys
+import time
 import zipfile
 from pathlib import Path
 from typing import IO, Iterator
@@ -47,6 +48,8 @@ SOURCE = "berlin_lod2"
 FEED_URL = "https://gdi.berlin.de/data/a_lod2/atom/0.atom"
 TILE_URL = "https://gdi.berlin.de/data/a_lod2/atom/LoD2_{e}_{n}.zip"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "bright" / "lod2_berlin"
+DOWNLOAD_ATTEMPTS = 4
+RETRY_DELAY_S = 10
 
 # ETRS89 / UTM zone 33N (EPSG:25833) <-> WGS84. always_xy: (x, y) = (lng, lat).
 TO_WGS84 = Transformer.from_crs(25833, 4326, always_xy=True)
@@ -90,8 +93,18 @@ def download_tile(e: int, n: int, cache_dir: Path) -> Path:
     path = cache_dir / f"LoD2_{e}_{n}.zip"
     if path.exists():
         return path
-    resp = requests.get(tile_url(e, n), timeout=300)
-    resp.raise_for_status()
+    # gdi.berlin.de occasionally stalls mid-download on a full-city run
+    # (seen once in ~660 tiles); retry rather than abort the whole import.
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            resp = requests.get(tile_url(e, n), timeout=300)
+            resp.raise_for_status()
+            break
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            print(f"  tile {e}_{n}: download failed (attempt {attempt}), retrying")
+            time.sleep(RETRY_DELAY_S * attempt)
     tmp = path.with_suffix(".part")
     tmp.write_bytes(resp.content)
     tmp.rename(path)

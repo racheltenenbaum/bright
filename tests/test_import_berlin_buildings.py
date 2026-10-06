@@ -7,11 +7,17 @@ import io
 import sys
 import zipfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.import_berlin_buildings import (
+    DOWNLOAD_ATTEMPTS,
     TO_WGS84,
+    download_tile,
     iter_zip_citygml,
     tile_url,
     tiles_for_bbox,
@@ -73,3 +79,22 @@ def test_iter_zip_citygml_reads_xml_and_gml_members(tmp_path):
         zf.writestr("other.gml", b"<b/>")
         zf.writestr("readme.pdf", b"x")
     assert [f.read() for f in iter_zip_citygml(path)] == [b"<a/>", b"<b/>"]
+
+
+def test_download_tile_retries_a_stalled_download(tmp_path):
+    ok = MagicMock(content=b"zip")
+    with patch("scripts.import_berlin_buildings.time.sleep"), \
+         patch("scripts.import_berlin_buildings.requests.get",
+               side_effect=[requests.ConnectionError("Read timed out"), ok]):
+        path = download_tile(391, 5820, tmp_path)
+    assert path.read_bytes() == b"zip"
+
+
+def test_download_tile_gives_up_after_max_attempts(tmp_path):
+    with patch("scripts.import_berlin_buildings.time.sleep"), \
+         patch("scripts.import_berlin_buildings.requests.get",
+               side_effect=requests.ConnectionError("down")) as get:
+        with pytest.raises(requests.ConnectionError):
+            download_tile(391, 5820, tmp_path)
+    assert get.call_count == DOWNLOAD_ATTEMPTS
+    assert not (tmp_path / "LoD2_391_5820.zip").exists()
