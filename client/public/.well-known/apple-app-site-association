@@ -9,6 +9,14 @@
           "/reset-password/*",
           "/plan"
         ]
+      },
+      {
+        "appID": "95XR3CFAPW.com.racheltenenbaum.bright.staging",
+        "paths": [
+          "/reset-password",
+          "/reset-password/*",
+          "/plan"
+        ]
       }
     ]
   }

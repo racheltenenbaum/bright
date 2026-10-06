@@ -350,6 +350,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				BRIGHT_APPLINKS_DOMAIN = "brightfe-production.up.railway.app";
+				BRIGHT_BUNDLE_ID = com.racheltenenbaum.bright;
+				BRIGHT_DISPLAY_NAME = bright;
+				GOOGLE_IOS_REVERSED_CLIENT_ID = "com.googleusercontent.apps.838539937170-v4uv1mc4467p9vljmagd0vptrcpqkeno";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 95XR3CFAPW;
@@ -358,7 +362,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.2;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
-				PRODUCT_BUNDLE_IDENTIFIER = com.racheltenenbaum.bright;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BRIGHT_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.0;
@@ -372,6 +376,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				BRIGHT_APPLINKS_DOMAIN = "brightfe-production.up.railway.app";
+				BRIGHT_BUNDLE_ID = com.racheltenenbaum.bright;
+				BRIGHT_DISPLAY_NAME = bright;
+				GOOGLE_IOS_REVERSED_CLIENT_ID = "com.googleusercontent.apps.838539937170-v4uv1mc4467p9vljmagd0vptrcpqkeno";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = 95XR3CFAPW;
@@ -379,7 +387,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.racheltenenbaum.bright;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BRIGHT_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
