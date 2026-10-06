@@ -20,6 +20,30 @@ Before running or proposing any destructive operation against the production DB,
 
 Purely additive changes (`CREATE TABLE`, `ADD COLUMN`, etc.) are not covered by this rule and don't need the triple confirmation — only anything that removes or destroys existing data or schema does.
 
+## Staging first, then production
+
+Every change goes through staging before it reaches production. No exceptions for "small" fixes.
+
+| | Staging | Production |
+|---|---|---|
+| Git branch | `staging` | `master` |
+| Website | https://brightfe-staging.up.railway.app | https://brightfe-production.up.railway.app |
+| Backend | https://bright-staging.up.railway.app | https://bright-production-caf4.up.railway.app |
+| Database | staging's own MySQL (separate data) | production MySQL |
+
+Both Railway environments auto-deploy on push to their branch, including `alembic upgrade head`. Don't also run `railway up`: overlapping deploys kill each other and Railway reports a crash.
+
+1. **Never commit or push to `master` directly.** Commit to `staging`, from a separate git worktree (`git worktree add <dir> origin/staging`). Never switch branches in the main checkout, because other sessions work there at the same time.
+2. **Verify on staging.** Wait for CI (it runs on `staging` too) and for the staging deploy to succeed, then check the change on the staging URLs, in a browser for UI work. Before pushing, merge `origin/master` into `staging` so the two don't drift apart.
+3. **Rachel promotes to production.** Hand her this ready-to-paste command and wait for her to run it:
+   ```
+   ! git fetch origin && git push origin origin/staging:master
+   ```
+   After she runs it, check CI, the production deploy and the production URLs.
+4. **Data changes follow the same path.** Imports and edits run against staging's database first and get checked in the staging app. Only then do they run against production, with a manual backup first, in small chunks, and under the destructive-operation rule above.
+
+Railway CLI: pass `-e staging` explicitly for staging commands. The repo stays linked to `production` by default.
+
 ## Shared thresholds/caps across modes or preferences
 
 If a change adds a threshold, cap, or limit that applies across multiple modes/preferences/options that aren't symmetric in practice (e.g. a detour cap applied to both "sun" and "shade" routing, when shade structurally needs a bigger detour than sun to matter at all), write a test for **each** option that exercises the real end-to-end code path — not just a mocked unit test of the scoring function in isolation. A bug shipped for 3 months once because every shade-related test mocked path selection directly, so 99% line coverage never caught that shade silently collapsed to the same route as sun. See `test_optimized_route_sun_and_shade_produce_different_routes` in `tests/test_routing.py` for the pattern: build a real small graph, run the actual endpoint, and assert the two options produce genuinely different results.
