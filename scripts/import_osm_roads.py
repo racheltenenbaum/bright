@@ -227,6 +227,7 @@ def run_import(
     dry_run: bool,
     areas_only: bool = False,
     backfill_kinds_only: bool = False,
+    skip_first: int = 0,
 ) -> int:
     handler = RoadHandler(bbox, areas_only=areas_only)
     handler.apply_file(pbf_path, locations=True)
@@ -247,16 +248,23 @@ def run_import(
         print(f"\nTOTAL rows updated: {updated} of {kinded} crossing/sidewalk edges parsed")
         return updated
 
+    # Resuming after a dropped connection: every batch commits on its own and
+    # parse order is deterministic for the same extract + bbox, so the DB
+    # already holds exactly the first skip_first edges.
+    edges = handler.edges[skip_first:]
+    if skip_first:
+        print(f"skipping the first {skip_first} edges (already imported)")
+
     db = SessionLocal()
     total = 0
     try:
         batch: list[dict] = []
-        for edge in handler.edges:
+        for edge in edges:
             batch.append(edge)
             if len(batch) >= BATCH_SIZE:
                 _flush(db, region, batch)
                 total += len(batch)
-                print(f"  inserted {total}/{len(handler.edges)}")
+                print(f"  inserted {skip_first + total}/{len(handler.edges)}", flush=True)
                 batch = []
         if batch:
             _flush(db, region, batch)
@@ -286,6 +294,11 @@ if __name__ == "__main__":
         help="don't insert anything — set osm_roads.kind (crossing/sidewalk) on rows already "
              "imported from this same extract, matched by exact coordinates",
     )
+    parser.add_argument(
+        "--skip-first", type=int, default=0, metavar="N",
+        help="resume an interrupted import: skip the first N parsed edges, which the DB "
+             "already holds (a multiple of the batch size — check the region's row count)",
+    )
     args = parser.parse_args()
 
     if not args.bbox and not args.full:
@@ -293,4 +306,4 @@ if __name__ == "__main__":
 
     bbox = tuple(map(float, args.bbox.split(","))) if args.bbox else None
     run_import(args.pbf_path, args.region, bbox, args.dry_run, areas_only=args.areas_only,
-               backfill_kinds_only=args.backfill_kinds)
+               backfill_kinds_only=args.backfill_kinds, skip_first=args.skip_first)

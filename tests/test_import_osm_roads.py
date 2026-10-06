@@ -173,3 +173,27 @@ def test_backfill_kinds_updates_matching_rows_only(tmp_path, db):
     rows = {(r.from_lat, r.to_lat): r.kind for r in db.query(OsmRoad).all()}
     assert rows == {(48.2050, 48.2051): "crossing", (48.2051, 48.2060): None}
     assert db.query(OsmRoad).count() == 2
+
+
+def test_skip_first_resumes_an_interrupted_import_without_duplicates(tmp_path):
+    # Each batch commits on its own, so after a dropped connection the DB
+    # holds exactly the first N edges in parse order; --skip-first N must
+    # insert precisely the rest.
+    from unittest.mock import MagicMock, patch
+
+    from scripts.import_osm_roads import run_import
+
+    path = _write_crossing_osm(tmp_path)
+    handler = RoadHandler(bbox=None)
+    handler.apply_file(path, locations=True)
+    all_edges = handler.edges
+    assert len(all_edges) == 2
+
+    flushed: list[dict] = []
+    with patch("scripts.import_osm_roads.SessionLocal", MagicMock()), \
+         patch("scripts.import_osm_roads._flush",
+               side_effect=lambda db, region, batch: flushed.extend(batch)):
+        total = run_import(path, "vienna", None, dry_run=False, skip_first=1)
+
+    assert total == 1
+    assert flushed == all_edges[1:]
