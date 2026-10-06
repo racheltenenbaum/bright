@@ -185,6 +185,52 @@ so always import with `--bbox 48.69,9.03,48.87,9.32`, never `--full`.
   duplicate boundary edges). A first attempt earlier that day failed with
   no rows written, before migration `a3d5f7b9c1e2` (`kind`) was deployed.
 
+## Berlin
+
+**Buildings** — source: Berlin's official 3D building model (LoD2,
+CityGML), Senatsverwaltung für Stadtentwicklung, Bauen und Wohnen, via the
+GDI Berlin INSPIRE ATOM feed `https://gdi.berlin.de/data/a_lod2/atom/0.atom`,
+licensed **dl-de/zero-2-0** (no attribution required; credited on the About
+page as "Geoportal Berlin"). Same AdV CityGML profile as Stuttgart, so
+parsing is shared; projection is UTM 33 (EPSG:25833). Height =
+`bldg:measuredHeight`; multi-part buildings are one row per `BuildingPart`,
+which is why there are ~1.03M rows for ~540k buildings.
+
+- Tiles: 925 1km x 1km zips (`LoD2_<E_km>_<N_km>.zip`, one CityGML `.xml`
+  each), listed in the ATOM feed (~6GB total, cached in
+  `~/.cache/bright/lod2_berlin`). Server occasionally stalls a download;
+  the script retries.
+- Dataset version: feed `updated` 2026-03-26 (files dated 2026-03-24).
+- Full-city dry run: 1,030,507 rows (12 skipped without height, 2,764
+  without ground footprint).
+- **Staging** imported 2026-10-06 in 4 `--bbox` quadrants split at
+  52.505N / 13.425E (rows assigned by footprint centroid — the quadrant
+  totals sum exactly to the dry run). Production: not yet.
+
+**Tree canopy** — source: Berlin's tree cadastre WFS
+`https://gdi.berlin.de/services/wfs/baumbestand`, dl-de/zero-2-0. Every
+surveyed tree becomes a round canopy (`src/shadow.py:tree_to_canopy`) sized
+by its crown diameter (`kronedurch`, filled for ~71% of street trees) and
+height (`baumhoehe`, ~84%), falling back to the tree-row estimates
+otherwise; `source="berlin_trees"`. This replaces OSM tree rows for Berlin
+entirely (not imported there).
+
+- Street trees (`strassenbaeume`): 434,765. **Staging** imported 2026-10-06
+  in the same 4 quadrants (sum matches the dry run exactly). Production: not yet.
+- Park trees (`anlagenbaeume`): 527,780 in the dry run — **not imported**
+  (mostly shade park paths; ~200MB; can be added later with `--layer park`).
+
+**Roads** — source: OSM via BBBike pre-clipped extract (`Berlin.osm.pbf`,
+182MB), downloaded **2026-10-06**. Import with `--bbox 52.33,13.08,52.68,13.77`.
+
+- **Staging** imported 2026-10-06: 1,676,644 edges (409,652
+  crossing/sidewalk). The first run lost its DB connection after 1,120,000
+  edges; finished with `--skip-first 1120000` after confirming the first and
+  last stored rows matched parse order. Production: not yet.
+
+**Size on staging:** `osm_buildings` +~835MB (data+index), `osm_roads`
++~490MB — about 1.3GB of table data for Berlin.
+
 ## osm_roads precision fix (2026-09-08, all regions)
 
 `osm_roads`' coordinate columns (`from_lat`/`from_lng`/`to_lat`/`to_lng`,
