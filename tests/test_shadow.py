@@ -16,6 +16,8 @@ from src.shadow import (
     which_side_sunny,
     extract_buildings_from_overpass,
     tree_row_to_canopy_segments,
+    tree_to_canopy,
+    TREE_CANOPY_SIDES,
     TREE_CANOPY_WIDTH_M,
     TREE_CANOPY_HEIGHT_M,
 )
@@ -348,6 +350,39 @@ def test_tree_row_to_canopy_segments_skips_duplicate_points():
     line = [(51.0, 0.0), (51.0, 0.0), (51.001, 0.0)]
     segments = tree_row_to_canopy_segments(line)
     assert len(segments) == 1
+
+
+# ── tree_to_canopy ──────────────────────────────────────────────────────────────
+
+def _span_m(footprint, lat):
+    lats = [p[0] for p in footprint]
+    lngs = [p[1] for p in footprint]
+    ns = (max(lats) - min(lats)) * 111_320
+    ew = (max(lngs) - min(lngs)) * 111_320 * cos(radians(lat))
+    return ns, ew
+
+
+def test_tree_to_canopy_uses_crown_diameter_and_height():
+    canopy = tree_to_canopy(52.52, 13.40, crown_diameter_m=8.0, height_m=15.0)
+    assert canopy["height"] == 15.0
+    assert len(canopy["footprint"]) == TREE_CANOPY_SIDES
+    ns, ew = _span_m(canopy["footprint"], 52.52)
+    assert abs(ns - 8.0) < 0.3
+    assert abs(ew - 8.0) < 0.3
+
+
+def test_tree_to_canopy_is_centred_on_the_tree():
+    footprint = tree_to_canopy(52.52, 13.40, crown_diameter_m=6.0, height_m=10.0)["footprint"]
+    assert abs(sum(p[0] for p in footprint) / len(footprint) - 52.52) < 1e-6
+    assert abs(sum(p[1] for p in footprint) / len(footprint) - 13.40) < 1e-6
+
+
+@pytest.mark.parametrize("missing", [None, 0, -1])
+def test_tree_to_canopy_falls_back_to_defaults(missing):
+    canopy = tree_to_canopy(52.52, 13.40, crown_diameter_m=missing, height_m=missing)
+    assert canopy["height"] == TREE_CANOPY_HEIGHT_M
+    ns, _ = _span_m(canopy["footprint"], 52.52)
+    assert abs(ns - TREE_CANOPY_WIDTH_M) < 0.3
 
 
 def test_extract_buildings_includes_tree_row_canopy():

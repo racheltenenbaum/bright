@@ -15,6 +15,7 @@ REGION_BOUNDS: dict[str, tuple[float, float, float, float]] = {
     "la": (33.70, -118.67, 34.34, -118.15),
     "telaviv": (32.02, 34.74, 32.15, 34.85),
     "stuttgart": (48.69, 9.03, 48.87, 9.32),
+    "berlin": (52.33, 13.08, 52.68, 13.77),
 }
 
 # Display names for regions with data coverage, shown to end users (e.g. the
@@ -26,6 +27,7 @@ REGION_DISPLAY_NAMES: dict[str, str] = {
     "la": "Los Angeles",
     "telaviv": "Tel Aviv",
     "stuttgart": "Stuttgart",
+    "berlin": "Berlin",
 }
 
 

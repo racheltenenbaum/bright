@@ -128,9 +128,12 @@ def parse_citygml(
     source: IO[bytes],
     bbox: tuple[float, float, float, float] | None = None,
     stats: dict | None = None,
+    to_wgs84: Transformer = _TO_WGS84,
 ) -> Iterator[dict]:
     """Yield osm_buildings-shaped dicts from one CityGML file. If bbox
-    (s, w, n, e) is given, keep only rows whose footprint centroid is in it."""
+    (s, w, n, e) is given, keep only rows whose footprint centroid is in it.
+    to_wgs84 projects the file's coordinates (default: Stuttgart's UTM 32;
+    Berlin's importer passes UTM 33)."""
     if stats is None:
         stats = {}
     stats.setdefault("skipped_no_height", 0)
@@ -150,7 +153,7 @@ def parse_citygml(
                 stats["skipped_no_ground"] += 1
                 continue
             for ring in rings:
-                lngs, lats = _TO_WGS84.transform([p[0] for p in ring], [p[1] for p in ring])
+                lngs, lats = to_wgs84.transform([p[0] for p in ring], [p[1] for p in ring])
                 if bbox:
                     s, w, n, e = bbox
                     c_lat, c_lng = sum(lats) / len(lats), sum(lngs) / len(lngs)

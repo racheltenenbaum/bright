@@ -364,6 +364,32 @@ def tree_row_to_canopy_segments(line_coords: list[tuple[float, float]]) -> list[
     return segments
 
 
+# Polygon sides used to approximate a single tree's round crown — enough to
+# read as round at street scale while keeping each stored footprint small.
+TREE_CANOPY_SIDES = 8
+
+
+def tree_to_canopy(
+    lat: float,
+    lng: float,
+    crown_diameter_m: float | None = None,
+    height_m: float | None = None,
+) -> dict:
+    """Convert one surveyed tree (e.g. a city tree-cadastre point) into a
+    round canopy footprint in the same {"footprint", "height"} shape as a
+    building. Missing or non-positive crown/height values fall back to the
+    tree-row estimates above.
+    """
+    diameter = crown_diameter_m if crown_diameter_m and crown_diameter_m > 0 else TREE_CANOPY_WIDTH_M
+    height = height_m if height_m and height_m > 0 else TREE_CANOPY_HEIGHT_M
+    radius = diameter / 2
+    footprint = [
+        list(_offset_point(lat, lng, i * 360 / TREE_CANOPY_SIDES, radius))
+        for i in range(TREE_CANOPY_SIDES)
+    ]
+    return {"footprint": footprint, "height": height}
+
+
 def extract_buildings_from_overpass(overpass_data: dict) -> list[dict]:
     """
     Parse Overpass API JSON response into a list of building (and tree-row

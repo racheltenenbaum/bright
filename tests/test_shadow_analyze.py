@@ -232,6 +232,11 @@ def test_region_for_bbox_stuttgart():
     assert _region_for_bbox(48.77, 9.17, 48.78, 9.18) == "stuttgart"
 
 
+def test_region_for_bbox_berlin():
+    # A small bbox around Alexanderplatz.
+    assert _region_for_bbox(52.52, 13.40, 52.53, 13.42) == "berlin"
+
+
 def test_region_for_bbox_unimported_area():
     # London — not one of our pre-loaded regions.
     assert _region_for_bbox(51.50, -0.10, 51.51, -0.09) is None

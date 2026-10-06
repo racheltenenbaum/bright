@@ -55,6 +55,7 @@ const CREDITS = [
   { label: "Stadt Wien – data.wien.gv.at", href: "https://data.wien.gv.at" },
   { label: "Tel Aviv-Yafo Municipality GIS", href: "https://gisn.tel-aviv.gov.il" },
   { label: "LGL, www.lgl-bw.de, dl-de/by-2-0", href: "https://www.lgl-bw.de" },
+  { label: "Geoportal Berlin, dl-de/zero-2-0", href: "https://gdi.berlin.de" },
   { label: "Esri World Imagery", href: "https://www.esri.com" },
 ];
 
