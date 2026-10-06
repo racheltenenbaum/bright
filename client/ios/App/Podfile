@@ -1,4 +1,4 @@
-require_relative '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/ios/scripts/pods_helpers'
+require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
 platform :ios, '15.0'
 use_frameworks!
@@ -9,16 +9,16 @@ use_frameworks!
 install! 'cocoapods', :disable_input_output_paths => true
 
 def capacitor_pods
-  pod 'Capacitor', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/ios'
-  pod 'CapacitorCordova', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/ios'
-  pod 'CapacitorCommunityAppleSignIn', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/apple-sign-in'
-  pod 'CapacitorCommunityBackgroundGeolocation', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/background-geolocation'
-  pod 'CapacitorCommunityTextToSpeech', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/text-to-speech'
-  pod 'CapacitorApp', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/app'
-  pod 'CapacitorGeolocation', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/geolocation'
-  pod 'CapacitorShare', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/share'
-  pod 'CodetrixStudioCapacitorGoogleAuth', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@codetrix-studio/capacitor-google-auth'
-  pod 'SentryCapacitor', :path => '../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@sentry/capacitor'
+  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
+  pod 'CapacitorCommunityAppleSignIn', :path => '../../node_modules/@capacitor-community/apple-sign-in'
+  pod 'CapacitorCommunityBackgroundGeolocation', :path => '../../node_modules/@capacitor-community/background-geolocation'
+  pod 'CapacitorCommunityTextToSpeech', :path => '../../node_modules/@capacitor-community/text-to-speech'
+  pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
+  pod 'CapacitorGeolocation', :path => '../../node_modules/@capacitor/geolocation'
+  pod 'CapacitorShare', :path => '../../node_modules/@capacitor/share'
+  pod 'CodetrixStudioCapacitorGoogleAuth', :path => '../../node_modules/@codetrix-studio/capacitor-google-auth'
+  pod 'SentryCapacitor', :path => '../../node_modules/@sentry/capacitor'
 end
 
 target 'App' do

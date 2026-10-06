@@ -39,16 +39,16 @@ PODS:
     - Sentry (= 9.8.0)
 
 DEPENDENCIES:
-  - "Capacitor (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/ios`)"
-  - "CapacitorApp (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/app`)"
-  - "CapacitorCommunityAppleSignIn (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/apple-sign-in`)"
-  - "CapacitorCommunityBackgroundGeolocation (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/background-geolocation`)"
-  - "CapacitorCommunityTextToSpeech (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/text-to-speech`)"
-  - "CapacitorCordova (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/ios`)"
-  - "CapacitorGeolocation (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/geolocation`)"
-  - "CapacitorShare (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/share`)"
-  - "CodetrixStudioCapacitorGoogleAuth (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@codetrix-studio/capacitor-google-auth`)"
-  - "SentryCapacitor (from `../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@sentry/capacitor`)"
+  - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
+  - "CapacitorCommunityAppleSignIn (from `../../node_modules/@capacitor-community/apple-sign-in`)"
+  - "CapacitorCommunityBackgroundGeolocation (from `../../node_modules/@capacitor-community/background-geolocation`)"
+  - "CapacitorCommunityTextToSpeech (from `../../node_modules/@capacitor-community/text-to-speech`)"
+  - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
+  - "CapacitorShare (from `../../node_modules/@capacitor/share`)"
+  - "CodetrixStudioCapacitorGoogleAuth (from `../../node_modules/@codetrix-studio/capacitor-google-auth`)"
+  - "SentryCapacitor (from `../../node_modules/@sentry/capacitor`)"
 
 SPEC REPOS:
   trunk:
@@ -60,25 +60,25 @@ SPEC REPOS:
 
 EXTERNAL SOURCES:
   Capacitor:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/ios"
+    :path: "../../node_modules/@capacitor/ios"
   CapacitorApp:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/app"
+    :path: "../../node_modules/@capacitor/app"
   CapacitorCommunityAppleSignIn:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/apple-sign-in"
+    :path: "../../node_modules/@capacitor-community/apple-sign-in"
   CapacitorCommunityBackgroundGeolocation:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/background-geolocation"
+    :path: "../../node_modules/@capacitor-community/background-geolocation"
   CapacitorCommunityTextToSpeech:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor-community/text-to-speech"
+    :path: "../../node_modules/@capacitor-community/text-to-speech"
   CapacitorCordova:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/ios"
+    :path: "../../node_modules/@capacitor/ios"
   CapacitorGeolocation:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/geolocation"
+    :path: "../../node_modules/@capacitor/geolocation"
   CapacitorShare:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@capacitor/share"
+    :path: "../../node_modules/@capacitor/share"
   CodetrixStudioCapacitorGoogleAuth:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@codetrix-studio/capacitor-google-auth"
+    :path: "../../node_modules/@codetrix-studio/capacitor-google-auth"
   SentryCapacitor:
-    :path: "../../../../../../../../../../Users/racheltenenbaum/projects/bright/client/node_modules/@sentry/capacitor"
+    :path: "../../node_modules/@sentry/capacitor"
 
 SPEC CHECKSUMS:
   AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
@@ -97,6 +97,6 @@ SPEC CHECKSUMS:
   Sentry: 88746bf877eff714bc45315a39ad1d1efea2cdda
   SentryCapacitor: a159b966e73da91a92f40f2f5240da91f774e4ca
 
-PODFILE CHECKSUM: 698db7df6b4c298a17a5b013e6fb6bc88a4a9cb8
+PODFILE CHECKSUM: 38391ce40d58eea58ffcea30d5049f7931f98a95
 
 COCOAPODS: 1.16.2
