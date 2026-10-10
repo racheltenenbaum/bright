@@ -39,6 +39,7 @@ import LocationField from "./LocationField";
 import {
   loadRecentSearches, addRecentSearch, removeRecentSearch, clearRecentSearches,
 } from "../utils/recentSearches";
+import { roundTurnDistance } from "../utils/turnDistance";
 
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
 
@@ -243,7 +244,7 @@ function getUpcomingTurn(routeCoords, routeSegments, segmentIdx, currentLocation
     const [destLat, destLng] = routeCoords[lastIdx];
     const distM = haversineKm(currentLocation.lat, currentLocation.lng, destLat, destLng) * 1000;
     if (!withThreshold(lastIdx, distM)) return null;
-    return { text: `Arriving ${distM < 10 ? "now" : `in ${Math.round(distM)}m`}` };
+    return { text: `Arriving ${distM < 10 ? "now" : `in ${roundTurnDistance(distM)}m`}` };
   }
 
   const [turnLat, turnLng] = routeCoords[segmentIdx + 1];
@@ -258,7 +259,7 @@ function getUpcomingTurn(routeCoords, routeSegments, segmentIdx, currentLocation
   // Signed turn angle: positive = clockwise = right, negative = left.
   const angle = (((bearingOut - bearingIn + 540) % 360) - 180);
   const absAngle = Math.abs(angle);
-  const distanceText = distanceM < 10 ? "now" : `in ${Math.round(distanceM)}m`;
+  const distanceText = distanceM < 10 ? "now" : `in ${roundTurnDistance(distanceM)}m`;
   // The segment starting at this waypoint is a mapped crosswalk: say so,
   // even when it continues straight ahead (no turn to announce otherwise).
   const crossesNext = routeSegments?.[segmentIdx + 1]?.kind === "crossing";
