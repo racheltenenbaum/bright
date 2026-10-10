@@ -20,9 +20,9 @@ Before running or proposing any destructive operation against the production DB,
 
 Purely additive changes (`CREATE TABLE`, `ADD COLUMN`, etc.) are not covered by this rule and don't need the triple confirmation — only anything that removes or destroys existing data or schema does.
 
-## Staging first, then production
+## Releases: everything goes to staging until Rachel creates a release (STRICT)
 
-Every change goes through staging before it reaches production. No exceptions for "small" fixes.
+We work with releases. All work goes to staging, and it stays there until Rachel decides to create a production release. No exceptions: not for "small" fixes, hotfixes, copy changes, docs, config, or data. Nothing reaches production any other way.
 
 | | Staging | Production |
 |---|---|---|
@@ -30,17 +30,21 @@ Every change goes through staging before it reaches production. No exceptions fo
 | Website | https://brightfe-staging.up.railway.app | https://brightfe-production.up.railway.app |
 | Backend | https://bright-staging.up.railway.app | https://bright-production-caf4.up.railway.app |
 | Database | staging's own MySQL (separate data) | production MySQL |
+| iOS app | "bright stg" (`cd client && scripts/ios-staging.sh`) | App Store builds |
 
 Both Railway environments auto-deploy on push to their branch, including `alembic upgrade head`. Don't also run `railway up`: overlapping deploys kill each other and Railway reports a crash.
 
-1. **Never commit or push to `master` directly.** Commit to `staging`, from a separate git worktree (`git worktree add <dir> origin/staging`). Never switch branches in the main checkout, because other sessions work there at the same time.
-2. **Verify on staging.** Wait for CI (it runs on `staging` too) and for the staging deploy to succeed, then check the change on the staging URLs, in a browser for UI work. Before pushing, merge `origin/master` into `staging` so the two don't drift apart.
-3. **Rachel promotes to production.** Hand her this ready-to-paste command and wait for her to run it:
-   ```
-   ! git fetch origin && git push origin origin/staging:master
-   ```
-   After she runs it, check CI, the production deploy and the production URLs.
-4. **Data changes follow the same path.** Imports and edits run against staging's database first and get checked in the staging app. Only then do they run against production, with a manual backup first, in small chunks, and under the destructive-operation rule above.
+1. **Never commit or push to `master`.** Commit to `staging`, from a separate git worktree (`git worktree add <dir> origin/staging`). Never switch branches in the main checkout, because other sessions work there at the same time. The main checkout sits on `master`, so this file there can be out of date. Work from `origin/staging`, not from what's checked out.
+2. **Verify on staging.** Wait for CI (it runs on `staging` too) and for the staging deploy to succeed. Then check the change on the staging URLs, in a browser for UI work, and in the "bright stg" app on Rachel's iPhone for app changes.
+3. **City imports and all other data changes go to staging's database only.** Check them in the staging app. They run against production only as part of a release Rachel creates. Then follow the production import rules: a manual backup first, small chunks, and the destructive-operation rule above. Region-live emails to users go out only after the city is in a production release.
+4. **Only Rachel creates a release.** Never promote, suggest promoting partial work, or run anything against production on your own. When she asks for a release:
+   - List what's on `staging` but not on `master` (`git log origin/master..origin/staging`) and any staging data imports that production still needs.
+   - Hand her this ready-to-paste command (replace the date) and wait for her to run it:
+     ```
+     ! git fetch origin && git push origin origin/staging:master && git tag release-YYYY-MM-DD origin/staging && git push origin release-YYYY-MM-DD
+     ```
+   - Afterwards, check CI, the production deploy and the production URLs. Then run that release's production imports, if any.
+   - Native App Store/Play builds are made from the released `master` code only.
 
 Railway CLI: pass `-e staging` explicitly for staging commands. The repo stays linked to `production` by default.
 
