@@ -1074,6 +1074,11 @@ body.night-mode .pac-matched {
 }
 body.shade-mode .address-input--mine { color: #4a7090 !important; }
 body.night-mode .address-input--mine { color: #6ab4dc !important; }
+/* "Your location" is the placeholder of an empty field (see LocationField),
+   styled to read as the field's value rather than a faded hint. */
+.address-input--mine::placeholder { color: #a87500; opacity: 1; font-weight: 600; }
+body.shade-mode .address-input--mine::placeholder { color: #4a7090; }
+body.night-mode .address-input--mine::placeholder { color: #6ab4dc; }
 
 .location-field-clear {
   position: absolute;

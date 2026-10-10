@@ -7,6 +7,17 @@ import { spotIcon } from "../pages/MySpotsPage";
 
 const MY_LOCATION_LABEL = "Your location";
 
+// When a suggestion is tapped in one field's dropdown, mobile WebViews often
+// deliver a second, "ghost" tap to whatever sits under the finger once the
+// dropdown closes — usually the destination field right below the start
+// field — which focused it and popped its quick-pick list open. Focus that
+// arrives this soon after a pick is treated as that ghost tap and dropped.
+const GHOST_FOCUS_MS = 700;
+let lastPickAt = 0;
+function markPicked() {
+  lastPickAt = Date.now();
+}
+
 // The same yellow dot as the live-location marker on the map, so "Your
 // location" in the field visibly means that dot.
 function LocationDot() {
@@ -15,7 +26,7 @@ function LocationDot() {
 
 /**
  * One route endpoint input (start or destination). When focused while empty
- * — or while showing "Your location" — it opens a quick-pick list: Your
+ * — or while set to "Your location" — it opens a quick-pick list: Your
  * location, then Home/Work spots, then recent searches. As soon as the user
  * types, Google's own address suggestions take over.
  */
@@ -45,6 +56,7 @@ export default function LocationField({
   // close the list) before the pick registers.
   const pick = (fn) => (e) => {
     e.preventDefault();
+    markPicked();
     fn();
     setFocused(false);
     e.currentTarget.closest(".location-field")?.querySelector("input")?.blur();
@@ -52,19 +64,31 @@ export default function LocationField({
 
   return (
     <div className="location-field" style={{ position: "relative" }}>
-      <Autocomplete onLoad={onAutocompleteLoad} onPlaceChanged={onPlaceChanged}>
+      <Autocomplete onLoad={onAutocompleteLoad} onPlaceChanged={() => { markPicked(); onPlaceChanged(); }}>
         <input
           type="text"
           className={`address-input${isMyLocation ? " address-input--mine" : ""}`}
-          value={isMyLocation ? MY_LOCATION_LABEL : value}
+          // "Your location" is shown as the placeholder, not as text: the
+          // field is really empty, so it can't be edited letter by letter,
+          // typing starts a fresh search (instead of Google suggesting
+          // places named like "Your location"), and Backspace clears it.
+          value={isMyLocation ? "" : value}
           onChange={(e) => onType(e.target.value)}
+          onKeyDown={(e) => {
+            if (isMyLocation && (e.key === "Backspace" || e.key === "Delete")) {
+              e.preventDefault();
+              onClear();
+            }
+          }}
           onFocus={(e) => {
+            if (Date.now() - lastPickAt < GHOST_FOCUS_MS) {
+              e.target.blur();
+              return;
+            }
             setFocused(true);
-            // Typing over "Your location" should replace it, like Google Maps.
-            if (isMyLocation) e.target.select();
           }}
           onBlur={() => setFocused(false)}
-          placeholder={placeholder}
+          placeholder={isMyLocation ? MY_LOCATION_LABEL : placeholder}
           style={{ paddingRight: value || isMyLocation ? "28px" : undefined, paddingLeft: isMyLocation ? "30px" : undefined }}
         />
       </Autocomplete>
