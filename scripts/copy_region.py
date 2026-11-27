@@ -16,11 +16,15 @@ Usage (run from repo root):
     python scripts/copy_region.py ... --region berlin --tables osm_roads
 """
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# src.database refuses to import without DATABASE_URL, though this script
+# never uses the app's own engine — only the two URLs passed in.
+os.environ.setdefault("DATABASE_URL", "sqlite://")
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Engine
