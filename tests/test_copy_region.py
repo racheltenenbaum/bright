@@ -108,3 +108,62 @@ def test_copies_roads_with_full_precision(tmp_path):
         got = conn.execute(select(OsmRoad.__table__)).one()
         assert conn.execute(select(func.count()).select_from(OsmRoad.__table__)).scalar() == 1
     assert (got.from_lat, got.oneway, got.kind) == (34.0922544, True, "sidewalk")
+
+
+
+def test_mysql_engines_time_out_on_a_silently_dropped_connection():
+    # Railway's public proxy can drop a connection without closing it; with
+    # no read timeout the copy then waits forever instead of retrying.
+    from unittest.mock import patch
+
+    import scripts.copy_region as copy_region
+
+    with patch.object(copy_region, "create_engine") as create:
+        copy_region.make_engine("mysql://u:p@example.invalid:3306/db")
+
+    url = create.call_args.args[0]
+    kwargs = create.call_args.kwargs
+    assert url.startswith("mysql+pymysql://")
+    assert kwargs["pool_pre_ping"] is True
+    assert 0 < kwargs["connect_args"]["read_timeout"] <= 300
+    assert 0 < kwargs["connect_args"]["write_timeout"] <= 300
+
+
+class _AckLostOnce:
+    """Destination whose first insert commits but then reports a dropped
+    connection — the client never learns the batch landed."""
+
+    def __init__(self, engine):
+        self._engine = engine
+        self.failed = False
+
+    def connect(self):
+        return self._engine.connect()
+
+    def begin(self):
+        from contextlib import contextmanager
+
+        from sqlalchemy.exc import OperationalError
+
+        @contextmanager
+        def _begin():
+            with self._engine.begin() as conn:
+                yield conn
+            if not self.failed:
+                self.failed = True
+                raise OperationalError("INSERT", {}, Exception("Lost connection to MySQL server"))
+        return _begin()
+
+
+def test_a_lost_commit_acknowledgement_does_not_duplicate_the_batch(tmp_path, monkeypatch):
+    import scripts.copy_region as copy_region
+
+    monkeypatch.setattr(copy_region.time, "sleep", lambda s: None)
+    src, dst = _engine(tmp_path, "src"), _engine(tmp_path, "dst")
+    _seed(src, [_building("vienna", i) for i in range(7)])
+    flaky = _AckLostOnce(dst)
+
+    copy_table(src, flaky, OsmBuilding.__table__, "vienna", batch_size=3)
+
+    assert flaky.failed
+    assert _rows(dst, "vienna") == _rows(src, "vienna")
